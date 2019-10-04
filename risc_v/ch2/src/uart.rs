@@ -34,9 +34,9 @@ impl Uart {
 			// We can easily write the value 3 here or 0b11, but I'm
 			// extending it so that it is clear we're setting two individual
 			// fields
-			//                         Word len 
-			//                         ~~~~~~~~ 
-			ptr.add(3).write_volatile((0b11 << 0));
+			//                         Word 0     Word 1
+			//                         ~~~~~~     ~~~~~~
+			ptr.add(3).write_volatile((1 << 0) | (1 << 1));
 
 			// Now, enable the FIFO, which is bit index 0 of the FIFO
 			// control register (FCR at offset 2).
