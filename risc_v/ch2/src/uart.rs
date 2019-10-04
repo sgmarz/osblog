@@ -28,15 +28,15 @@ impl Uart {
 	pub fn init(&mut self) {
 		let ptr = self.base_address as *mut u8;
 		unsafe {
-			// First, set the word length and stop bits, which
-			// are bits 0, 1, and 2 of the line control register (LCR)
+			// First, set the word length, which
+			// are bits 0 and 1 of the line control register (LCR)
 			// which is at base_address + 3
-			// We can easily write the value 7 here or 0b111, but I'm
+			// We can easily write the value 3 here or 0b11, but I'm
 			// extending it so that it is clear we're setting two individual
 			// fields
-			//                         Word len     Stop bits
-			//                         ~~~~~~~~     ~~~~~~~~~
-			ptr.add(3).write_volatile((0b11 << 0) | (1 << 2));
+			//                         Word len 
+			//                         ~~~~~~~~ 
+			ptr.add(3).write_volatile((0b11 << 0));
 
 			// Now, enable the FIFO, which is bit index 0 of the FIFO
 			// control register (FCR at offset 2).
