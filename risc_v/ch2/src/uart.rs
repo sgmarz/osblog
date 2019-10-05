@@ -11,8 +11,8 @@ pub struct Uart {
 
 impl Write for Uart {
 	fn write_str(&mut self, out: &str) -> Result<(), Error> {
-		for c in out.as_bytes() {
-			self.put(*c);
+		for c in out.bytes() {
+			self.put(c);
 		}
 		Ok(())
 	}
