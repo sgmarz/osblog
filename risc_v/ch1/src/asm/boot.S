@@ -2,9 +2,17 @@
 # bootloader for SoS
 # Stephen Marz
 # 8 February 2019
+
+# Disable generation of compressed instructions.
 .option norvc
+
+# Define a .data section.
 .section .data
+
+# Define a .text.init section.
 .section .text.init
+
+# Execution starts here.
 .global _start
 _start:
 	# Any hardware threads (hart) that are not bootstrapping
@@ -13,11 +21,15 @@ _start:
 	bnez	t0, 3f
 	# SATP should be zero, but let's make sure
 	csrw	satp, zero
+	
+	# Disable linker instruction relaxation for the `la` instruction below.
+	# This disallows the assembler from assuming that `gp` is already initialized.
+	# This causes the value stored in `gp` to be calculated from `pc`.
 .option push
 .option norelax
 	la		gp, _global_pointer
 .option pop
-	# The BSS section is expected to be zero
+	# Set all bytes in the BSS section to zero.
 	la 		a0, _bss_start
 	la		a1, _bss_end
 	bgeu	a0, a1, 2f
