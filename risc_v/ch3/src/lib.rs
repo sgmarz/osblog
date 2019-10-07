@@ -93,17 +93,17 @@ fn kmain() {
 	// Now test println! macro!
 	println!("This is my operating system!");
 	println!("I'm so awesome. If you start typing something, I'll show you what you typed!");
-	mem::init();
-	mem::print_page_allocations();
-	let root_ptr = mem::zalloc(1) as *mut mem::Table;
+	page::init();
+	page::print_page_allocations();
+	let root_ptr = page::zalloc(1) as *mut page::Table;
 	let mut root = unsafe { root_ptr.as_mut().unwrap() };
-	mem::map(&mut root, 0x7f2_2000_01f2, 0x8000_0ddd, mem::EntryBits::Read.val());
-	let m = mem::walk(&root, 0x7f2_2000_0234).unwrap_or(0);
-	mem::print_page_allocations();
-	mem::unmap(&mut root);
-	mem::print_page_allocations();
-	mem::dealloc(root_ptr as *mut u8);
-	mem::print_page_allocations();
+	page::map(&mut root, 0x7f2_2000_01f2, 0x8000_0ddd, page::EntryBits::Read.val());
+	let m = page::walk(&root, 0x7f2_2000_0234).unwrap_or(0);
+	page::print_page_allocations();
+	page::unmap(&mut root);
+	page::print_page_allocations();
+	page::dealloc(root_ptr as *mut u8);
+	page::print_page_allocations();
 	println!("Memory = 0x{:x}", m);
 	// Create a new scope so that we can test the global allocator and deallocator
 	{
@@ -116,12 +116,12 @@ fn kmain() {
 		// We know these bytes are valid, so we'll use `unwrap()`.
 		let sparkle_heart = String::from_utf8(sparkle_heart).unwrap();
 		println!("String = {}", sparkle_heart);
-		mem::print_page_allocations();
+		page::print_page_allocations();
 	}
 	// The box inside of the scope above should be dropped when k goes
 	// out of scope. The Drop trait for Box should call dealloc from the
 	// global allocator.
-	mem::print_page_allocations();
+	page::print_page_allocations();
 
 	// Now see if we can read stuff:
 	// Usually we can use #[test] modules in Rust, but it would convolute the
@@ -183,4 +183,4 @@ fn kmain() {
 // ///////////////////////////////////
 
 pub mod uart;
-pub mod mem;
+pub mod page;
