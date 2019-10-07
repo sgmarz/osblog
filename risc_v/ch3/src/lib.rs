@@ -107,7 +107,7 @@ fn kmain() {
 	println!("Memory = 0x{:x}", m);
 	{
 		// We have the global allocator, so let's see if that works!
-		let k = Box::<u8>::new(100);
+		let k: u32 = Box::new(100);
 		println!("Boxed value = {}", *k);
 		// The following comes from the Rust documentation:
 		// some bytes, in a vector
