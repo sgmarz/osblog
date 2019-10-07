@@ -63,6 +63,15 @@ impl Page {
 			false
 		}
 	}
+	// The page is a user page.
+	pub fn is_user(&self) -> bool {
+		if self.flags & PageBits::User.val() != 0 {
+			true
+		}
+		else {
+			false
+		}
+	}
 	// This is the opposite of is_taken().
 	pub fn is_free(&self) -> bool {
 		!self.is_taken()
@@ -99,7 +108,6 @@ pub fn init() {
 		// Determine where the actual useful memory starts. This will be after all Page
 		// structures. We also must align the ALLOC_START to a page-boundary (PAGE_SIZE = 4096).
 		ALLOC_START = (HEAP_START + num_pages * size_of::<Page>() + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
-		println!("Alloc start = 0x{:x}, last page = {:p}", ALLOC_START, ptr.add(num_pages - 1));
 	}
 }
 
@@ -175,8 +183,10 @@ pub fn zalloc(pages: usize) -> *mut u8 {
 	}
 	ret
 }
-
-pub fn free(ptr: *mut u8) {
+/// Deallocate a page by its pointer
+/// The way we've structured this, it will automatically coalesce
+/// contiguous pages.
+pub fn dealloc(ptr: *mut u8) {
 	// Make sure we don't try to free a null pointer.
 	assert!(!ptr.is_null());
 	unsafe {
@@ -192,10 +202,50 @@ pub fn free(ptr: *mut u8) {
 		}
 		// If the following assertion fails, it is most likely
 		// caused by a double-free.
-		assert!((*p).is_last() == true);
+		assert!((*p).is_last() == true, "Possible double-free detected! (Not taken found before last)");
 		// If we get here, we've taken care of all previous pages and
 		// we are on the last page.
 		(*p).clear();
+	}
+}
+
+// This is a debugging function. It prints all allocations in the page table.
+pub fn print_page_allocations() {
+	unsafe {
+		let num_pages = HEAP_SIZE / PAGE_SIZE;
+		let mut beg = HEAP_START as *const Page;
+		let end = beg.add(num_pages);
+		let alloc_beg = ALLOC_START;
+		let alloc_end = ALLOC_START + num_pages * PAGE_SIZE;
+		println!();
+		println!("PAGE ALLOCATION TABLE\nMETA: {:p} -> {:p}\nPHYS: 0x{:x} -> 0x{:x}", beg, end, alloc_beg, alloc_end);
+		println!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+		let mut num = 0;
+		while beg < end {
+			if (*beg).is_taken() {
+				let start = beg as usize;
+				let memaddr = ALLOC_START + (start - HEAP_START) * PAGE_SIZE;
+				print!("0x{:x} => ", memaddr);
+				loop {
+					num += 1;
+					if (*beg).is_last() {
+						let end = beg as usize;
+						let memaddr = ALLOC_START + (end - HEAP_START) * PAGE_SIZE + 0xfff;
+						print!("0x{:x}: {:>3} page(s)", memaddr, (end - start + 1));
+						if (*beg).is_user() {
+							print!(" U");
+						}
+						println!(".");
+						break;
+					}
+					beg = beg.add(1);
+				}
+			}
+			beg = beg.add(1);
+		}
+		println!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+		println!("{} pages allocated.", num);
+		println!();
 	}
 }
 
@@ -344,6 +394,8 @@ pub fn map(root: &mut Table, vaddr: usize, paddr: usize, bits: i64) {
 /// root: The root table to start freeing.
 /// NOTE: This does NOT free root directly. This must be 
 /// freed manually.
+/// The reason we don't free the root is because it is
+/// usually embedded into the Process structure.
 pub fn unmap(root: &mut Table) {
 	// Start with level 2
 	for lv2 in 0..512 {
@@ -356,14 +408,12 @@ pub fn unmap(root: &mut Table) {
 				let ref mut entry_lv1 = table_lv1.entries[lv1];
 				if entry_lv1.is_valid() && entry_lv1.is_branch() {
 					let memaddr_lv0 = (entry_lv1.get_entry() & !0x3ff) << 2;
-					print!("Freeing lv1[{}] = 0x{:x}...", lv1, memaddr_lv0);
-					free(memaddr_lv0 as *mut u8);
-					println!("done");
+					// The next level is level 0, which cannot have branches, therefore,
+					// we free here.
+					dealloc(memaddr_lv0 as *mut u8);
 				}
 			}
-			print!("Freeing lv2[{}] = 0x{:x}...", lv2, memaddr_lv1);
-			free(memaddr_lv1 as *mut u8);
-			println!("done");
+			dealloc(memaddr_lv1 as *mut u8);
 		}
 	}
 }
@@ -383,6 +433,9 @@ pub fn walk(root: &Table, vaddr: usize) -> Option<usize> {
 		(vaddr >> 30) & 0x1ff
 	];
 
+	// The last 12 bits (0xfff) is not translated by
+	// the MMU, so we have to copy it from the vaddr
+	// to the physical address.
 	let pgoff = vaddr & 0xfff;
 
 	let mut v = &root.entries[vpn[2]];
@@ -422,4 +475,41 @@ pub fn walk(root: &Table, vaddr: usize) -> Option<usize> {
 		Some(addr | pgoff)
 	}
 }
+
+// ///////////////////////////////////
+// / GLOBAL ALLOCATOR
+// ///////////////////////////////////
+
+// The global allocator allows us to use the data structures
+// in the core library, such as a linked list or B-tree.
+// We want to use these sparingly since we have a coarse-grained
+// allocator.
+use core::alloc::{GlobalAlloc, Layout};
+
+// The global allocator is a static constant to a global allocator
+// structure. We don't need any members because we're using this
+// structure just to implement alloc and dealloc.
+struct OsGlobalAlloc;
+
+unsafe impl GlobalAlloc for OsGlobalAlloc {
+	unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+		let pages = (layout.size() + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
+		// We align to the next page size so that when
+		// we divide by PAGE_SIZE, we get exactly the number
+		// of pages necessary.
+		alloc(pages / PAGE_SIZE)
+	}
+	unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
+		dealloc(ptr);
+	}
+}
+
+#[global_allocator]
+static GA: OsGlobalAlloc = OsGlobalAlloc {};
+
+#[alloc_error_handler]
+pub fn alloc_error(l: Layout) -> ! {
+	panic!("Allocator failed: {} bytes, {} alignment.", l.size(), l.align());
+}
+
 

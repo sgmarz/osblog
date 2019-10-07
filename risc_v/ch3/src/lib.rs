@@ -2,7 +2,10 @@
 // Stephen Marz
 // 21 Sep 2019
 #![no_std]
-#![feature(panic_info_message,asm)]
+#![feature(panic_info_message,asm,allocator_api,alloc_error_handler)]
+
+#[macro_use]
+extern crate alloc;
 
 // ///////////////////////////////////
 // / RUST MACROS
@@ -64,6 +67,8 @@ fn abort() -> ! {
 // ///////////////////////////////////
 // / CONSTANTS
 // ///////////////////////////////////
+// const STR_Y: &str = "\x1b[38;2;79;221;13m✓\x1b[m";
+// const STR_N: &str = "\x1b[38;2;221;41;13m✘\x1b[m";
 
 // ///////////////////////////////////
 // / ENTRY POINT
@@ -87,21 +92,30 @@ fn kmain() {
 	println!("This is my operating system!");
 	println!("I'm so awesome. If you start typing something, I'll show you what you typed!");
 	mem::init();
-	let k = mem::alloc(2);
-	let j = mem::alloc(10);
-	println!("Got 2 pages from {:p}", k);
-	println!("Got 10 more pages from {:p}", j);
-	mem::free(k);
-	let l = mem::alloc(12);
-	println!("Got 12 more pages from {:p}", l);
-	let mut root = unsafe { (mem::zalloc(1) as *mut mem::Table).as_mut().unwrap() };
-	mem::map(&mut root, 0x7f2_2000_0000, l as usize, mem::EntryBits::Read.val());
+	mem::print_page_allocations();
+	let root_ptr = mem::zalloc(1) as *mut mem::Table;
+	let mut root = unsafe { root_ptr.as_mut().unwrap() };
+	mem::map(&mut root, 0x7f2_2000_01f2, 0x8000_0ddd, mem::EntryBits::Read.val());
 	let m = mem::walk(&root, 0x7f2_2000_0234).unwrap_or(0);
-	println!("Got 0x{:x}, should be {:p}", m, unsafe {l.add(0x234)});
-	mem::free(l);
-	mem::free(j);
+	mem::print_page_allocations();
 	mem::unmap(&mut root);
-	mem::free((root as *mut mem::Table) as *mut u8);
+	mem::print_page_allocations();
+	mem::dealloc(root_ptr as *mut u8);
+	mem::print_page_allocations();
+	println!("Memory = 0x{:x}", m);
+	{
+		// We have the global allocator, so let's see if that works!
+		let k = alloc::boxed::Box::<u8>::new(100);
+		println!("Boxed value = {}", *k);
+		let j = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+		println!("Vector [0] = {}, [5] = {}, len = {}", j[0], j[5], j.len());
+		mem::print_page_allocations();
+	}
+	// The box inside of the scope above should be dropped when k goes
+	// out of scope. The Drop trait for Box should call dealloc from the
+	// global allocator.
+	mem::print_page_allocations();
+
 	// Now see if we can read stuff:
 	// Usually we can use #[test] modules in Rust, but it would convolute the
 	// task at hand. So, we'll just add testing snippets.
