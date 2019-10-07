@@ -105,6 +105,7 @@ fn kmain() {
 	mem::dealloc(root_ptr as *mut u8);
 	mem::print_page_allocations();
 	println!("Memory = 0x{:x}", m);
+	// Create a new scope so that we can test the global allocator and deallocator
 	{
 		// We have the global allocator, so let's see if that works!
 		let k: Box<u32> = Box::new(100);
