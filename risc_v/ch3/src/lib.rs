@@ -2,10 +2,12 @@
 // Stephen Marz
 // 21 Sep 2019
 #![no_std]
-#![feature(panic_info_message,asm,allocator_api,alloc_error_handler)]
+#![feature(panic_info_message,asm,allocator_api,alloc_error_handler,alloc_prelude)]
 
 #[macro_use]
 extern crate alloc;
+
+use alloc::prelude::v1::*;
 
 // ///////////////////////////////////
 // / RUST MACROS
@@ -105,10 +107,14 @@ fn kmain() {
 	println!("Memory = 0x{:x}", m);
 	{
 		// We have the global allocator, so let's see if that works!
-		let k = alloc::boxed::Box::<u8>::new(100);
+		let k = Box::<u8>::new(100);
 		println!("Boxed value = {}", *k);
-		let j = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-		println!("Vector [0] = {}, [5] = {}, len = {}", j[0], j[5], j.len());
+		// The following comes from the Rust documentation:
+		// some bytes, in a vector
+		let sparkle_heart = vec![240, 159, 146, 150];
+		// We know these bytes are valid, so we'll use `unwrap()`.
+		let sparkle_heart = String::from_utf8(sparkle_heart).unwrap();
+		println!("String = {}", sparkle_heart);
 		mem::print_page_allocations();
 	}
 	// The box inside of the scope above should be dropped when k goes

@@ -14,10 +14,21 @@ extern "C" {
 	static HEAP_SIZE: usize;
 }
 
+
 // We will use ALLOC_START to mark the start of the actual
 // memory we can dish out.
 static mut ALLOC_START: usize = 0;
-const PAGE_SIZE: usize = 4096;
+const PAGE_ORDER: usize = 12;
+const PAGE_SIZE: usize = 1 << 12;
+
+/// Align (set to a multiple of some power of two)
+/// This takes an order which is the exponent to 2^order
+/// Therefore, all alignments must be made as a power of two.
+/// This function always rounds up.
+pub const fn align_val(val: usize, order: usize) -> usize {
+	let o = (1usize << order) - 1;
+	(val + o) & !o
+}
 
 #[repr(u8)]
 pub enum PageBits {
@@ -91,12 +102,12 @@ impl Page {
 	}
 }
 
-// Initialize the allocation system. There are several ways that we can implement the
-// page allocator:
-// 1. Free list (singly linked list where it starts at the first free allocation)
-// 2. Bookkeeping list (structure contains a taken and length)
-// 3. Allocate one Page structure per 4096 bytes (this is what I chose)
-// 4. Others
+/// Initialize the allocation system. There are several ways that we can implement the
+/// page allocator:
+/// 1. Free list (singly linked list where it starts at the first free allocation)
+/// 2. Bookkeeping list (structure contains a taken and length)
+/// 3. Allocate one Page structure per 4096 bytes (this is what I chose)
+/// 4. Others
 pub fn init() {
 	unsafe {
 		let num_pages = HEAP_SIZE / PAGE_SIZE;
@@ -107,7 +118,8 @@ pub fn init() {
 		}
 		// Determine where the actual useful memory starts. This will be after all Page
 		// structures. We also must align the ALLOC_START to a page-boundary (PAGE_SIZE = 4096).
-		ALLOC_START = (HEAP_START + num_pages * size_of::<Page>() + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
+		// ALLOC_START = (HEAP_START + num_pages * size_of::<Page>() + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
+		ALLOC_START = align_val(HEAP_START + num_pages * size_of::<Page>(), PAGE_ORDER);
 	}
 }
 
@@ -162,6 +174,10 @@ pub fn alloc(pages: usize) -> *mut u8 {
 	null_mut()
 }
 
+/// Allocate and zero a page or multiple pages
+/// pages: the number of pages to allocate
+/// Each page is PAGE_SIZE which is calculated as 1 << PAGE_ORDER
+/// On RISC-V, this typically will be 4,096 bytes.
 pub fn zalloc(pages: usize) -> *mut u8 {
 	// Allocate and zero a page.
 	// First, let's get the allocation
@@ -183,6 +199,7 @@ pub fn zalloc(pages: usize) -> *mut u8 {
 	}
 	ret
 }
+
 /// Deallocate a page by its pointer
 /// The way we've structured this, it will automatically coalesce
 /// contiguous pages.
@@ -209,7 +226,8 @@ pub fn dealloc(ptr: *mut u8) {
 	}
 }
 
-// This is a debugging function. It prints all allocations in the page table.
+/// Print all page allocations
+/// This is mainly used for debugging.
 pub fn print_page_allocations() {
 	unsafe {
 		let num_pages = HEAP_SIZE / PAGE_SIZE;
@@ -319,6 +337,12 @@ pub struct Table {
 	pub entries: [Entry; 512],
 }
 
+impl Table {
+	pub fn len() -> usize {
+		512
+	}
+}
+
 /// Map a virtual address to a physical address using 4096-byte page
 /// size.
 /// root: a mutable reference to the root Table
@@ -366,9 +390,9 @@ pub fn map(root: &mut Table, vaddr: usize, paddr: usize, bits: i64) {
 	// create anything beyond the root.
 	// In Rust, we create an iterator using the .. operator.
 	// The .rev() will reverse the iteration since we need to start with VPN[2]
-	// The .. operator is inclusive on start but exclusive on end, so we add
-	// the = sign to include the 2.
-	for i in (1..=2).rev() {
+	// The .. operator is inclusive on start but exclusive on end. So, (0..2)
+	// will iterate 0 and 1.
+	for i in (0..2).rev() {
 		if !v.is_valid() {
 			// Allocate a page
 			let page = zalloc(1);
@@ -377,7 +401,7 @@ pub fn map(root: &mut Table, vaddr: usize, paddr: usize, bits: i64) {
 			v.set_entry((page as i64 >> 2) | EntryBits::Valid.val());
 		}
 		let entry = ((v.get_entry() & !0x3ff) << 2) as *mut Entry;
-		v = unsafe { entry.add(vpn[i - 1]).as_mut().unwrap() };
+		v = unsafe { entry.add(vpn[i]).as_mut().unwrap() };
 	}
 	// When we get here, we should be at VPN[0] and v should be pointing to our
 	// entry.
@@ -398,13 +422,13 @@ pub fn map(root: &mut Table, vaddr: usize, paddr: usize, bits: i64) {
 /// usually embedded into the Process structure.
 pub fn unmap(root: &mut Table) {
 	// Start with level 2
-	for lv2 in 0..512 {
+	for lv2 in 0..Table::len() {
 		let ref mut entry_lv2 = root.entries[lv2];
 		if entry_lv2.is_valid() && entry_lv2.is_branch() {
 			// This is a valid entry, so drill down and free.
 			let memaddr_lv1 = (entry_lv2.get_entry() & !0x3ff) << 2;
 			let table_lv1 = unsafe { (memaddr_lv1 as *mut Table).as_mut().unwrap() };
-			for lv1 in 0..512 {
+			for lv1 in 0..Table::len() {
 				let ref mut entry_lv1 = table_lv1.entries[lv1];
 				if entry_lv1.is_valid() && entry_lv1.is_branch() {
 					let memaddr_lv0 = (entry_lv1.get_entry() & !0x3ff) << 2;
@@ -493,23 +517,31 @@ struct OsGlobalAlloc;
 
 unsafe impl GlobalAlloc for OsGlobalAlloc {
 	unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-		let pages = (layout.size() + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
+		let pages = align_val(layout.size(), PAGE_ORDER);
 		// We align to the next page size so that when
 		// we divide by PAGE_SIZE, we get exactly the number
 		// of pages necessary.
 		alloc(pages / PAGE_SIZE)
 	}
 	unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
+		// We ignore layout since our allocator uses ptr_start -> last
+		// to determine the span of an allocation.
 		dealloc(ptr);
 	}
 }
 
 #[global_allocator]
+/// Technically, we don't need the {} at the end, but it
+/// reveals that we're creating a new structure and not just
+/// copying a value.
 static GA: OsGlobalAlloc = OsGlobalAlloc {};
 
 #[alloc_error_handler]
+/// If for some reason alloc() in the global allocator gets null_mut(),
+/// then we come here. This is a divergent function, so we call panic to
+/// let the tester know what's going on.
 pub fn alloc_error(l: Layout) -> ! {
-	panic!("Allocator failed: {} bytes, {} alignment.", l.size(), l.align());
+	panic!("Allocator failed to allocate {} bytes with {}-byte alignment.", l.size(), l.align());
 }
 
 
