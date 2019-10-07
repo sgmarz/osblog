@@ -423,13 +423,13 @@ pub fn map(root: &mut Table, vaddr: usize, paddr: usize, bits: i64) {
 pub fn unmap(root: &mut Table) {
 	// Start with level 2
 	for lv2 in 0..Table::len() {
-		let ref mut entry_lv2 = root.entries[lv2];
+		let ref entry_lv2 = root.entries[lv2];
 		if entry_lv2.is_valid() && entry_lv2.is_branch() {
 			// This is a valid entry, so drill down and free.
 			let memaddr_lv1 = (entry_lv2.get_entry() & !0x3ff) << 2;
 			let table_lv1 = unsafe { (memaddr_lv1 as *mut Table).as_mut().unwrap() };
 			for lv1 in 0..Table::len() {
-				let ref mut entry_lv1 = table_lv1.entries[lv1];
+				let ref entry_lv1 = table_lv1.entries[lv1];
 				if entry_lv1.is_valid() && entry_lv1.is_branch() {
 					let memaddr_lv0 = (entry_lv1.get_entry() & !0x3ff) << 2;
 					// The next level is level 0, which cannot have branches, therefore,
