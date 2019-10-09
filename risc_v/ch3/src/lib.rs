@@ -212,7 +212,7 @@ fn kmain() {
 				8 => {
 					// This is a backspace, so we essentially have
 					// to write a space and backup again:
-					print!("{}{}{}", 8 as char, ' ', 8 as char);
+					print!("{} {}", 8 as char, 8 as char);
 				},
 				  10 | 13 => {
 					  // Newline or carriage-return
