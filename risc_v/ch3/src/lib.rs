@@ -87,13 +87,14 @@ extern "C"
 	static KERNEL_STACK: usize;
 	static mut KERNEL_TABLE: usize;
 }
+/// Identity map range
+/// Takes a contiguous allocation of memory and maps it using PAGE_SIZE
+/// This assumes that start <= end
 pub fn id_map_range(root: &mut page::Table, start: usize, end: usize, bits: i64) {
-	unsafe {
-		let num_pages = (page::align_val(end, 12) - (start & !(page::PAGE_SIZE-1))) / page::PAGE_SIZE;
-		for i in 0..num_pages {
-			let m = (start & !(page::PAGE_SIZE-1)) + (i << 12);
-			page::map(root, m, m, bits);
-		}
+	let num_pages = (page::align_val(end, 12) - (start & !(page::PAGE_SIZE-1))) / page::PAGE_SIZE;
+	for i in 0..num_pages {
+		let m = (start & !(page::PAGE_SIZE-1)) + (i << 12);
+		page::map(root, m, m, bits);
 	}
 }
 // ///////////////////////////////////
@@ -114,9 +115,9 @@ fn kinit() -> usize {
 	let root_ptr = kmem::get_page_table();
 	let root_u   = root_ptr as usize;
 	let mut root = unsafe { root_ptr.as_mut().unwrap() };
-	let t = kmem::get_head() as usize;
+	let kheap_head = kmem::get_head() as usize;
 	let total_pages = kmem::get_num_allocations();
-	id_map_range(&mut root, t, t + (total_pages << 12), page::EntryBits::ReadWrite.val());
+	id_map_range(&mut root, kheap_head, kheap_head + (total_pages << 12), page::EntryBits::ReadWrite.val());
 	unsafe {
 		// Map executable section
 		id_map_range(&mut root, TEXT_START, TEXT_END, page::EntryBits::ReadExecute.val());
