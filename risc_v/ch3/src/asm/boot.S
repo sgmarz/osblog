@@ -43,7 +43,9 @@ _start:
 	# li		t5, 0xffff;
 	# csrw	medeleg, t5
 	# csrw	mideleg, t5
-	la		sp, _stack
+	# The stack grows from bottom to top, so we put the stack pointer
+	# to the very end of the stack range.
+	la		sp, _stack_end
 	# Setting `mstatus` register:
 	# 0b11 << 11: Machine's previous protection mode is 3 (MPP=3).
 	li		t0, 0b11 << 11

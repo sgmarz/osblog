@@ -84,7 +84,8 @@ extern "C"
 	static BSS_END: usize;
 	static HEAP_START: usize;
 	static HEAP_SIZE: usize;
-	static KERNEL_STACK: usize;
+	static KERNEL_STACK_START: usize;
+	static KERNEL_STACK_END: usize;
 	static mut KERNEL_TABLE: usize;
 }
 /// Identity map range
@@ -130,8 +131,7 @@ fn kinit() -> usize {
 		// Map bss section
 		id_map_range(&mut root, BSS_START, BSS_END, page::EntryBits::ReadWrite.val());
 		// Map kernel stack
-		let stack_head = KERNEL_STACK - 0x8_0000;
-		id_map_range(&mut root, stack_head, KERNEL_STACK, page::EntryBits::ReadWrite.val());
+		id_map_range(&mut root, KERNEL_STACK_START, KERNEL_STACK_END, page::EntryBits::ReadWrite.val());
 	}
 
 	// UART

@@ -230,7 +230,8 @@ SECTIONS
 	 Therefore we set the stack at the very bottom of its allocated slot.
 	 When we go to allocate from the stack, we'll subtract the number of bytes we need.
   */
-  PROVIDE(_stack = _bss_end + 0x80000);
+  PROVIDE(_stack_start = _bss_end);
+  PROVIDE(_stack_end = _stack_start + 0x8000);
   PROVIDE(_memory_end = ORIGIN(ram) + LENGTH(ram));
 
   /* 
@@ -240,6 +241,6 @@ SECTIONS
 
 	 We don't align here because we let the kernel determine how it wants to do this.
   */
-  PROVIDE(_heap_start = _stack);
-  PROVIDE(_heap_size = _memory_end - _stack);
+  PROVIDE(_heap_start = _stack_end);
+  PROVIDE(_heap_size = _memory_end - _heap_start);
 }
