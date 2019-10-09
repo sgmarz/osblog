@@ -87,7 +87,15 @@ extern "C"
 	static KERNEL_STACK: usize;
 	static mut KERNEL_TABLE: usize;
 }
-
+pub fn id_map_range(root: &mut page::Table, start: usize, end: usize, bits: i64) {
+	unsafe {
+		let num_pages = (page::align_val(end, 12) - (start & !(page::PAGE_SIZE-1))) / page::PAGE_SIZE;
+		for i in 0..num_pages {
+			let m = (start & !(page::PAGE_SIZE-1)) + (i << 12);
+			page::map(root, m, m, bits);
+		}
+	}
+}
 // ///////////////////////////////////
 // / ENTRY POINT
 // ///////////////////////////////////
@@ -98,6 +106,7 @@ fn kinit() -> usize {
 	// 3 called "machine mode".
 	// The job of kinit() is to get us into supervisor mode
 	// as soon as possible.
+	// Interrupts are disabled for the duration of kinit()
 	page::init();
 	kmem::init();
 
@@ -107,52 +116,21 @@ fn kinit() -> usize {
 	let mut root = unsafe { root_ptr.as_mut().unwrap() };
 	let t = kmem::get_head() as usize;
 	let total_pages = kmem::get_num_allocations();
-	for i in 0..total_pages {
-		let m = t + (i << 12);
-		page::map(&mut root, m, m, page::EntryBits::ReadWrite.val());
-	}
-	// Map executable section
+	id_map_range(&mut root, t, t + (total_pages << 12), page::EntryBits::ReadWrite.val());
 	unsafe {
-		let text_pages = (page::align_val(TEXT_END, 12) - (TEXT_START & !(page::PAGE_SIZE-1))) / page::PAGE_SIZE;
-		for i in 0..text_pages {
-			let m = (TEXT_START & !(page::PAGE_SIZE-1)) + (i << 12);
-			page::map(&mut root, m, m, page::EntryBits::ReadExecute.val());
-		}
-	}
-	// Map rodata section
-	unsafe {
-		let ro_data_pages = (page::align_val(RODATA_END, 12) - (RODATA_START & !(page::PAGE_SIZE-1))) / page::PAGE_SIZE;
-		for i in 0..ro_data_pages {
-			let m = (RODATA_START & !(page::PAGE_SIZE-1)) + (i << 12);
-			// We put the ROdata section into the text section, so they can potentially overlap
-			// however, we only care that it's read only.
-			page::map(&mut root, m, m, page::EntryBits::ReadExecute.val());
-		}
-	}
-	// Map data section
-	unsafe {
-		let data_pages = (page::align_val(DATA_END, 12) - (DATA_START & !(page::PAGE_SIZE-1))) / page::PAGE_SIZE;
-		for i in 0..data_pages {
-			let m = (DATA_START & !(page::PAGE_SIZE-1)) + (i << 12);
-			page::map(&mut root, m, m, page::EntryBits::ReadWrite.val());
-		}
-	}
-	// Map bss section
-	unsafe {
-		let bss_pages = (page::align_val(BSS_END, 12) - (BSS_START & !(page::PAGE_SIZE-1))) / page::PAGE_SIZE;
-		for i in 0..bss_pages {
-			let m = (BSS_START & !(page::PAGE_SIZE-1)) + (i << 12);
-			page::map(&mut root, m, m, page::EntryBits::ReadWrite.val());
-		}
-	}
-	// Map kernel stack
-	unsafe {
+		// Map executable section
+		id_map_range(&mut root, TEXT_START, TEXT_END, page::EntryBits::ReadExecute.val());
+		// Map rodata section
+		// We put the ROdata section into the text section, so they can potentially overlap
+		// however, we only care that it's read only.
+		id_map_range(&mut root, RODATA_START, RODATA_END, page::EntryBits::ReadExecute.val());
+		// Map data section
+		id_map_range(&mut root, DATA_START, DATA_END, page::EntryBits::ReadWrite.val());
+		// Map bss section
+		id_map_range(&mut root, BSS_START, BSS_END, page::EntryBits::ReadWrite.val());
+		// Map kernel stack
 		let stack_head = KERNEL_STACK - 0x8_0000;
-		let kstack_pages = (page::align_val(KERNEL_STACK, 12) - (stack_head & !(page::PAGE_SIZE-1))) / page::PAGE_SIZE;
-		for i in 0..kstack_pages {
-			let m = (stack_head & !(page::PAGE_SIZE-1)) + (i << 12);
-			page::map(&mut root, m, m, page::EntryBits::ReadWrite.val());
-		}
+		id_map_range(&mut root, stack_head, KERNEL_STACK, page::EntryBits::ReadWrite.val());
 	}
 
 	// UART
@@ -193,6 +171,7 @@ fn kinit() -> usize {
 	}
 	(root_u >> 12) | (8 << 60)
 }
+
 #[no_mangle]
 extern "C"
 fn kmain() {
