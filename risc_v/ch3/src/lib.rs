@@ -2,11 +2,11 @@
 // Stephen Marz
 // 21 Sep 2019
 #![no_std]
-#![feature(panic_info_message,asm,allocator_api,alloc_error_handler,alloc_prelude)]
+#![feature(panic_info_message,asm,allocator_api,alloc_error_handler,alloc_prelude,const_raw_ptr_to_usize_cast)]
 
 #[macro_use]
 extern crate alloc;
-
+// This is experimental and requires alloc_prelude as a feature
 use alloc::prelude::v1::*;
 
 // ///////////////////////////////////
@@ -72,9 +72,111 @@ fn abort() -> ! {
 // const STR_Y: &str = "\x1b[38;2;79;221;13m✓\x1b[m";
 // const STR_N: &str = "\x1b[38;2;221;41;13m✘\x1b[m";
 
+extern "C"
+{
+	static TEXT_START: usize;
+	static TEXT_END: usize;
+	static DATA_START: usize;
+	static DATA_END: usize;
+	static RODATA_START: usize;
+	static RODATA_END: usize;
+	static BSS_START: usize;
+	static BSS_END: usize;
+	static HEAP_START: usize;
+	static HEAP_SIZE: usize;
+	static KERNEL_STACK: usize;
+	static mut KERNEL_TABLE: usize;
+}
+
 // ///////////////////////////////////
 // / ENTRY POINT
 // ///////////////////////////////////
+#[no_mangle]
+extern "C"
+fn kinit() -> usize {
+	// We created kinit, which runs in super-duper mode
+	// 3 called "machine mode".
+	// The job of kinit() is to get us into supervisor mode
+	// as soon as possible.
+	page::init();
+	kmem::init();
+
+	// Map heap allocations
+	let root_ptr = kmem::get_page_table();
+	let root_u   = root_ptr as usize;
+	let mut root = unsafe { root_ptr.as_mut().unwrap() };
+	let t = kmem::get_head() as usize;
+	let total_pages = kmem::get_num_allocations();
+	for i in 0..total_pages {
+		let m = t + (i << 12);
+		page::map(&mut root, m, m, page::EntryBits::ReadWrite.val());
+	}
+	// Map executable section
+	unsafe {
+		let text_pages = (page::align_val(TEXT_END, 12) - (TEXT_START & !(page::PAGE_SIZE-1))) / page::PAGE_SIZE;
+		for i in 0..text_pages {
+			let m = (TEXT_START & !(page::PAGE_SIZE-1)) + (i << 12);
+			page::map(&mut root, m, m, page::EntryBits::ReadExecute.val());
+		}
+	}
+	// Map rodata section
+	unsafe {
+		let ro_data_pages = (page::align_val(RODATA_END, 12) - (RODATA_START & !(page::PAGE_SIZE-1))) / page::PAGE_SIZE;
+		for i in 0..ro_data_pages {
+			let m = (RODATA_START & !(page::PAGE_SIZE-1)) + (i << 12);
+			// We put the ROdata section into the text section, so they can potentially overlap
+			// however, we only care that it's read only.
+			page::map(&mut root, m, m, page::EntryBits::ReadExecute.val());
+		}
+	}
+	// Map data section
+	unsafe {
+		let data_pages = (page::align_val(DATA_END, 12) - (DATA_START & !(page::PAGE_SIZE-1))) / page::PAGE_SIZE;
+		for i in 0..data_pages {
+			let m = (DATA_START & !(page::PAGE_SIZE-1)) + (i << 12);
+			page::map(&mut root, m, m, page::EntryBits::ReadWrite.val());
+		}
+	}
+	// Map bss section
+	unsafe {
+		let bss_pages = (page::align_val(BSS_END, 12) - (BSS_START & !(page::PAGE_SIZE-1))) / page::PAGE_SIZE;
+		for i in 0..bss_pages {
+			let m = (BSS_START & !(page::PAGE_SIZE-1)) + (i << 12);
+			page::map(&mut root, m, m, page::EntryBits::ReadWrite.val());
+		}
+	}
+	// Map kernel stack
+	unsafe {
+		let stack_head = KERNEL_STACK - 0x8_0000;
+		let kstack_pages = (page::align_val(KERNEL_STACK, 12) - (stack_head & !(page::PAGE_SIZE-1))) / page::PAGE_SIZE;
+		for i in 0..kstack_pages {
+			let m = (stack_head & !(page::PAGE_SIZE-1)) + (i << 12);
+			page::map(&mut root, m, m, page::EntryBits::ReadWrite.val());
+		}
+	}
+
+	// UART
+	page::map(&mut root, 0x1000_0000, 0x1000_0000, page::EntryBits::ReadWrite.val());
+
+	// CLINT
+	page::map(&mut root, 0x0200_0000, 0x0200_0000, page::EntryBits::ReadWrite.val());
+	
+	// PLIC
+	page::map(&mut root, 0x0c00_0000, 0x0c00_0000, page::EntryBits::ReadWrite.val());
+
+	// When we return from here, we'll go back to boot.S and switch into supervisor mode
+	// We will return the SATP register to be written when we return.
+	// root_u is the root page table's address. When stored into the SATP register, this is
+	// divided by 4 KiB (right shift by 12 bits).
+	// We enable the MMU by setting mode 8. Bits 63, 62, 61, 60 determine the mode.
+	// 0 = Bare (no translation)
+	// 8 = Sv39
+	// 9 = Sv48
+	unsafe {
+		KERNEL_TABLE = root_u;
+	}
+	(root_u >> 12) | (8 << 60)
+}
 #[no_mangle]
 extern "C"
 fn kmain() {
@@ -87,42 +189,25 @@ fn kmain() {
 	// now, lets connect to it and see if we can initialize it and write
 	// to it.
 	let mut my_uart = uart::Uart::new(0x1000_0000);
-
 	my_uart.init();
 
-	// Now test println! macro!
+	println!();
+	println!();
 	println!("This is my operating system!");
 	println!("I'm so awesome. If you start typing something, I'll show you what you typed!");
-	page::init();
-	page::print_page_allocations();
-	let root_ptr = page::zalloc(1) as *mut page::Table;
-	let mut root = unsafe { root_ptr.as_mut().unwrap() };
-	page::map(&mut root, 0x7f2_2000_01f2, 0x8000_0ddd, page::EntryBits::Read.val());
-	let m = page::walk(&root, 0x7f2_2000_0234).unwrap_or(0);
-	page::print_page_allocations();
-	page::unmap(&mut root);
-	page::print_page_allocations();
-	page::dealloc(root_ptr as *mut u8);
-	page::print_page_allocations();
-	println!("Memory = 0x{:x}", m);
 	// Create a new scope so that we can test the global allocator and deallocator
 	{
 		// We have the global allocator, so let's see if that works!
 		let k: Box<u32> = Box::new(100);
 		println!("Boxed value = {}", *k);
+		kmem::print_table();
 		// The following comes from the Rust documentation:
 		// some bytes, in a vector
 		let sparkle_heart = vec![240, 159, 146, 150];
 		// We know these bytes are valid, so we'll use `unwrap()`.
 		let sparkle_heart = String::from_utf8(sparkle_heart).unwrap();
 		println!("String = {}", sparkle_heart);
-		page::print_page_allocations();
 	}
-	// The box inside of the scope above should be dropped when k goes
-	// out of scope. The Drop trait for Box should call dealloc from the
-	// global allocator.
-	page::print_page_allocations();
-
 	// Now see if we can read stuff:
 	// Usually we can use #[test] modules in Rust, but it would convolute the
 	// task at hand. So, we'll just add testing snippets.
@@ -184,3 +269,4 @@ fn kmain() {
 
 pub mod uart;
 pub mod page;
+pub mod kmem;

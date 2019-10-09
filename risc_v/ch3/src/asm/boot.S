@@ -50,8 +50,8 @@ _start:
 	# 1 << 3    : Machine's interrupt-enable bit is 1 (MIE=1).
 	li		t0, (0b11 << 11) | (1 << 7) | (1 << 3)
 	csrw	mstatus, t0
-	# Machine's exception program counter (MEPC) is set to `kmain`.
-	la		t1, kmain
+	# Machine's exception program counter (MEPC) is set to `kinit`.
+	la		t1, kinit
 	csrw	mepc, t1
 	# Machine's trap vector base address is set to `asm_trap_vector`.
 	la		t2, asm_trap_vector
@@ -62,10 +62,21 @@ _start:
 	# 1 << 11: Machine's external interrupt-enable bit is 1 (MEIE=1).
 	li		t3, (1 << 3) | (1 << 7) | (1 << 11)
 	csrw	mie, t3
-	# Set the return address to infinitely wait for interrupts.
-	la		ra, 4f
+	# Set the return address to get us into supervisor mode
+	la		ra, 2f
 	# We use mret here so that the mstatus register is properly updated.
 	mret
+2:
+	# Setting `sstatus` register:
+	# 1 << 8    : Supervisor's previous protection mode is 1 (SPP=1 [Supervisor]).
+	# 1 << 5    : Supervisor's previous interrupt-enable bit is 1 (SPIE=1 [Enabled]).
+	# 1 << 1    : Supervisor's interrupt-enable bit is 1 (SIE=1 [Enabled]).
+	li		t0, (0b1 << 8) | (1 << 5) | (1 << 1)
+	csrw	sstatus, t0
+	la		t1, kmain
+	csrw	sepc, t1
+	csrw	satp, a0
+	sret
 3:
 
 	# Parked harts go here. We need to set these

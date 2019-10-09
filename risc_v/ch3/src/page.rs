@@ -1,4 +1,4 @@
-// mem.rs
+// page.rs
 // Memory routines
 // Stephen Marz
 // 6 October 2019
@@ -11,15 +11,14 @@ use core::mem::size_of;
 // ////////////////////////////////
 extern "C" {
 	static HEAP_START: usize;
-	static HEAP_SIZE: usize;
+	static HEAP_SIZE:  usize;
 }
-
 
 // We will use ALLOC_START to mark the start of the actual
 // memory we can dish out.
 static mut ALLOC_START: usize = 0;
 const PAGE_ORDER: usize = 12;
-const PAGE_SIZE: usize = 1 << 12;
+pub const PAGE_SIZE: usize = 1 << 12;
 
 /// Align (set to a multiple of some power of two)
 /// This takes an order which is the exponent to 2^order
@@ -34,8 +33,7 @@ pub const fn align_val(val: usize, order: usize) -> usize {
 pub enum PageBits {
 	Empty = 0,
 	Taken = 1 << 0,
-	Last  = 1 << 1,
-	User  = 1 << 2,
+	Last  = 1 << 1
 }
 
 impl PageBits {
@@ -68,15 +66,6 @@ impl Page {
 	// this function returns true. Otherwise, it returns false.
 	pub fn is_taken(&self) -> bool {
 		if self.flags & PageBits::Taken.val() != 0 {
-			true
-		}
-		else {
-			false
-		}
-	}
-	// The page is a user page.
-	pub fn is_user(&self) -> bool {
-		if self.flags & PageBits::User.val() != 0 {
 			true
 		}
 		else {
@@ -123,6 +112,8 @@ pub fn init() {
 	}
 }
 
+/// Allocate a page or multiple pages
+/// pages: the number of PAGE_SIZE pages to allocate
 pub fn alloc(pages: usize) -> *mut u8 {
 	// We have to find a contiguous allocation of pages
 	assert!(pages > 0);
@@ -183,14 +174,14 @@ pub fn zalloc(pages: usize) -> *mut u8 {
 	// First, let's get the allocation
 	let ret = alloc(pages);
 	if !ret.is_null() {
-		let size = (PAGE_SIZE * pages) / 64;
+		let size = (PAGE_SIZE * pages) / 8;
 		let big_ptr = ret as *mut u64;
 		for i in 0..size {
 				// We use big_ptr so that we can force an
 				// sd (store doubleword) instruction rather than
 				// the sb. This means 8x fewer stores than before.
 				// Typically we have to be concerned about remaining
-				// bytes, but fortunately 4096 / 64 = 64, so we
+				// bytes, but fortunately 4096 % 8 = 0, so we
 				// won't have any remaining bytes.
 			unsafe {
 				(*big_ptr.add(i)) = 0;
@@ -250,9 +241,6 @@ pub fn print_page_allocations() {
 						let end = beg as usize;
 						let memaddr = ALLOC_START + (end - HEAP_START) * PAGE_SIZE + 0xfff;
 						print!("0x{:x}: {:>3} page(s)", memaddr, (end - start + 1));
-						if (*beg).is_user() {
-							print!(" U");
-						}
 						println!(".");
 						break;
 					}
@@ -286,6 +274,16 @@ pub enum EntryBits {
 	Global  = 1 << 5,
 	Access  = 1 << 6,
 	Dirty   = 1 << 7,
+
+	// Convenience combinations
+	ReadWrite = 1 << 1 | 1 << 2,
+	ReadExecute = 1 << 1 | 1 << 3,
+	ReadWriteExecute = 1 << 1 | 1 << 2 | 1 << 3,
+
+	// User Convenience Combinations
+	UserReadWrite = 1 << 1 | 1 << 2 | 1 << 4,
+	UserReadExecute = 1 << 1 | 1 << 3 | 1 << 4,
+	UserReadWriteExecute = 1 << 1 | 1 << 2 | 1 << 3 | 1 << 4,
 }
 
 // Helper functions to convert the enumeration
@@ -500,48 +498,5 @@ pub fn walk(root: &Table, vaddr: usize) -> Option<usize> {
 	}
 }
 
-// ///////////////////////////////////
-// / GLOBAL ALLOCATOR
-// ///////////////////////////////////
-
-// The global allocator allows us to use the data structures
-// in the core library, such as a linked list or B-tree.
-// We want to use these sparingly since we have a coarse-grained
-// allocator.
-use core::alloc::{GlobalAlloc, Layout};
-
-// The global allocator is a static constant to a global allocator
-// structure. We don't need any members because we're using this
-// structure just to implement alloc and dealloc.
-struct OsGlobalAlloc;
-
-unsafe impl GlobalAlloc for OsGlobalAlloc {
-	unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-		let pages = align_val(layout.size(), PAGE_ORDER);
-		// We align to the next page size so that when
-		// we divide by PAGE_SIZE, we get exactly the number
-		// of pages necessary.
-		alloc(pages / PAGE_SIZE)
-	}
-	unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
-		// We ignore layout since our allocator uses ptr_start -> last
-		// to determine the span of an allocation.
-		dealloc(ptr);
-	}
-}
-
-#[global_allocator]
-/// Technically, we don't need the {} at the end, but it
-/// reveals that we're creating a new structure and not just
-/// copying a value.
-static GA: OsGlobalAlloc = OsGlobalAlloc {};
-
-#[alloc_error_handler]
-/// If for some reason alloc() in the global allocator gets null_mut(),
-/// then we come here. This is a divergent function, so we call panic to
-/// let the tester know what's going on.
-pub fn alloc_error(l: Layout) -> ! {
-	panic!("Allocator failed to allocate {} bytes with {}-byte alignment.", l.size(), l.align());
-}
 
 
