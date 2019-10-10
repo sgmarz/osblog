@@ -97,11 +97,12 @@ pub fn id_map_range(root: &mut page::Table,
                     end: usize,
                     bits: i64)
 {
+	let start_aligned = start & !(page::PAGE_SIZE - 1);
 	let num_pages = (page::align_val(end, 12)
-	                 - (start & !(page::PAGE_SIZE - 1)))
+	                 - start_aligned)
 	                / page::PAGE_SIZE;
 	for i in 0..num_pages {
-		let m = (start & !(page::PAGE_SIZE - 1)) + (i << 12);
+		let m = start_aligned + (i << 12);
 		page::map(root, m, m, bits);
 	}
 }
