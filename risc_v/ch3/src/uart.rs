@@ -34,9 +34,10 @@ impl Uart {
 			// We can easily write the value 3 here or 0b11, but I'm
 			// extending it so that it is clear we're setting two individual
 			// fields
-			//                         Word 0     Word 1
-			//                         ~~~~~~     ~~~~~~
-			ptr.add(3).write_volatile((1 << 0) | (1 << 1));
+			//             Word 0     Word 1
+			//             ~~~~~~     ~~~~~~
+            let lcr: u8 = (1 << 0) | (1 << 1)
+			ptr.add(3).write_volatile(lcr);
 
 			// Now, enable the FIFO, which is bit index 0 of the FIFO
 			// control register (FCR at offset 2).
@@ -73,7 +74,6 @@ impl Uart {
 			// To change what the base address points to, we open the "divisor latch" by writing 1 into
 			// the Divisor Latch Access Bit (DLAB), which is bit index 7 of the Line Control Register (LCR)
 			// which is at base_address + 3.
-			let lcr = ptr.add(3).read_volatile();
 			ptr.add(3).write_volatile(lcr | 1 << 7);
 
 			// Now, base addresses 0 and 1 point to DLL and DLM, respectively.
