@@ -84,7 +84,7 @@ pub fn init() {
 
 /// Allocate sub-page level allocation based on bytes and zero the memory
 pub fn kzmalloc(sz: usize) -> *mut u8 {
-	let size = align_val(sz, 3) + size_of::<AllocList>();
+	let size = align_val(sz, 3);
 	let ret = kmalloc(size);
 
 	for i in 0..size {
