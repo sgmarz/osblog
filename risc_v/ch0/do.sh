@@ -247,7 +247,7 @@ if [ $ARG -eq 99 ]; then
 	echo "+-+-+-+ CLEANING +-+-+-+"
 	${USE_SUDO} rm -fr ${BUILD_BINUTILS}
 	${USE_SUDO} rm -fr ${BUILD_GCC_S1}
-	${USE_SUDO} rm -fr ${BUILD_LINUX}
+	${USE_SUDO} rm -fr ${BUILD_LINUX_HEADERS}
 	${USE_SUDO} rm -fr ${BUILD_GLIBC_S1}
 	${USE_SUDO} rm -fr ${BUILD_GLIBC_S2}
 	${USE_SUDO} rm -fr ${BUILD_GCC_S2}
