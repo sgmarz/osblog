@@ -82,6 +82,19 @@ pub fn init() {
 	}
 }
 
+/// Allocate sub-page level allocation based on bytes and zero the memory
+pub fn kzmalloc(sz: usize) -> *mut u8 {
+	let size = align_val(sz, 3) + size_of::<AllocList>();
+	let ret = kmalloc(size);
+
+	for i in 0..size {
+		unsafe {
+			(*ret) = 0;
+		}
+	}
+	ret
+}
+
 /// Allocate sub-page level allocation based on bytes
 pub fn kmalloc(sz: usize) -> *mut u8 {
 	unsafe {
@@ -142,12 +155,25 @@ pub fn coalesce() {
 			let next = (head as *mut u8).add((*head).get_size())
 			           as *mut AllocList;
 			if (*head).get_size() == 0 {
+				// If this happens, then we have a bad heap
+				// (double free or something). However, that
+				// will cause an infinite loop since the next
+				// pointer will never move beyond the current
+				// location.
 				break;
 			}
 			else if next >= tail {
+				// We calculated the next by using the size
+				// given as get_size(), however this could push
+				// us past the tail. In that case, the size is
+				// wrong, hence we break and stop doing what we
+				// need to do.
 				break;
 			}
 			else if (*head).is_free() && (*next).is_free() {
+				// This means we have adjacent blocks needing to
+				// be freed. So, we combine them into one
+				// allocation.
 				(*head).set_size(
 				                 (*head).get_size()
 				                 + (*next).get_size(),
@@ -200,7 +226,7 @@ unsafe impl GlobalAlloc for OsGlobalAlloc {
 		// We align to the next page size so that when
 		// we divide by PAGE_SIZE, we get exactly the number
 		// of pages necessary.
-		kmalloc(layout.size())
+		kzmalloc(layout.size())
 	}
 
 	unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
