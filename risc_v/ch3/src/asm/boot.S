@@ -61,6 +61,9 @@ _start:
 	# We use mret here so that the mstatus register is properly updated.
 	mret
 2:
+	# We set the return address (ra above) to this label. When kinit() is finished
+	# in Rust, it will return here.
+
 	# Setting `sstatus` (supervisor status) register:
 	# 1 << 8    : Supervisor's previous protection mode is 1 (SPP=1 [Supervisor]).
 	# 1 << 5    : Supervisor's previous interrupt-enable bit is 1 (SPIE=1 [Enabled]).
@@ -71,12 +74,14 @@ _start:
 	csrw	sstatus, t0
 	la		t1, kmain
 	csrw	sepc, t1
-	# kinit() is required to return back to us via a0 the SATP value.
-	csrw	satp, a0
 	# Setting `mideleg` (machine interrupt delegate) register:
 	# 1 << 1   : Software interrupt delegated to supervisor mode
 	# 1 << 5   : Timer interrupt delegated to supervisor mode
 	# 1 << 9   : External interrupt delegated to supervisor mode
+	# By default all traps (interrupts or exceptions) automatically
+	# cause an elevation to the machine privilege mode (mode 3).
+	# When we delegate, we're telling the CPU to only elevate to
+	# the supervisor privilege mode (mode 1)
 	li		t2, (1 << 1) | (1 << 5) | (1 << 9)
 	csrw	mideleg, t2
 	# Setting `sie` (supervisor interrupt enable) register:
@@ -91,6 +96,11 @@ _start:
 	# 01        : Asynchronous interrupts set pc to BASE + 4 x scause
 	la		t3, asm_trap_vector
 	csrw	stvec, t3
+	# kinit() is required to return back the SATP value (including MODE) via a0
+	csrw	satp, a0
+	# Force the CPU to take our SATP register
+	sfence.vma
+	# sret will put us in supervisor mode and re-enable interrupts
 	sret
 3:
 

@@ -289,7 +289,6 @@ pub enum EntryBits {
 // Helper functions to convert the enumeration
 // into an i64, which is what our page table
 // entries will be.
-// J
 impl EntryBits {
 	pub fn val(self) -> i64 {
 		self as i64
