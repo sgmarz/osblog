@@ -198,12 +198,6 @@ extern "C" fn kinit() -> usize {
 	//  -> MTIME
 	page::map(
 	          &mut root,
-	          0x0200_b000,
-	          0x0200_b000,
-	          page::EntryBits::ReadWrite.val(),
-	);
-	page::map(
-	          &mut root,
 	          0x0200_c000,
 	          0x0200_c000,
 	          page::EntryBits::ReadWrite.val(),
