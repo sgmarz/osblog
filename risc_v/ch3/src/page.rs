@@ -283,7 +283,8 @@ pub fn print_page_allocations() {
 			beg = beg.add(1);
 		}
 		println!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
-		println!("{} pages allocated.", num);
+		println!("Allocated: {:<5} pages ({:<9} bytes).", num, num * PAGE_SIZE);
+		println!("Free     : {:<5} pages ({:<9} bytes).", num_pages-num, (num_pages-num) * PAGE_SIZE);
 		println!();
 	}
 }
