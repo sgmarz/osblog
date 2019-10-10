@@ -208,32 +208,18 @@ extern "C" fn kinit() -> usize {
 	          page::EntryBits::ReadWrite.val(),
 	);
 	// PLIC
-	//  -> Source priority
-	page::map(
-	          &mut root,
-	          0x0c00_0000,
-	          0x0c00_0000,
-	          page::EntryBits::ReadWrite.val(),
+	id_map_range(
+	             &mut root,
+	             0x0c00_0000,
+	             0x0c00_2000,
+	             page::EntryBits::ReadWrite.val(),
 	);
-	//  -> Pending array
-	page::map(
-	          &mut root,
-	          0x0c00_1000,
-	          0x0c00_1000,
-	          page::EntryBits::ReadWrite.val(),
+	id_map_range(
+	             &mut root,
+	             0x0c20_0000,
+	             0x0c20_8000,
+	             page::EntryBits::ReadWrite.val(),
 	);
-	//  -> Interrupt enables
-	page::map(
-	          &mut root,
-	          0x0c00_2000,
-	          0x0c00_2000,
-	          page::EntryBits::ReadWrite.val(),
-	);
-	//  -> Priority threshold and claim/complete registers
-	for i in 0..=8 {
-		let m = 0x0c20_0000 + (i << 12);
-		page::map(&mut root, m, m, page::EntryBits::ReadWrite.val());
-	}
 
 	// When we return from here, we'll go back to boot.S and switch into
 	// supervisor mode We will return the SATP register to be written when
