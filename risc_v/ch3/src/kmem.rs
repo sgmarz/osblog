@@ -3,12 +3,11 @@
 // Stephen Marz
 // 7 October 2019
 
-use crate::page::{Table, align_val, zalloc, dealloc, PAGE_SIZE};
+use crate::page::{align_val, zalloc, Table, PAGE_SIZE};
 use core::{mem::size_of, ptr::null_mut};
 
 #[repr(usize)]
 enum AllocListFlags {
-	None = 0,
 	Taken = 1 << 63,
 }
 impl AllocListFlags {
@@ -24,15 +23,19 @@ impl AllocList {
 	pub fn is_taken(&self) -> bool {
 		self.flags_size & AllocListFlags::Taken.val() != 0
 	}
+
 	pub fn is_free(&self) -> bool {
 		!self.is_taken()
 	}
+
 	pub fn set_taken(&mut self) {
 		self.flags_size |= AllocListFlags::Taken.val();
 	}
+
 	pub fn set_free(&mut self) {
 		self.flags_size &= !AllocListFlags::Taken.val();
 	}
+
 	pub fn set_size(&mut self, sz: usize) {
 		let k = self.is_taken();
 		self.flags_size = sz & !AllocListFlags::Taken.val();
@@ -40,6 +43,7 @@ impl AllocList {
 			self.flags_size |= AllocListFlags::Taken.val();
 		}
 	}
+
 	pub fn get_size(&self) -> usize {
 		self.flags_size & !AllocListFlags::Taken.val()
 	}
@@ -83,7 +87,8 @@ pub fn kmalloc(sz: usize) -> *mut u8 {
 	unsafe {
 		let size = align_val(sz, 3) + size_of::<AllocList>();
 		let mut head = KMEM_HEAD;
-		let tail = (KMEM_HEAD as *mut u8).add(KMEM_ALLOC * PAGE_SIZE) as *mut AllocList;
+		let tail = (KMEM_HEAD as *mut u8).add(KMEM_ALLOC * PAGE_SIZE)
+		           as *mut AllocList;
 
 		while head < tail {
 			if (*head).is_free() && size <= (*head).get_size() {
@@ -91,7 +96,8 @@ pub fn kmalloc(sz: usize) -> *mut u8 {
 				let rem = chunk_size - size;
 				(*head).set_taken();
 				if rem > size_of::<AllocList>() {
-					let next = (head as *mut u8).add(size) as *mut AllocList;
+					let next = (head as *mut u8).add(size)
+					           as *mut AllocList;
 					// There is space remaining here.
 					(*next).set_free();
 					(*next).set_size(rem);
@@ -104,7 +110,8 @@ pub fn kmalloc(sz: usize) -> *mut u8 {
 				return head.add(1) as *mut u8;
 			}
 			else {
-				head = (head as *mut u8).add((*head).get_size()) as *mut AllocList;
+				head = (head as *mut u8).add((*head).get_size())
+				       as *mut AllocList;
 			}
 		}
 	}
@@ -128,10 +135,12 @@ pub fn kfree(ptr: *mut u8) {
 pub fn coalesce() {
 	unsafe {
 		let mut head = KMEM_HEAD;
-		let tail = (KMEM_HEAD as *mut u8).add(KMEM_ALLOC * PAGE_SIZE) as *mut AllocList;
+		let tail = (KMEM_HEAD as *mut u8).add(KMEM_ALLOC * PAGE_SIZE)
+		           as *mut AllocList;
 
 		while head < tail {
-			let next = (head as *mut u8).add((*head).get_size()) as *mut AllocList;
+			let next = (head as *mut u8).add((*head).get_size())
+			           as *mut AllocList;
 			if (*head).get_size() == 0 {
 				break;
 			}
@@ -139,10 +148,15 @@ pub fn coalesce() {
 				break;
 			}
 			else if (*head).is_free() && (*next).is_free() {
-				(*head).set_size((*head).get_size() + (*next).get_size());
+				(*head).set_size(
+				                 (*head).get_size()
+				                 + (*next).get_size(),
+				);
 			}
-			// If we get here, we might've moved. Recalculate new head.
-			head = (head as *mut u8).add((*head).get_size()) as *mut AllocList;
+			// If we get here, we might've moved. Recalculate new
+			// head.
+			head = (head as *mut u8).add((*head).get_size())
+			       as *mut AllocList;
 		}
 	}
 }
@@ -151,10 +165,17 @@ pub fn coalesce() {
 pub fn print_table() {
 	unsafe {
 		let mut head = KMEM_HEAD;
-		let tail = (KMEM_HEAD as *mut u8).add(KMEM_ALLOC * PAGE_SIZE) as *mut AllocList;
+		let tail = (KMEM_HEAD as *mut u8).add(KMEM_ALLOC * PAGE_SIZE)
+		           as *mut AllocList;
 		while head < tail {
-			println!("{:p}: Length = {:<10} Taken = {}", head, (*head).get_size(), (*head).is_taken());
-			head = (head as *mut u8).add((*head).get_size()) as *mut AllocList;
+			println!(
+			         "{:p}: Length = {:<10} Taken = {}",
+			         head,
+			         (*head).get_size(),
+			         (*head).is_taken()
+			);
+			head = (head as *mut u8).add((*head).get_size())
+			       as *mut AllocList;
 		}
 	}
 }

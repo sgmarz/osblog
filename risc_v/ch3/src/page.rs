@@ -3,15 +3,14 @@
 // Stephen Marz
 // 6 October 2019
 
-use core::ptr::null_mut;
-use core::mem::size_of;
+use core::{mem::size_of, ptr::null_mut};
 
 // ////////////////////////////////
 // // Allocation routines
 // ////////////////////////////////
 extern "C" {
 	static HEAP_START: usize;
-	static HEAP_SIZE:  usize;
+	static HEAP_SIZE: usize;
 }
 
 // We will use ALLOC_START to mark the start of the actual
@@ -33,7 +32,7 @@ pub const fn align_val(val: usize, order: usize) -> usize {
 pub enum PageBits {
 	Empty = 0,
 	Taken = 1 << 0,
-	Last  = 1 << 1
+	Last = 1 << 1,
 }
 
 impl PageBits {
@@ -48,7 +47,7 @@ impl PageBits {
 // as well, where each 4096-byte chunk of memory has a structure
 // associated with it. However, there structure is much larger.
 pub struct Page {
-	flags: u8
+	flags: u8,
 }
 
 impl Page {
@@ -62,6 +61,7 @@ impl Page {
 			false
 		}
 	}
+
 	// If the page is marked as being taken (allocated), then
 	// this function returns true. Otherwise, it returns false.
 	pub fn is_taken(&self) -> bool {
@@ -72,43 +72,54 @@ impl Page {
 			false
 		}
 	}
+
 	// This is the opposite of is_taken().
 	pub fn is_free(&self) -> bool {
 		!self.is_taken()
 	}
+
 	// Clear the Page structure and all associated allocations.
 	pub fn clear(&mut self) {
 		self.flags = PageBits::Empty.val();
 	}
+
 	// Set a certain flag. We ran into trouble here since PageBits
 	// is an enumeration and we haven't implemented the BitOr Trait
 	// on it.
 	pub fn set_flag(&mut self, flag: PageBits) {
 		self.flags |= flag.val();
 	}
+
 	pub fn clear_flag(&mut self, flag: PageBits) {
 		self.flags &= !(flag.val());
 	}
 }
 
-/// Initialize the allocation system. There are several ways that we can implement the
-/// page allocator:
-/// 1. Free list (singly linked list where it starts at the first free allocation)
-/// 2. Bookkeeping list (structure contains a taken and length)
+/// Initialize the allocation system. There are several ways that we can
+/// implement the page allocator:
+/// 1. Free list (singly linked list where it starts at the first free
+/// allocation) 2. Bookkeeping list (structure contains a taken and length)
 /// 3. Allocate one Page structure per 4096 bytes (this is what I chose)
 /// 4. Others
 pub fn init() {
 	unsafe {
 		let num_pages = HEAP_SIZE / PAGE_SIZE;
 		let ptr = HEAP_START as *mut Page;
-		// Clear all pages to make sure that they aren't accidentally taken
+		// Clear all pages to make sure that they aren't accidentally
+		// taken
 		for i in 0..num_pages {
 			(*ptr.add(i)).clear();
 		}
-		// Determine where the actual useful memory starts. This will be after all Page
-		// structures. We also must align the ALLOC_START to a page-boundary (PAGE_SIZE = 4096).
-		// ALLOC_START = (HEAP_START + num_pages * size_of::<Page>() + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
-		ALLOC_START = align_val(HEAP_START + num_pages * size_of::<Page>(), PAGE_ORDER);
+		// Determine where the actual useful memory starts. This will be
+		// after all Page structures. We also must align the ALLOC_START
+		// to a page-boundary (PAGE_SIZE = 4096). ALLOC_START =
+		// (HEAP_START + num_pages * size_of::<Page>() + PAGE_SIZE - 1)
+		// & !(PAGE_SIZE - 1);
+		ALLOC_START = align_val(
+		                        HEAP_START
+		                        + num_pages * size_of::<Page,>(),
+		                        PAGE_ORDER,
+		);
 	}
 }
 
@@ -118,44 +129,48 @@ pub fn alloc(pages: usize) -> *mut u8 {
 	// We have to find a contiguous allocation of pages
 	assert!(pages > 0);
 	unsafe {
-		// We create a Page structure for each page on the heap. We actually might
-		// have more since HEAP_SIZE moves and so does the size of our structure, but
-		// we'll only waste a few bytes.
+		// We create a Page structure for each page on the heap. We
+		// actually might have more since HEAP_SIZE moves and so does
+		// the size of our structure, but we'll only waste a few bytes.
 		let num_pages = HEAP_SIZE / PAGE_SIZE;
 		let ptr = HEAP_START as *mut Page;
-		for i in 0..num_pages-pages {
+		for i in 0..num_pages - pages {
 			let mut found = false;
-			// Check to see if this Page is free. If so, we have our first
-			// candidate memory address.
+			// Check to see if this Page is free. If so, we have our
+			// first candidate memory address.
 			if (*ptr.add(i)).is_free() {
 				// It was FREE! Yay!
 				found = true;
-				for j in i..i+pages {
-					// Now check to see if we have a contiguous allocation
-					// for all of the request pages. If not, we should check
-					// somewhere else.
+				for j in i..i + pages {
+					// Now check to see if we have a
+					// contiguous allocation for all of the
+					// request pages. If not, we should
+					// check somewhere else.
 					if (*ptr.add(j)).is_taken() {
 						found = false;
 						break;
 					}
 				}
 			}
-			// We've checked to see if there are enough contiguous pages
-			// to form what we need. If we couldn't, found will be false,
-			// otherwise it will be true, which means we've found valid
-			// memory we can allocate.
+			// We've checked to see if there are enough contiguous
+			// pages to form what we need. If we couldn't, found
+			// will be false, otherwise it will be true, which means
+			// we've found valid memory we can allocate.
 			if found {
-				for k in i..i+pages-1 {
+				for k in i..i + pages - 1 {
 					(*ptr.add(k)).set_flag(PageBits::Taken);
 				}
-				// The marker for the last page is PageBits::Last
-				// This lets us know when we've hit the end of this particular
-				// allocation.
+				// The marker for the last page is
+				// PageBits::Last This lets us know when we've
+				// hit the end of this particular allocation.
 				(*ptr.add(i+pages-1)).set_flag(PageBits::Taken);
 				(*ptr.add(i+pages-1)).set_flag(PageBits::Last);
-				// The Page structures themselves aren't the useful memory. Instead,
-				// there is 1 Page structure per 4096 bytes starting at ALLOC_START.
-				return (ALLOC_START + PAGE_SIZE * i) as *mut u8;
+				// The Page structures themselves aren't the
+				// useful memory. Instead, there is 1 Page
+				// structure per 4096 bytes starting at
+				// ALLOC_START.
+				return (ALLOC_START + PAGE_SIZE * i)
+				       as *mut u8;
 			}
 		}
 	}
@@ -177,12 +192,12 @@ pub fn zalloc(pages: usize) -> *mut u8 {
 		let size = (PAGE_SIZE * pages) / 8;
 		let big_ptr = ret as *mut u64;
 		for i in 0..size {
-				// We use big_ptr so that we can force an
-				// sd (store doubleword) instruction rather than
-				// the sb. This means 8x fewer stores than before.
-				// Typically we have to be concerned about remaining
-				// bytes, but fortunately 4096 % 8 = 0, so we
-				// won't have any remaining bytes.
+			// We use big_ptr so that we can force an
+			// sd (store doubleword) instruction rather than
+			// the sb. This means 8x fewer stores than before.
+			// Typically we have to be concerned about remaining
+			// bytes, but fortunately 4096 % 8 = 0, so we
+			// won't have any remaining bytes.
 			unsafe {
 				(*big_ptr.add(i)) = 0;
 			}
@@ -198,9 +213,10 @@ pub fn dealloc(ptr: *mut u8) {
 	// Make sure we don't try to free a null pointer.
 	assert!(!ptr.is_null());
 	unsafe {
-		let addr = HEAP_START + (ptr as usize - ALLOC_START) / PAGE_SIZE;
-		// Make sure that the address makes sense. The address we calculate here
-		// is the page structure, not the HEAP address!
+		let addr =
+			HEAP_START + (ptr as usize - ALLOC_START) / PAGE_SIZE;
+		// Make sure that the address makes sense. The address we
+		// calculate here is the page structure, not the HEAP address!
 		assert!(addr >= HEAP_START && addr < HEAP_START + HEAP_SIZE);
 		let mut p = addr as *mut Page;
 		// Keep clearing pages until we hit the last page.
@@ -210,7 +226,11 @@ pub fn dealloc(ptr: *mut u8) {
 		}
 		// If the following assertion fails, it is most likely
 		// caused by a double-free.
-		assert!((*p).is_last() == true, "Possible double-free detected! (Not taken found before last)");
+		assert!(
+		        (*p).is_last() == true,
+		        "Possible double-free detected! (Not taken found \
+		         before last)"
+		);
 		// If we get here, we've taken care of all previous pages and
 		// we are on the last page.
 		(*p).clear();
@@ -227,20 +247,33 @@ pub fn print_page_allocations() {
 		let alloc_beg = ALLOC_START;
 		let alloc_end = ALLOC_START + num_pages * PAGE_SIZE;
 		println!();
-		println!("PAGE ALLOCATION TABLE\nMETA: {:p} -> {:p}\nPHYS: 0x{:x} -> 0x{:x}", beg, end, alloc_beg, alloc_end);
+		println!(
+		         "PAGE ALLOCATION TABLE\nMETA: {:p} -> {:p}\nPHYS: \
+		          0x{:x} -> 0x{:x}",
+		         beg, end, alloc_beg, alloc_end
+		);
 		println!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
 		let mut num = 0;
 		while beg < end {
 			if (*beg).is_taken() {
 				let start = beg as usize;
-				let memaddr = ALLOC_START + (start - HEAP_START) * PAGE_SIZE;
+				let memaddr = ALLOC_START
+				              + (start - HEAP_START)
+				                * PAGE_SIZE;
 				print!("0x{:x} => ", memaddr);
 				loop {
 					num += 1;
 					if (*beg).is_last() {
 						let end = beg as usize;
-						let memaddr = ALLOC_START + (end - HEAP_START) * PAGE_SIZE + 0xfff;
-						print!("0x{:x}: {:>3} page(s)", memaddr, (end - start + 1));
+						let memaddr =
+							ALLOC_START
+							+ (end - HEAP_START)
+							  * PAGE_SIZE + 0xfff;
+						print!(
+						       "0x{:x}: {:>3} page(s)",
+						       memaddr,
+						       (end - start + 1)
+						);
 						println!(".");
 						break;
 					}
@@ -255,7 +288,6 @@ pub fn print_page_allocations() {
 	}
 }
 
-
 // ////////////////////////////////
 // // MMU Routines
 // ////////////////////////////////
@@ -265,15 +297,15 @@ pub fn print_page_allocations() {
 #[repr(i64)]
 #[derive(Copy, Clone)]
 pub enum EntryBits {
-	None    = 0,
-	Valid   = 1 << 0,
-	Read    = 1 << 1,
-	Write   = 1 << 2,
+	None = 0,
+	Valid = 1 << 0,
+	Read = 1 << 1,
+	Write = 1 << 2,
 	Execute = 1 << 3,
-	User    = 1 << 4,
-	Global  = 1 << 5,
-	Access  = 1 << 6,
-	Dirty   = 1 << 7,
+	User = 1 << 4,
+	Global = 1 << 5,
+	Access = 1 << 6,
+	Dirty = 1 << 7,
 
 	// Convenience combinations
 	ReadWrite = 1 << 1 | 1 << 2,
@@ -300,7 +332,7 @@ impl EntryBits {
 // since RISC-V requires that the reserved sections
 // take on the most significant bit.
 pub struct Entry {
-	pub entry: i64
+	pub entry: i64,
 }
 
 // The Entry structure describes one of the 512 entries per table, which is
@@ -309,21 +341,26 @@ impl Entry {
 	pub fn is_valid(&self) -> bool {
 		self.get_entry() & EntryBits::Valid.val() != 0
 	}
+
 	// The first bit (bit index #0) is the V bit for
 	// valid.
 	pub fn is_invalid(&self) -> bool {
 		!self.is_valid()
 	}
+
 	// A leaf has one or more RWX bits set
 	pub fn is_leaf(&self) -> bool {
 		self.get_entry() & 0xe != 0
 	}
+
 	pub fn is_branch(&self) -> bool {
 		!self.is_leaf()
 	}
+
 	pub fn set_entry(&mut self, entry: i64) {
 		self.entry = entry;
 	}
+
 	pub fn get_entry(&self) -> i64 {
 		self.entry
 	}
@@ -359,12 +396,12 @@ pub fn map(root: &mut Table, vaddr: usize, paddr: usize, bits: i64) {
 	// On the virtual address, each VPN is exactly 9 bits,
 	// which is why we use the mask 0x1ff = 0b1_1111_1111 (9 bits)
 	let vpn = [
-		// VPN[0] = vaddr[20:12]
-		(vaddr >> 12) & 0x1ff,
-		// VPN[1] = vaddr[29:21]
-		(vaddr >> 21) & 0x1ff,
-		// VPN[2] = vaddr[38:30]
-		(vaddr >> 30) & 0x1ff
+	           // VPN[0] = vaddr[20:12]
+	           (vaddr >> 12) & 0x1ff,
+	           // VPN[1] = vaddr[29:21]
+	           (vaddr >> 21) & 0x1ff,
+	           // VPN[2] = vaddr[38:30]
+	           (vaddr >> 30) & 0x1ff,
 	];
 
 	// Just like the virtual address, extract the physical address
@@ -372,48 +409,53 @@ pub fn map(root: &mut Table, vaddr: usize, paddr: usize, bits: i64) {
 	// 26 bits instead of 9. Therefore, we use,
 	// 0x3ff_ffff = 0b11_1111_1111_1111_1111_1111_1111 (26 bits).
 	let ppn = [
-		// PPN[0] = paddr[20:12]
-		(paddr >> 12) & 0x1ff,
-		// PPN[1] = paddr[29:21]
-		(paddr >> 21) & 0x1ff,
-		// PPN[2] = paddr[55:30]
-		(paddr >> 30) & 0x3ff_ffff
+	           // PPN[0] = paddr[20:12]
+	           (paddr >> 12) & 0x1ff,
+	           // PPN[1] = paddr[29:21]
+	           (paddr >> 21) & 0x1ff,
+	           // PPN[2] = paddr[55:30]
+	           (paddr >> 30) & 0x3ff_ffff,
 	];
-	// We will use this as a floating reference so that we can set individual
-	// entries as we walk the table.
+	// We will use this as a floating reference so that we can set
+	// individual entries as we walk the table.
 	let mut v = &mut root.entries[vpn[2]];
 	// Now, we're going to traverse the page table and set the bits
 	// properly. We expect the root to be valid, however we're required to
 	// create anything beyond the root.
 	// In Rust, we create an iterator using the .. operator.
-	// The .rev() will reverse the iteration since we need to start with VPN[2]
-	// The .. operator is inclusive on start but exclusive on end. So, (0..2)
-	// will iterate 0 and 1.
+	// The .rev() will reverse the iteration since we need to start with
+	// VPN[2] The .. operator is inclusive on start but exclusive on end.
+	// So, (0..2) will iterate 0 and 1.
 	for i in (0..2).rev() {
 		if !v.is_valid() {
 			// Allocate a page
 			let page = zalloc(1);
-			// The page is already aligned by 4,096, so store it directly
-			// The page is stored in the entry shifted right by 2 places.
-			v.set_entry((page as i64 >> 2) | EntryBits::Valid.val());
+			// The page is already aligned by 4,096, so store it
+			// directly The page is stored in the entry shifted
+			// right by 2 places.
+			v.set_entry(
+			            (page as i64 >> 2)
+			            | EntryBits::Valid.val(),
+			);
 		}
 		let entry = ((v.get_entry() & !0x3ff) << 2) as *mut Entry;
 		v = unsafe { entry.add(vpn[i]).as_mut().unwrap() };
 	}
-	// When we get here, we should be at VPN[0] and v should be pointing to our
-	// entry.
-	// The entry structure is Figure 4.18 in the RISC-V Privileged Specification
+	// When we get here, we should be at VPN[0] and v should be pointing to
+	// our entry.
+	// The entry structure is Figure 4.18 in the RISC-V Privileged
+	// Specification
 	let entry: i64 = (ppn[2] << 28) as i64 |   // PPN[2] = [53:28]
 	                 (ppn[1] << 19) as i64 |   // PPN[1] = [27:19]
 					 (ppn[0] << 10) as i64 |   // PPN[0] = [18:10]
 					 bits |                    // Specified bits, such as User, Read, Write, etc
-					 EntryBits::Valid.val();   // Valid big
+					 EntryBits::Valid.val(); // Valid big
 	v.set_entry(entry);
 }
 
 /// Unmaps and frees all memory associated with a table.
 /// root: The root table to start freeing.
-/// NOTE: This does NOT free root directly. This must be 
+/// NOTE: This does NOT free root directly. This must be
 /// freed manually.
 /// The reason we don't free the root is because it is
 /// usually embedded into the Process structure.
@@ -424,12 +466,17 @@ pub fn unmap(root: &mut Table) {
 		if entry_lv2.is_valid() && entry_lv2.is_branch() {
 			// This is a valid entry, so drill down and free.
 			let memaddr_lv1 = (entry_lv2.get_entry() & !0x3ff) << 2;
-			let table_lv1 = unsafe { (memaddr_lv1 as *mut Table).as_mut().unwrap() };
+			let table_lv1 = unsafe {
+				(memaddr_lv1 as *mut Table).as_mut().unwrap()
+			};
 			for lv1 in 0..Table::len() {
 				let ref entry_lv1 = table_lv1.entries[lv1];
-				if entry_lv1.is_valid() && entry_lv1.is_branch() {
-					let memaddr_lv0 = (entry_lv1.get_entry() & !0x3ff) << 2;
-					// The next level is level 0, which cannot have branches, therefore,
+				if entry_lv1.is_valid() && entry_lv1.is_branch()
+				{
+					let memaddr_lv0 = (entry_lv1.get_entry()
+					                   & !0x3ff) << 2;
+					// The next level is level 0, which
+					// cannot have branches, therefore,
 					// we free here.
 					dealloc(memaddr_lv0 as *mut u8);
 				}
@@ -446,12 +493,12 @@ pub fn unmap(root: &mut Table) {
 pub fn walk(root: &Table, vaddr: usize) -> Option<usize> {
 	// Walk the page table pointed to by root
 	let vpn = [
-		// VPN[0] = vaddr[20:12]
-		(vaddr >> 12) & 0x1ff,
-		// VPN[1] = vaddr[29:21]
-		(vaddr >> 21) & 0x1ff,
-		// VPN[2] = vaddr[38:30]
-		(vaddr >> 30) & 0x1ff
+	           // VPN[0] = vaddr[20:12]
+	           (vaddr >> 12) & 0x1ff,
+	           // VPN[1] = vaddr[29:21]
+	           (vaddr >> 21) & 0x1ff,
+	           // VPN[2] = vaddr[38:30]
+	           (vaddr >> 30) & 0x1ff,
 	];
 
 	// The last 12 bits (0xfff) is not translated by
@@ -471,7 +518,7 @@ pub fn walk(root: &Table, vaddr: usize) -> Option<usize> {
 			// a leaf here, something is wrong.
 			return None;
 		}
-		// Set v to the next entry which is pointed to by this 
+		// Set v to the next entry which is pointed to by this
 		// entry. However, the address was shifted right by 2 places
 		// when stored in the page table entry, so we shift it left
 		// to get it back into place.
@@ -484,18 +531,15 @@ pub fn walk(root: &Table, vaddr: usize) -> Option<usize> {
 	// I don't like mixing return with the expression-type returns, but it
 	// keeps this code cleaner.
 	if v.is_invalid() || v.is_branch() {
-		// If we get here, that means the page is either invalid or not a leaf,
-		// which both are cause for a page fault.
+		// If we get here, that means the page is either invalid or not
+		// a leaf, which both are cause for a page fault.
 		None
 	}
 	else {
-		// The physical address starts at bit 10 in the entry, however it is
-		// supposed to start at bit 12, so we shift it up and then add the
-		// page offset.
+		// The physical address starts at bit 10 in the entry, however
+		// it is supposed to start at bit 12, so we shift it up and then
+		// add the page offset.
 		let addr = ((v.get_entry() & !0x3ff) << 2) as usize;
 		Some(addr | pgoff)
 	}
 }
-
-
-

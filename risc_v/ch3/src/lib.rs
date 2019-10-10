@@ -2,7 +2,12 @@
 // Stephen Marz
 // 21 Sep 2019
 #![no_std]
-#![feature(panic_info_message,asm,allocator_api,alloc_error_handler,alloc_prelude,const_raw_ptr_to_usize_cast)]
+#![feature(panic_info_message,
+           asm,
+           allocator_api,
+           alloc_error_handler,
+           alloc_prelude,
+           const_raw_ptr_to_usize_cast)]
 
 #[macro_use]
 extern crate alloc;
@@ -45,11 +50,11 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 	print!("Aborting: ");
 	if let Some(p) = info.location() {
 		println!(
-				"line {}, file {}: {}",
-				p.line(),
-				p.file(),
-				info.message().unwrap()
-				);
+		         "line {}, file {}: {}",
+		         p.line(),
+		         p.file(),
+		         info.message().unwrap()
+		);
 	}
 	else {
 		println!("no information available.");
@@ -57,8 +62,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 	abort();
 }
 #[no_mangle]
-extern "C"
-fn abort() -> ! {
+extern "C" fn abort() -> ! {
 	loop {
 		unsafe {
 			asm!("wfi"::::"volatile");
@@ -72,8 +76,7 @@ fn abort() -> ! {
 // const STR_Y: &str = "\x1b[38;2;79;221;13m✓\x1b[m";
 // const STR_N: &str = "\x1b[38;2;221;41;13m✘\x1b[m";
 
-extern "C"
-{
+extern "C" {
 	static TEXT_START: usize;
 	static TEXT_END: usize;
 	static DATA_START: usize;
@@ -82,8 +85,6 @@ extern "C"
 	static RODATA_END: usize;
 	static BSS_START: usize;
 	static BSS_END: usize;
-	static HEAP_START: usize;
-	static HEAP_SIZE: usize;
 	static KERNEL_STACK_START: usize;
 	static KERNEL_STACK_END: usize;
 	static mut KERNEL_TABLE: usize;
@@ -91,10 +92,16 @@ extern "C"
 /// Identity map range
 /// Takes a contiguous allocation of memory and maps it using PAGE_SIZE
 /// This assumes that start <= end
-pub fn id_map_range(root: &mut page::Table, start: usize, end: usize, bits: i64) {
-	let num_pages = (page::align_val(end, 12) - (start & !(page::PAGE_SIZE-1))) / page::PAGE_SIZE;
+pub fn id_map_range(root: &mut page::Table,
+                    start: usize,
+                    end: usize,
+                    bits: i64)
+{
+	let num_pages = (page::align_val(end, 12)
+	                 - (start & !(page::PAGE_SIZE - 1)))
+	                / page::PAGE_SIZE;
 	for i in 0..num_pages {
-		let m = (start & !(page::PAGE_SIZE-1)) + (i << 12);
+		let m = (start & !(page::PAGE_SIZE - 1)) + (i << 12);
 		page::map(root, m, m, bits);
 	}
 }
@@ -102,8 +109,7 @@ pub fn id_map_range(root: &mut page::Table, start: usize, end: usize, bits: i64)
 // / ENTRY POINT
 // ///////////////////////////////////
 #[no_mangle]
-extern "C"
-fn kinit() -> usize {
+extern "C" fn kinit() -> usize {
 	// We created kinit, which runs in super-duper mode
 	// 3 called "machine mode".
 	// The job of kinit() is to get us into supervisor mode
@@ -114,57 +120,127 @@ fn kinit() -> usize {
 
 	// Map heap allocations
 	let root_ptr = kmem::get_page_table();
-	let root_u   = root_ptr as usize;
+	let root_u = root_ptr as usize;
 	let mut root = unsafe { root_ptr.as_mut().unwrap() };
 	let kheap_head = kmem::get_head() as usize;
 	let total_pages = kmem::get_num_allocations();
-	id_map_range(&mut root, kheap_head, kheap_head + (total_pages << 12), page::EntryBits::ReadWrite.val());
+	id_map_range(
+	             &mut root,
+	             kheap_head,
+	             kheap_head + (total_pages << 12),
+	             page::EntryBits::ReadWrite.val(),
+	);
 	unsafe {
 		// Map executable section
-		id_map_range(&mut root, TEXT_START, TEXT_END, page::EntryBits::ReadExecute.val());
+		id_map_range(
+		             &mut root,
+		             TEXT_START,
+		             TEXT_END,
+		             page::EntryBits::ReadExecute.val(),
+		);
 		// Map rodata section
-		// We put the ROdata section into the text section, so they can potentially overlap
-		// however, we only care that it's read only.
-		id_map_range(&mut root, RODATA_START, RODATA_END, page::EntryBits::ReadExecute.val());
+		// We put the ROdata section into the text section, so they can
+		// potentially overlap however, we only care that it's read
+		// only.
+		id_map_range(
+		             &mut root,
+		             RODATA_START,
+		             RODATA_END,
+		             page::EntryBits::ReadExecute.val(),
+		);
 		// Map data section
-		id_map_range(&mut root, DATA_START, DATA_END, page::EntryBits::ReadWrite.val());
+		id_map_range(
+		             &mut root,
+		             DATA_START,
+		             DATA_END,
+		             page::EntryBits::ReadWrite.val(),
+		);
 		// Map bss section
-		id_map_range(&mut root, BSS_START, BSS_END, page::EntryBits::ReadWrite.val());
+		id_map_range(
+		             &mut root,
+		             BSS_START,
+		             BSS_END,
+		             page::EntryBits::ReadWrite.val(),
+		);
 		// Map kernel stack
-		id_map_range(&mut root, KERNEL_STACK_START, KERNEL_STACK_END, page::EntryBits::ReadWrite.val());
+		id_map_range(
+		             &mut root,
+		             KERNEL_STACK_START,
+		             KERNEL_STACK_END,
+		             page::EntryBits::ReadWrite.val(),
+		);
 	}
 
 	// UART
-	page::map(&mut root, 0x1000_0000, 0x1000_0000, page::EntryBits::ReadWrite.val());
+	page::map(
+	          &mut root,
+	          0x1000_0000,
+	          0x1000_0000,
+	          page::EntryBits::ReadWrite.val(),
+	);
 
 	// CLINT
 	//  -> MSIP
-	page::map(&mut root, 0x0200_0000, 0x0200_0000, page::EntryBits::ReadWrite.val());
+	page::map(
+	          &mut root,
+	          0x0200_0000,
+	          0x0200_0000,
+	          page::EntryBits::ReadWrite.val(),
+	);
 	//  -> MTIMECMP
-	page::map(&mut root, 0x0200_b000, 0x0200_b000, page::EntryBits::ReadWrite.val());
+	page::map(
+	          &mut root,
+	          0x0200_b000,
+	          0x0200_b000,
+	          page::EntryBits::ReadWrite.val(),
+	);
 	//  -> MTIME
-	page::map(&mut root, 0x0200_b000, 0x0200_b000, page::EntryBits::ReadWrite.val());
-	page::map(&mut root, 0x0200_c000, 0x0200_c000, page::EntryBits::ReadWrite.val());
-	
+	page::map(
+	          &mut root,
+	          0x0200_b000,
+	          0x0200_b000,
+	          page::EntryBits::ReadWrite.val(),
+	);
+	page::map(
+	          &mut root,
+	          0x0200_c000,
+	          0x0200_c000,
+	          page::EntryBits::ReadWrite.val(),
+	);
 	// PLIC
 	//  -> Source priority
-	page::map(&mut root, 0x0c00_0000, 0x0c00_0000, page::EntryBits::ReadWrite.val());
+	page::map(
+	          &mut root,
+	          0x0c00_0000,
+	          0x0c00_0000,
+	          page::EntryBits::ReadWrite.val(),
+	);
 	//  -> Pending array
-	page::map(&mut root, 0x0c00_1000, 0x0c00_1000, page::EntryBits::ReadWrite.val());
+	page::map(
+	          &mut root,
+	          0x0c00_1000,
+	          0x0c00_1000,
+	          page::EntryBits::ReadWrite.val(),
+	);
 	//  -> Interrupt enables
-	page::map(&mut root, 0x0c00_2000, 0x0c00_2000, page::EntryBits::ReadWrite.val());
+	page::map(
+	          &mut root,
+	          0x0c00_2000,
+	          0x0c00_2000,
+	          page::EntryBits::ReadWrite.val(),
+	);
 	//  -> Priority threshold and claim/complete registers
 	for i in 0..=8 {
 		let m = 0x0c20_0000 + (i << 12);
 		page::map(&mut root, m, m, page::EntryBits::ReadWrite.val());
 	}
 
-	// When we return from here, we'll go back to boot.S and switch into supervisor mode
-	// We will return the SATP register to be written when we return.
-	// root_u is the root page table's address. When stored into the SATP register, this is
-	// divided by 4 KiB (right shift by 12 bits).
-	// We enable the MMU by setting mode 8. Bits 63, 62, 61, 60 determine the mode.
-	// 0 = Bare (no translation)
+	// When we return from here, we'll go back to boot.S and switch into
+	// supervisor mode We will return the SATP register to be written when
+	// we return. root_u is the root page table's address. When stored into
+	// the SATP register, this is divided by 4 KiB (right shift by 12 bits).
+	// We enable the MMU by setting mode 8. Bits 63, 62, 61, 60 determine
+	// the mode. 0 = Bare (no translation)
 	// 8 = Sv39
 	// 9 = Sv48
 	unsafe {
@@ -174,8 +250,7 @@ fn kinit() -> usize {
 }
 
 #[no_mangle]
-extern "C"
-fn kmain() {
+extern "C" fn kmain() {
 	// Main should initialize all sub-systems and get
 	// ready to start scheduling. The last thing this
 	// should do is start the timer.
@@ -190,8 +265,12 @@ fn kmain() {
 	println!();
 	println!();
 	println!("This is my operating system!");
-	println!("I'm so awesome. If you start typing something, I'll show you what you typed!");
-	// Create a new scope so that we can test the global allocator and deallocator
+	println!(
+	         "I'm so awesome. If you start typing something, I'll show \
+	          you what you typed!"
+	);
+	// Create a new scope so that we can test the global allocator and
+	// deallocator
 	{
 		// We have the global allocator, so let's see if that works!
 		let k: Box<u32> = Box::new(100);
@@ -205,55 +284,63 @@ fn kmain() {
 		println!("String = {}", sparkle_heart);
 	}
 	// Now see if we can read stuff:
-	// Usually we can use #[test] modules in Rust, but it would convolute the
-	// task at hand. So, we'll just add testing snippets.
+	// Usually we can use #[test] modules in Rust, but it would convolute
+	// the task at hand. So, we'll just add testing snippets.
 	loop {
 		if let Some(c) = my_uart.get() {
 			match c {
 				8 => {
-					// This is a backspace, so we essentially have
-					// to write a space and backup again:
+					// This is a backspace, so we
+					// essentially have to write a space and
+					// backup again:
 					print!("{} {}", 8 as char, 8 as char);
 				},
-				  10 | 13 => {
-					  // Newline or carriage-return
-					  println!();
-				  },
-				  0x1b => {
-					  // Those familiar with ANSI escape sequences
-					  // knows that this is one of them. The next
-					  // thing we should get is the left bracket [
-					  // These are multi-byte sequences, so we can take
-					  // a chance and get from UART ourselves.
-					  // Later, we'll button this up.
-					  if let Some(next_byte) = my_uart.get() {
-						  if next_byte == 91 {
-							  // This is a right bracket! We're on our way!
-							  if let Some(b) = my_uart.get() {
-								  match b as char {
-									  'A' => {
-										  println!("That's the up arrow!");
-									  },
-									  'B' => {
-										  println!("That's the down arrow!");
-									  },
-									  'C' => {
-										  println!("That's the right arrow!");
-									  },
-									  'D' => {
-										  println!("That's the left arrow!");
-									  },
-									  _ => {
-										  println!("That's something else.....");
-									  }
-								  }
-							  }
-						  }
-					  }
-				  },
-				  _ => {
-					  print!("{}", c as char);
-				  }
+				10 | 13 => {
+					// Newline or carriage-return
+					println!();
+				},
+				0x1b => {
+					// Those familiar with ANSI escape
+					// sequences knows that this is one of
+					// them. The next thing we should get is
+					// the left bracket [
+					// These are multi-byte sequences, so we
+					// can take a chance and get from UART
+					// ourselves. Later, we'll button this
+					// up.
+					if let Some(next_byte) = my_uart.get() {
+						if next_byte == 91 {
+							// This is a right
+							// bracket! We're on our
+							// way!
+							if let Some(b) =
+								my_uart.get()
+							{
+								match b as char
+								{
+									'A' => {
+										println!("That's the up arrow!");
+									},
+									'B' => {
+										println!("That's the down arrow!");
+									},
+									'C' => {
+										println!("That's the right arrow!");
+									},
+									'D' => {
+										println!("That's the left arrow!");
+									},
+									_ => {
+										println!("That's something else.....");
+									},
+								}
+							}
+						}
+					}
+				},
+				_ => {
+					print!("{}", c as char);
+				},
 			}
 		}
 	}
@@ -263,6 +350,6 @@ fn kmain() {
 // / RUST MODULES
 // ///////////////////////////////////
 
-pub mod uart;
-pub mod page;
 pub mod kmem;
+pub mod page;
+pub mod uart;
