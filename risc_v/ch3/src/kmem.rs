@@ -89,7 +89,7 @@ pub fn kzmalloc(sz: usize) -> *mut u8 {
 
 	for i in 0..size {
 		unsafe {
-			(*ret) = 0;
+			(*ret.add(i)) = 0;
 		}
 	}
 	ret
