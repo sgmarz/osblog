@@ -61,24 +61,49 @@ _start:
 	# We use mret here so that the mstatus register is properly updated.
 	mret
 2:
-	# Setting `sstatus` register:
+	# Setting `sstatus` (supervisor status) register:
 	# 1 << 8    : Supervisor's previous protection mode is 1 (SPP=1 [Supervisor]).
 	# 1 << 5    : Supervisor's previous interrupt-enable bit is 1 (SPIE=1 [Enabled]).
-	# 1 << 1    : Supervisor's interrupt-enable bit is 1 (SIE=1 [Enabled]).
-	li		t0, (0b1 << 8) | (1 << 5) | (1 << 1)
+	# 1 << 1    : Supervisor's interrupt-enable bit will be set to 1 after sret.
+	# We set the "previous" bits because the sret will write the current bits
+	# with the previous bits.
+	li		t0, (1 << 8) | (1 << 5)
 	csrw	sstatus, t0
 	la		t1, kmain
 	csrw	sepc, t1
+	# kinit() is required to return back to us via a0 the SATP value.
 	csrw	satp, a0
+	# Setting `mideleg` (machine interrupt delegate) register:
+	# 1 << 1   : Software interrupt delegated to supervisor mode
+	# 1 << 5   : Timer interrupt delegated to supervisor mode
+	# 1 << 9   : External interrupt delegated to supervisor mode
+	li		t2, (1 << 1) | (1 << 5) | (1 << 9)
+	csrw	mideleg, t2
+	# Setting `sie` (supervisor interrupt enable) register:
+	# This register takes the same bits as mideleg
+	# 1 << 1    : Supervisor software interrupt enable (SSIE=1 [Enabled])
+	# 1 << 5    : Supervisor timer interrupt enable (STIE=1 [Enabled])
+	# 1 << 9    : Supervisor external interrupt enable (SEIE=1 [Enabled])
+	csrw	sie, t2
+	# Setting `stvec` (supervisor trap vector) register:
+	# Essentially this is a function pointer, but the last two bits can be 00 or 01
+	# 00        : All exceptions set pc to BASE
+	# 01        : Asynchronous interrupts set pc to BASE + 4 x scause
+	la		t3, asm_trap_vector
+	csrw	stvec, t3
 	sret
 3:
 
 	# Parked harts go here. We need to set these
 	# to only awaken if it receives a software interrupt,
 	# which we're going to call the SIPI (Software Intra-Processor Interrupt).
-	# We only use these to run user-space programs, although this may
+	# We call the SIPI by writing the software interrupt into the Core Local Interruptor (CLINT)
+	# Which is calculated by: base_address + hart * 4
+	# where base address is 0x0200_0000 (MMIO CLINT base address)
+	# We only use additional harts to run user-space programs, although this may
 	# change.
 4:
 	wfi
 	j		4b
+
 
