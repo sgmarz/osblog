@@ -73,7 +73,8 @@ impl Uart {
 			// To change what the base address points to, we open the "divisor latch" by writing 1 into
 			// the Divisor Latch Access Bit (DLAB), which is bit index 7 of the Line Control Register (LCR)
 			// which is at base_address + 3.
-			ptr.add(3).write_volatile(1 << 7);
+			let lcr = ptr.add(3).read_volatile();
+			ptr.add(3).write_volatile(lcr | 1 << 7);
 
 			// Now, base addresses 0 and 1 point to DLL and DLM, respectively.
 			// Put the lower 8 bits of the divisor into DLL
@@ -83,9 +84,8 @@ impl Uart {
 			// Now that we've written the divisor, we never have to touch this again. In hardware, this
 			// will divide the global clock (22.729 MHz) into one suitable for 2,400 signals per second.
 			// So, to once again get access to the RBR/THR/IER registers, we need to close the DLAB bit
-			// by clearing it to 0.
-			let lcr = ptr.add(3).read_volatile();
-			ptr.add(3).write_volatile(lcr & !(1 << 7));
+			// by clearing it to 0. Here, we just restore the original value of lcr.
+			ptr.add(3).write_volatile(lcr);
 		}
 	}
 
