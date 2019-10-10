@@ -87,9 +87,11 @@ pub fn kzmalloc(sz: usize) -> *mut u8 {
 	let size = align_val(sz, 3);
 	let ret = kmalloc(size);
 
-	for i in 0..size {
-		unsafe {
-			(*ret.add(i)) = 0;
+	if !ret.is_null() {
+		for i in 0..size {
+			unsafe {
+				(*ret.add(i)) = 0;
+			}
 		}
 	}
 	ret
