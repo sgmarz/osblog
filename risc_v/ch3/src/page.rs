@@ -449,7 +449,8 @@ pub fn map(root: &mut Table, vaddr: usize, paddr: usize, bits: i64) {
 	                 (ppn[1] << 19) as i64 |   // PPN[1] = [27:19]
 					 (ppn[0] << 10) as i64 |   // PPN[0] = [18:10]
 					 bits |                    // Specified bits, such as User, Read, Write, etc
-					 EntryBits::Valid.val(); // Valid big
+					 EntryBits::Valid.val();   // Valid bit
+	// Set the entry. V should be set to the correct pointer by the loop above.
 	v.set_entry(entry);
 }
 

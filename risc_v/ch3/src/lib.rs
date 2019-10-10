@@ -115,6 +115,7 @@ extern "C" fn kinit() -> usize {
 	// The job of kinit() is to get us into supervisor mode
 	// as soon as possible.
 	// Interrupts are disabled for the duration of kinit()
+	uart::Uart::new(0x1000_0000).init();
 	page::init();
 	kmem::init();
 
@@ -220,7 +221,7 @@ extern "C" fn kinit() -> usize {
 	             0x0c20_8000,
 	             page::EntryBits::ReadWrite.val(),
 	);
-
+	page::print_page_allocations();
 	// When we return from here, we'll go back to boot.S and switch into
 	// supervisor mode We will return the SATP register to be written when
 	// we return. root_u is the root page table's address. When stored into
@@ -246,7 +247,6 @@ extern "C" fn kmain() {
 	// now, lets connect to it and see if we can initialize it and write
 	// to it.
 	let mut my_uart = uart::Uart::new(0x1000_0000);
-	my_uart.init();
 
 	println!();
 	println!();
