@@ -36,7 +36,7 @@ impl Uart {
 			// fields
 			//             Word 0     Word 1
 			//             ~~~~~~     ~~~~~~
-            let lcr: u8 = (1 << 0) | (1 << 1)
+            let lcr: u8 = (1 << 0) | (1 << 1);
 			ptr.add(3).write_volatile(lcr);
 
 			// Now, enable the FIFO, which is bit index 0 of the FIFO
