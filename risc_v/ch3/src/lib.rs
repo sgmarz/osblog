@@ -76,6 +76,11 @@ extern "C" fn abort() -> ! {
 // const STR_Y: &str = "\x1b[38;2;79;221;13m✓\x1b[m";
 // const STR_N: &str = "\x1b[38;2;221;41;13m✘\x1b[m";
 
+// The following symbols come from asm/mem.S. We can use
+// the symbols directly, but the address of the symbols
+// themselves are their values, which can cause issues.
+// Instead, I created doubleword values in mem.S in the .rodata and .data
+// sections.
 extern "C" {
 	static TEXT_START: usize;
 	static TEXT_END: usize;
@@ -103,6 +108,11 @@ pub fn id_map_range(root: &mut page::Table,
 	let num_kb_pages = (page::align_val(end, 12)
 	                 - memaddr)
 	                / page::PAGE_SIZE;
+
+	// I named this num_kb_pages for future expansion when
+	// I decide to allow for GiB (2^30) and 2MiB (2^21) page
+	// sizes. However, the overlapping memory regions are causing
+	// nightmares.
 	for _ in 0..num_kb_pages {
 		page::map(root, memaddr, memaddr, bits, 0);
 		memaddr += 1 << 12;
@@ -240,8 +250,13 @@ extern "C" fn kinit() -> usize {
 	             page::EntryBits::ReadWrite.val(),
 	);
 	page::print_page_allocations();
+	// The following shows how we're going to walk to translate a virtual
+	// address into a physical address. We will use this whenever a user
+	// space application requires services. Since the user space application
+	// only knows virtual addresses, we have to translate silently behind
+	// the scenes.
 	let p = 0x8005_7000 as usize;
-	let m = page::walk(&root, p).unwrap_or(0);
+	let m = page::virt_to_phys(&root, p).unwrap_or(0);
 	println!("Walk 0x{:x} = 0x{:x}", p, m);
 	// When we return from here, we'll go back to boot.S and switch into
 	// supervisor mode We will return the SATP register to be written when
@@ -253,6 +268,8 @@ extern "C" fn kinit() -> usize {
 	// 8 = Sv39
 	// 9 = Sv48
 	unsafe {
+		// We have to store the kernel's table. The tables will be moved back
+		// and forth between the kernel's table and user applicatons' tables.
 		KERNEL_TABLE = root_u;
 	}
 	// table / 4096    Sv39 mode
@@ -261,14 +278,11 @@ extern "C" fn kinit() -> usize {
 
 #[no_mangle]
 extern "C" fn kmain() {
-	// Main should initialize all sub-systems and get
-	// ready to start scheduling. The last thing this
-	// should do is start the timer.
+	// kmain() starts in supervisor mode. So, we should have the trap
+	// vector setup and the MMU turned on when we get here.
 
-	// Let's try using our newly minted UART by initializing it first.
-	// The UART is sitting at MMIO address 0x1000_0000, so for testing
-	// now, lets connect to it and see if we can initialize it and write
-	// to it.
+	// We initialized my_uart in machine mode under kinit for debugging
+	// prints, but this just grabs a pointer to it.
 	let mut my_uart = uart::Uart::new(0x1000_0000);
 	// Create a new scope so that we can test the global allocator and
 	// deallocator
@@ -284,6 +298,8 @@ extern "C" fn kmain() {
 		let sparkle_heart = String::from_utf8(sparkle_heart).unwrap();
 		println!("String = {}", sparkle_heart);
 	}
+	// If we get here, the Box, vec, and String should all be freed since
+	// they go out of scope. This calls their "Drop" trait.
 	// Now see if we can read stuff:
 	// Usually we can use #[test] modules in Rust, but it would convolute
 	// the task at hand, and it requires us to create the testing harness
@@ -300,45 +316,6 @@ extern "C" fn kmain() {
 				10 | 13 => {
 					// Newline or carriage-return
 					println!();
-				},
-				0x1b => {
-					// Those familiar with ANSI escape
-					// sequences knows that this is one of
-					// them. The next thing we should get is
-					// the left bracket [
-					// These are multi-byte sequences, so we
-					// can take a chance and get from UART
-					// ourselves. Later, we'll button this
-					// up.
-					if let Some(next_byte) = my_uart.get() {
-						if next_byte == 91 {
-							// This is a right
-							// bracket! We're on our
-							// way!
-							if let Some(b) =
-								my_uart.get()
-							{
-								match b as char
-								{
-									'A' => {
-										println!("That's the up arrow!");
-									},
-									'B' => {
-										println!("That's the down arrow!");
-									},
-									'C' => {
-										println!("That's the right arrow!");
-									},
-									'D' => {
-										println!("That's the left arrow!");
-									},
-									_ => {
-										println!("That's something else.....");
-									},
-								}
-							}
-						}
-					}
 				},
 				_ => {
 					print!("{}", c as char);

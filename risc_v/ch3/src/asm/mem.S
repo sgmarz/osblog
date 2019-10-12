@@ -38,6 +38,7 @@ KERNEL_STACK_START: .dword _stack_start
 .global KERNEL_STACK_END
 KERNEL_STACK_END: .dword _stack_end
 
+.section .data
 .global KERNEL_TABLE
 KERNEL_TABLE: .dword 0
 

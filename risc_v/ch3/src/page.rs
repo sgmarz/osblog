@@ -503,7 +503,7 @@ pub fn unmap(root: &mut Table) {
 /// physical address.
 /// If a page fault would occur, this returns None
 /// Otherwise, it returns Some with the physical address.
-pub fn walk(root: &Table, vaddr: usize) -> Option<usize> {
+pub fn virt_to_phys(root: &Table, vaddr: usize) -> Option<usize> {
 	// Walk the page table pointed to by root
 	let vpn = [
 	           // VPN[0] = vaddr[20:12]

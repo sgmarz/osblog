@@ -49,6 +49,8 @@ impl AllocList {
 	}
 }
 
+// This is the head of the allocation. We start here when
+// we search for a free memory location.
 static mut KMEM_HEAD: *mut AllocList = null_mut();
 // In the future, we will have on-demand pages
 // so, we need to keep track of our memory footprint to
@@ -56,6 +58,9 @@ static mut KMEM_HEAD: *mut AllocList = null_mut();
 static mut KMEM_ALLOC: usize = 0;
 static mut KMEM_PAGE_TABLE: *mut Table = null_mut();
 
+
+// These functions are safe helpers around an unsafe
+// operation.
 pub fn get_head() -> *mut u8 {
 	unsafe { KMEM_HEAD as *mut u8 }
 }
@@ -106,7 +111,8 @@ pub fn kmalloc(sz: usize) -> *mut u8 {
 		let size = align_val(sz, 3) + size_of::<AllocList>();
 		let mut head = KMEM_HEAD;
 		// .add() uses pointer arithmetic, so we type-cast into a u8
-		// so that we multiply by an absolute size (KMEM_ALLOC * PAGE_SIZE).
+		// so that we multiply by an absolute size (KMEM_ALLOC *
+		// PAGE_SIZE).
 		let tail = (KMEM_HEAD as *mut u8).add(KMEM_ALLOC * PAGE_SIZE)
 		           as *mut AllocList;
 
@@ -130,15 +136,15 @@ pub fn kmalloc(sz: usize) -> *mut u8 {
 				return head.add(1) as *mut u8;
 			}
 			else {
-				// If we get here, what we saw wasn't a free chunk, move on to the
-				// next.
+				// If we get here, what we saw wasn't a free
+				// chunk, move on to the next.
 				head = (head as *mut u8).add((*head).get_size())
 				       as *mut AllocList;
 			}
 		}
 	}
-	// If we get here, we didn't find any free chunks--i.e. there isn't enough memory for this.
-	// TODO: Add on-demand page allocation.
+	// If we get here, we didn't find any free chunks--i.e. there isn't
+	// enough memory for this. TODO: Add on-demand page allocation.
 	null_mut()
 }
 
