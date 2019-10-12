@@ -50,6 +50,9 @@ impl AllocList {
 }
 
 static mut KMEM_HEAD: *mut AllocList = null_mut();
+// In the future, we will have on-demand pages
+// so, we need to keep track of our memory footprint to
+// see if we actually need to allocate more.
 static mut KMEM_ALLOC: usize = 0;
 static mut KMEM_PAGE_TABLE: *mut Table = null_mut();
 
@@ -102,6 +105,8 @@ pub fn kmalloc(sz: usize) -> *mut u8 {
 	unsafe {
 		let size = align_val(sz, 3) + size_of::<AllocList>();
 		let mut head = KMEM_HEAD;
+		// .add() uses pointer arithmetic, so we type-cast into a u8
+		// so that we multiply by an absolute size (KMEM_ALLOC * PAGE_SIZE).
 		let tail = (KMEM_HEAD as *mut u8).add(KMEM_ALLOC * PAGE_SIZE)
 		           as *mut AllocList;
 
@@ -125,11 +130,15 @@ pub fn kmalloc(sz: usize) -> *mut u8 {
 				return head.add(1) as *mut u8;
 			}
 			else {
+				// If we get here, what we saw wasn't a free chunk, move on to the
+				// next.
 				head = (head as *mut u8).add((*head).get_size())
 				       as *mut AllocList;
 			}
 		}
 	}
+	// If we get here, we didn't find any free chunks--i.e. there isn't enough memory for this.
+	// TODO: Add on-demand page allocation.
 	null_mut()
 }
 
@@ -141,6 +150,8 @@ pub fn kfree(ptr: *mut u8) {
 			if (*p).is_taken() {
 				(*p).set_free();
 			}
+			// After we free, see if we can combine adjacent free
+			// spots to see if we can reduce fragmentation.
 			coalesce();
 		}
 	}

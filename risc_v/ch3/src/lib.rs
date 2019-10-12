@@ -97,13 +97,29 @@ pub fn id_map_range(root: &mut page::Table,
                     end: usize,
                     bits: i64)
 {
-	let start_aligned = start & !(page::PAGE_SIZE - 1);
-	let num_pages = (page::align_val(end, 12)
-	                 - start_aligned)
+	let mut memaddr = start & !(page::PAGE_SIZE - 1);
+	let mut num_kb_pages = (page::align_val(end, 12)
+	                 - memaddr)
 	                / page::PAGE_SIZE;
-	for i in 0..num_pages {
-		let m = start_aligned + (i << 12);
-		page::map(root, m, m, bits);
+	// There are 262,144, 4096-byte chunks for a gigabyte
+	// page.
+	let num_gb_pages = num_kb_pages / 262_144;
+	num_kb_pages -= num_gb_pages * 262_144;
+	// There are 512, 4096-byte chunks for a 2 MiB page.
+	let num_mb_pages = num_kb_pages / 512;
+	num_kb_pages -= num_mb_pages * 512;
+
+	for _ in 0..num_gb_pages {
+		page::map(root, memaddr, memaddr, bits, 2);
+		memaddr += 1 << 30;
+	}
+	for _ in 0..num_mb_pages {
+		page::map(root, memaddr, memaddr, bits, 1);
+		memaddr += 1 << 21;
+	}
+	for _ in 0..num_kb_pages {
+		page::map(root, memaddr, memaddr, bits, 0);
+		memaddr += 1 << 12;
 	}
 }
 // ///////////////////////////////////
@@ -126,10 +142,20 @@ extern "C" fn kinit() -> usize {
 	let mut root = unsafe { root_ptr.as_mut().unwrap() };
 	let kheap_head = kmem::get_head() as usize;
 	let total_pages = kmem::get_num_allocations();
+	println!();
+	println!();
+	unsafe {
+		println!("TEXT:   0x{:x} -> 0x{:x}", TEXT_START, TEXT_END);
+		println!("RODATA: 0x{:x} -> 0x{:x}", RODATA_START, RODATA_END);
+		println!("DATA:   0x{:x} -> 0x{:x}", DATA_START, DATA_END);
+		println!("BSS:    0x{:x} -> 0x{:x}", BSS_START, BSS_END);
+		println!("STACK:  0x{:x} -> 0x{:x}", KERNEL_STACK_START, KERNEL_STACK_END);
+		println!("HEAP:   0x{:x} -> 0x{:x}", kheap_head, kheap_head + total_pages * 4096);
+	}
 	id_map_range(
 	             &mut root,
 	             kheap_head,
-	             kheap_head + (total_pages << 12),
+	             kheap_head + total_pages * 4096,
 	             page::EntryBits::ReadWrite.val(),
 	);
 	unsafe {
@@ -179,6 +205,7 @@ extern "C" fn kinit() -> usize {
 	          0x1000_0000,
 	          0x1000_0000,
 	          page::EntryBits::ReadWrite.val(),
+			  0
 	);
 
 	// CLINT
@@ -188,6 +215,7 @@ extern "C" fn kinit() -> usize {
 	          0x0200_0000,
 	          0x0200_0000,
 	          page::EntryBits::ReadWrite.val(),
+			  0
 	);
 	//  -> MTIMECMP
 	page::map(
@@ -195,6 +223,7 @@ extern "C" fn kinit() -> usize {
 	          0x0200_b000,
 	          0x0200_b000,
 	          page::EntryBits::ReadWrite.val(),
+			  0
 	);
 	//  -> MTIME
 	page::map(
@@ -202,6 +231,7 @@ extern "C" fn kinit() -> usize {
 	          0x0200_c000,
 	          0x0200_c000,
 	          page::EntryBits::ReadWrite.val(),
+			  0
 	);
 	// PLIC
 	id_map_range(
@@ -217,18 +247,23 @@ extern "C" fn kinit() -> usize {
 	             page::EntryBits::ReadWrite.val(),
 	);
 	page::print_page_allocations();
+	let p = 0x8005_7000 as usize;
+	let m = page::walk(&root, p).unwrap_or(0);
+	println!("Walk 0x{:x} = 0x{:x}", p, m);
 	// When we return from here, we'll go back to boot.S and switch into
 	// supervisor mode We will return the SATP register to be written when
 	// we return. root_u is the root page table's address. When stored into
 	// the SATP register, this is divided by 4 KiB (right shift by 12 bits).
 	// We enable the MMU by setting mode 8. Bits 63, 62, 61, 60 determine
-	// the mode. 0 = Bare (no translation)
+	// the mode. 
+	// 0 = Bare (no translation)
 	// 8 = Sv39
 	// 9 = Sv48
 	unsafe {
 		KERNEL_TABLE = root_u;
 	}
-	(root_u >> 12) | (8 << 60)
+	// table / 4096    Sv39 mode
+	(root_u >> 12)  | (8 << 60)
 }
 
 #[no_mangle]
@@ -242,19 +277,11 @@ extern "C" fn kmain() {
 	// now, lets connect to it and see if we can initialize it and write
 	// to it.
 	let mut my_uart = uart::Uart::new(0x1000_0000);
-
-	println!();
-	println!();
-	println!("This is my operating system!");
-	println!(
-	         "I'm so awesome. If you start typing something, I'll show \
-	          you what you typed!"
-	);
 	// Create a new scope so that we can test the global allocator and
 	// deallocator
 	{
 		// We have the global allocator, so let's see if that works!
-		let k: Box<u32> = Box::new(100);
+		let k = Box::<u32>::new(100);
 		println!("Boxed value = {}", *k);
 		kmem::print_table();
 		// The following comes from the Rust documentation:
@@ -266,7 +293,8 @@ extern "C" fn kmain() {
 	}
 	// Now see if we can read stuff:
 	// Usually we can use #[test] modules in Rust, but it would convolute
-	// the task at hand. So, we'll just add testing snippets.
+	// the task at hand, and it requires us to create the testing harness
+	// since the embedded testing system is part of the "std" library.
 	loop {
 		if let Some(c) = my_uart.get() {
 			match c {

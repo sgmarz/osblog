@@ -265,10 +265,11 @@ pub fn print_page_allocations() {
 					num += 1;
 					if (*beg).is_last() {
 						let end = beg as usize;
-						let memaddr =
-							ALLOC_START
-							+ (end - HEAP_START)
-							  * PAGE_SIZE + 0xfff;
+						let memaddr = ALLOC_START
+						              + (end
+						                 - HEAP_START)
+						                * PAGE_SIZE
+						              + PAGE_SIZE - 1;
 						print!(
 						       "0x{:x}: {:>3} page(s)",
 						       memaddr,
@@ -283,8 +284,16 @@ pub fn print_page_allocations() {
 			beg = beg.add(1);
 		}
 		println!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
-		println!("Allocated: {:>5} pages ({:>9} bytes).", num, num * PAGE_SIZE);
-		println!("Free     : {:>5} pages ({:>9} bytes).", num_pages-num, (num_pages-num) * PAGE_SIZE);
+		println!(
+		         "Allocated: {:>5} pages ({:>9} bytes).",
+		         num,
+		         num * PAGE_SIZE
+		);
+		println!(
+		         "Free     : {:>5} pages ({:>9} bytes).",
+		         num_pages - num,
+		         (num_pages - num) * PAGE_SIZE
+		);
 		println!();
 	}
 }
@@ -389,7 +398,7 @@ impl Table {
 ///       The bits MUST include one or more of the following:
 ///          Read, Write, Execute
 ///       The valid bit automatically gets added.
-pub fn map(root: &mut Table, vaddr: usize, paddr: usize, bits: i64) {
+pub fn map(root: &mut Table, vaddr: usize, paddr: usize, bits: i64, level: usize) {
 	// Make sure that Read, Write, or Execute have been provided
 	// otherwise, we'll leak memory and always create a page fault.
 	assert!(bits & 0xe != 0);
@@ -423,11 +432,11 @@ pub fn map(root: &mut Table, vaddr: usize, paddr: usize, bits: i64) {
 	// Now, we're going to traverse the page table and set the bits
 	// properly. We expect the root to be valid, however we're required to
 	// create anything beyond the root.
-	// In Rust, we create an iterator using the .. operator.
+	// In Rust, we create a range iterator using the .. operator.
 	// The .rev() will reverse the iteration since we need to start with
 	// VPN[2] The .. operator is inclusive on start but exclusive on end.
 	// So, (0..2) will iterate 0 and 1.
-	for i in (0..2).rev() {
+	for i in (level..2).rev() {
 		if !v.is_valid() {
 			// Allocate a page
 			let page = zalloc(1);
@@ -446,12 +455,13 @@ pub fn map(root: &mut Table, vaddr: usize, paddr: usize, bits: i64) {
 	// our entry.
 	// The entry structure is Figure 4.18 in the RISC-V Privileged
 	// Specification
-	let entry: i64 = (ppn[2] << 28) as i64 |   // PPN[2] = [53:28]
-	                 (ppn[1] << 19) as i64 |   // PPN[1] = [27:19]
-					 (ppn[0] << 10) as i64 |   // PPN[0] = [18:10]
-					 bits |                    // Specified bits, such as User, Read, Write, etc
-					 EntryBits::Valid.val();   // Valid bit
-	// Set the entry. V should be set to the correct pointer by the loop above.
+	let entry = (ppn[2] << 28) as i64 |   // PPN[2] = [53:28]
+	            (ppn[1] << 19) as i64 |   // PPN[1] = [27:19]
+				(ppn[0] << 10) as i64 |   // PPN[0] = [18:10]
+				bits |                    // Specified bits, such as User, Read, Write, etc
+				EntryBits::Valid.val();   // Valid bit
+			 // Set the entry. V should be set to the correct pointer by the loop
+			 // above.
 	v.set_entry(entry);
 }
 
@@ -469,6 +479,7 @@ pub fn unmap(root: &mut Table) {
 			// This is a valid entry, so drill down and free.
 			let memaddr_lv1 = (entry_lv2.get_entry() & !0x3ff) << 2;
 			let table_lv1 = unsafe {
+				// Make table_lv1 a mutable reference instead of a pointer.
 				(memaddr_lv1 as *mut Table).as_mut().unwrap()
 			};
 			for lv1 in 0..Table::len() {
@@ -503,45 +514,34 @@ pub fn walk(root: &Table, vaddr: usize) -> Option<usize> {
 	           (vaddr >> 30) & 0x1ff,
 	];
 
-	// The last 12 bits (0xfff) is not translated by
-	// the MMU, so we have to copy it from the vaddr
-	// to the physical address.
-	let pgoff = vaddr & 0xfff;
-
 	let mut v = &root.entries[vpn[2]];
-	for i in (0..2).rev() {
+	for i in (0..=2).rev() {
 		if v.is_invalid() {
 			// This is an invalid entry, page fault.
-			return None;
+			break;
 		}
 		else if v.is_leaf() {
-			// According to RISC-V, a leaf can at any level, however
-			// our page allocator doesn't do that. So, if we get
-			// a leaf here, something is wrong.
-			return None;
+			// According to RISC-V, a leaf can be at any level.
+
+			// The offset mask masks off the PPN. Each PPN is 9
+			// bits and they start at bit #12. So, our formula
+			// 12 + i * 9
+			let off_mask = (1 << (12 + i * 9)) - 1;
+			let vaddr_pgoff = vaddr & off_mask;
+			let addr = ((v.get_entry() << 2) as usize) & !off_mask;
+			return Some(addr | vaddr_pgoff);
 		}
 		// Set v to the next entry which is pointed to by this
 		// entry. However, the address was shifted right by 2 places
 		// when stored in the page table entry, so we shift it left
 		// to get it back into place.
 		let entry = ((v.get_entry() & !0x3ff) << 2) as *const Entry;
-		v = unsafe { entry.add(vpn[i]).as_ref().unwrap() };
+		// We do i - 1 here, however we should get None or Some() above
+		// before we do 0 - 1 = -1.
+		v = unsafe { entry.add(vpn[i - 1]).as_ref().unwrap() };
 	}
-	// If we get here, we should be at level 0 since we haven't returned
-	// yet. If we got a page fault earlier, we would've short circuited
-	// by returning None early.
-	// I don't like mixing return with the expression-type returns, but it
-	// keeps this code cleaner.
-	if v.is_invalid() || v.is_branch() {
-		// If we get here, that means the page is either invalid or not
-		// a leaf, which both are cause for a page fault.
-		None
-	}
-	else {
-		// The physical address starts at bit 10 in the entry, however
-		// it is supposed to start at bit 12, so we shift it up and then
-		// add the page offset.
-		let addr = ((v.get_entry() & !0x3ff) << 2) as usize;
-		Some(addr | pgoff)
-	}
+
+	// If we get here, we've exhausted all valid tables and haven't
+	// found a leaf.
+	None
 }
