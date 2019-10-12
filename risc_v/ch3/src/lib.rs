@@ -98,7 +98,7 @@ pub fn id_map_range(root: &mut page::Table,
                     bits: i64)
 {
 	let mut memaddr = start & !(page::PAGE_SIZE - 1);
-	let mut num_kb_pages = (page::align_val(end, 12)
+	let num_kb_pages = (page::align_val(end, 12)
 	                 - memaddr)
 	                / page::PAGE_SIZE;
 	for _ in 0..num_kb_pages {
