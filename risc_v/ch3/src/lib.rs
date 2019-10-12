@@ -87,6 +87,8 @@ extern "C" {
 	static BSS_END: usize;
 	static KERNEL_STACK_START: usize;
 	static KERNEL_STACK_END: usize;
+	static HEAP_START: usize;
+	static HEAP_SIZE: usize;
 	static mut KERNEL_TABLE: usize;
 }
 /// Identity map range
@@ -143,6 +145,13 @@ extern "C" fn kinit() -> usize {
 	             page::EntryBits::ReadWrite.val(),
 	);
 	unsafe {
+		// Map heap descriptors
+		let num_pages = HEAP_SIZE / page::PAGE_SIZE;
+		id_map_range(&mut root,
+					 HEAP_START,
+					 HEAP_START + num_pages,
+					 page::EntryBits::ReadWrite.val()
+		);
 		// Map executable section
 		id_map_range(
 		             &mut root,
