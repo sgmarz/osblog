@@ -101,22 +101,6 @@ pub fn id_map_range(root: &mut page::Table,
 	let mut num_kb_pages = (page::align_val(end, 12)
 	                 - memaddr)
 	                / page::PAGE_SIZE;
-	// There are 262,144, 4096-byte chunks for a gigabyte
-	// page.
-	let num_gb_pages = num_kb_pages / 262_144;
-	num_kb_pages -= num_gb_pages * 262_144;
-	// There are 512, 4096-byte chunks for a 2 MiB page.
-	let num_mb_pages = num_kb_pages / 512;
-	num_kb_pages -= num_mb_pages * 512;
-
-	for _ in 0..num_gb_pages {
-		page::map(root, memaddr, memaddr, bits, 2);
-		memaddr += 1 << 30;
-	}
-	for _ in 0..num_mb_pages {
-		page::map(root, memaddr, memaddr, bits, 1);
-		memaddr += 1 << 21;
-	}
 	for _ in 0..num_kb_pages {
 		page::map(root, memaddr, memaddr, bits, 0);
 		memaddr += 1 << 12;
