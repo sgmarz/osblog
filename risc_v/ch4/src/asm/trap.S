@@ -81,7 +81,7 @@ m_trap_vector:
 	.endr
 
 3:
-	# Go to C++
+	# Go to Rust
 	# usize trap_handler(mepc, mcause)
 	# trap_handler returns the new mepc
 	# via a0
@@ -182,7 +182,7 @@ s_trap_vector:
 	.endr
 
 3:
-	# Go to C++
+	# Go to Rust
 	# usize trap_handler(mepc, mcause)
 	# trap_handler returns the new mepc
 	# via a0

@@ -255,7 +255,7 @@ extern "C" fn kinit() -> usize {
 	// space application requires services. Since the user space application
 	// only knows virtual addresses, we have to translate silently behind
 	// the scenes.
-	let p = 0x8005_7000 as usize;
+	let p = 0x0200_0000 as usize;
 	let m = page::virt_to_phys(&root, p).unwrap_or(0);
 	println!("Walk 0x{:x} = 0x{:x}", p, m);
 	// When we return from here, we'll go back to boot.S and switch into
@@ -297,6 +297,10 @@ extern "C" fn kmain() {
 		// We know these bytes are valid, so we'll use `unwrap()`.
 		let sparkle_heart = String::from_utf8(sparkle_heart).unwrap();
 		println!("String = {}", sparkle_heart);
+	}
+	unsafe {
+		let val = 0x0200_0000 as *mut u32;
+		val.write_volatile(1);
 	}
 	// If we get here, the Box, vec, and String should all be freed since
 	// they go out of scope. This calls their "Drop" trait.
