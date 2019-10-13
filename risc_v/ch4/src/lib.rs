@@ -301,6 +301,7 @@ extern "C" fn kmain() {
 	unsafe {
 		let val = 0x0200_0000 as *mut u32;
 		val.write_volatile(1);
+		asm!("ecall");
 	}
 	// If we get here, the Box, vec, and String should all be freed since
 	// they go out of scope. This calls their "Drop" trait.
