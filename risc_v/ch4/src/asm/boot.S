@@ -51,8 +51,8 @@ _start:
 	li		t0, 0b11 << 11
 	csrw	mstatus, t0
 	# li		t2, (1 << 1) | (1 << 5) | (1 << 9)
-	# li		t2, 0xffff
-	# csrw	mideleg, t2
+	li		t2, 0xffff
+	csrw	mideleg, t2
 	li		t3, 0xaaa
 	csrw	mie, t3
 	# Machine's exception program counter (MEPC) is set to `kinit`.
