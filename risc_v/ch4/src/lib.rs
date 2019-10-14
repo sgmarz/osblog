@@ -146,12 +146,12 @@ extern "C" fn kinit() -> usize {
 		println!("DATA:   0x{:x} -> 0x{:x}", DATA_START, DATA_END);
 		println!("BSS:    0x{:x} -> 0x{:x}", BSS_START, BSS_END);
 		println!("STACK:  0x{:x} -> 0x{:x}", KERNEL_STACK_START, KERNEL_STACK_END);
-		println!("HEAP:   0x{:x} -> 0x{:x}", kheap_head, kheap_head + total_pages * 4096);
+		println!("HEAP:   0x{:x} -> 0x{:x}", kheap_head, kheap_head + total_pages * page::PAGE_SIZE);
 	}
 	id_map_range(
 	             &mut root,
 	             kheap_head,
-	             kheap_head + total_pages * 4096,
+	             kheap_head + total_pages * page::PAGE_SIZE,
 	             page::EntryBits::ReadWrite.val(),
 	);
 	unsafe {
@@ -203,38 +203,20 @@ extern "C" fn kinit() -> usize {
 	}
 
 	// UART
-	page::map(
-	          &mut root,
-	          0x1000_0000,
-	          0x1000_0000,
-	          page::EntryBits::ReadWrite.val(),
-			  0
+	id_map_range(
+				&mut root,
+				0x1000_0000,
+				0x1000_0100,
+				page::EntryBits::ReadWrite.val(),
 	);
 
 	// CLINT
 	//  -> MSIP
-	page::map(
-	          &mut root,
-	          0x0200_0000,
-	          0x0200_0000,
-	          page::EntryBits::ReadWrite.val(),
-			  0
-	);
-	//  -> MTIMECMP
-	page::map(
-	          &mut root,
-	          0x0200_b000,
-	          0x0200_b000,
-	          page::EntryBits::ReadWrite.val(),
-			  0
-	);
-	//  -> MTIME
-	page::map(
-	          &mut root,
-	          0x0200_c000,
-	          0x0200_c000,
-	          page::EntryBits::ReadWrite.val(),
-			  0
+	id_map_range(
+				&mut root,
+				0x0200_0000,
+				0x0200_ffff,
+				page::EntryBits::ReadWrite.val(),
 	);
 	// PLIC
 	id_map_range(
@@ -255,7 +237,7 @@ extern "C" fn kinit() -> usize {
 	// space application requires services. Since the user space application
 	// only knows virtual addresses, we have to translate silently behind
 	// the scenes.
-	let p = 0x0200_0000 as usize;
+	let p = 0x0200_4000 as usize;
 	let m = page::virt_to_phys(&root, p).unwrap_or(0);
 	println!("Walk 0x{:x} = 0x{:x}", p, m);
 	// When we return from here, we'll go back to boot.S and switch into
@@ -271,6 +253,7 @@ extern "C" fn kinit() -> usize {
 		// We have to store the kernel's table. The tables will be moved back
 		// and forth between the kernel's table and user applicatons' tables.
 		KERNEL_TABLE = root_u;
+		println!("Setting 0x{:x}", KERNEL_TABLE);
 	}
 	// table / 4096    Sv39 mode
 	(root_u >> 12)  | (8 << 60)
@@ -290,18 +273,23 @@ extern "C" fn kmain() {
 		// We have the global allocator, so let's see if that works!
 		let k = Box::<u32>::new(100);
 		println!("Boxed value = {}", *k);
-		kmem::print_table();
 		// The following comes from the Rust documentation:
 		// some bytes, in a vector
 		let sparkle_heart = vec![240, 159, 146, 150];
 		// We know these bytes are valid, so we'll use `unwrap()`.
+		// This will MOVE the vector.
 		let sparkle_heart = String::from_utf8(sparkle_heart).unwrap();
 		println!("String = {}", sparkle_heart);
+		println!("\n\nAllocations of a box, vector, and string");
+		kmem::print_table();
 	}
+	println!("\n\nEverything should now be free:");
+	kmem::print_table();
 	unsafe {
-		let val = 0x0200_0000 as *mut u32;
-		val.write_volatile(1);
-		asm!("ecall");
+		// asm!("csrw sip, $0" :: "r"(1));
+		let mtimecmp = 0x0200_4000 as *mut u64;
+		let mtime = 0x0200_bff8 as *const u64;
+		mtimecmp.write_volatile(mtime.read_volatile() + 10_000_000);
 	}
 	// If we get here, the Box, vec, and String should all be freed since
 	// they go out of scope. This calls their "Drop" trait.

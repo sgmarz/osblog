@@ -285,12 +285,12 @@ pub fn print_page_allocations() {
 		}
 		println!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
 		println!(
-		         "Allocated: {:>5} pages ({:>9} bytes).",
+		         "Allocated: {:>6} pages ({:>10} bytes).",
 		         num,
 		         num * PAGE_SIZE
 		);
 		println!(
-		         "Free     : {:>5} pages ({:>9} bytes).",
+		         "Free     : {:>6} pages ({:>10} bytes).",
 		         num_pages - num,
 		         (num_pages - num) * PAGE_SIZE
 		);
@@ -459,7 +459,10 @@ pub fn map(root: &mut Table, vaddr: usize, paddr: usize, bits: i64, level: usize
 	            (ppn[1] << 19) as i64 |   // PPN[1] = [27:19]
 				(ppn[0] << 10) as i64 |   // PPN[0] = [18:10]
 				bits |                    // Specified bits, such as User, Read, Write, etc
-				EntryBits::Valid.val();   // Valid bit
+				EntryBits::Valid.val() |  // Valid bit
+				EntryBits::Dirty.val() |  // Some machines require this to =1
+				EntryBits::Access.val()   // Just like dirty, some machines require this
+				;   
 			 // Set the entry. V should be set to the correct pointer by the loop
 			 // above.
 	v.set_entry(entry);

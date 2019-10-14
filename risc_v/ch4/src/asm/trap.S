@@ -5,13 +5,14 @@
 # 24 February 2019
 .option norvc
 .altmacro
-.set NUM_GP_REGS, 34  # Number of registers per context
+.set NUM_GP_REGS, 32  # Number of registers per context
 .set NUM_FP_REGS, 32
 .set REG_SIZE, 8   # Register size (in bytes)
+.set MAX_CPUS, 8   # Maximum number of CPUs
 
 .section .bss
 .global _GLOBAL_CTX
-.lcomm _GLOBAL_CTX, (NUM_FP_REGS + NUM_GP_REGS) * REG_SIZE
+.lcomm _GLOBAL_CTX, (NUM_FP_REGS + NUM_GP_REGS) * REG_SIZE * MAX_CPUS
 
 # Use macros for saving and restoring multiple registers
 .macro save_gp i, basereg=t6
@@ -39,21 +40,17 @@ m_trap_vector:
 	# base register for saving
 	csrw	mscratch, t6
 
-	# Disable the MMU since we're switching.
 	csrr	t6, satp
-	slli	t6, t6, 4
-	srli	t6, t6, 4
+	slli	t6, t6, 1
+	srli	t6, t6, 1
 	csrw	satp, t6
-
-	# Disable interrupts
-	li		t6, 1 << 3
-	csrrc	zero, mstatus, t6
-
     # Start saving the registers. We can't do much until the registers
     # have been saved.
 	la		t6, _GLOBAL_CTX
-	.set i, 0
-	.rept 31
+
+	# Set i = 1. i = 0 is the zero register and is a waste of time.
+	.set i, 1
+	.rept 30
 		save_gp	%i
 		.set	i, i+1
 	.endr
@@ -63,17 +60,16 @@ m_trap_vector:
 	csrr	t6, mscratch
 	save_gp	31, t5
 
-	# csrr	t0, satp
-	# sd		t0, 32*8(t5)
-
+	# We need to check the status of the floating
+	# point system. (FS bits are described in 3.1.6.5
+	# and table 3.3 in the RISC-V Privilege spec).
 	csrr	t1, mstatus
 	srli	t0, t1, 13
 	andi	t0, t0, 3
-	li	t1, 3
 	
 	# Skip saving the FP registers if the FP is turned off.
-	bne	t0, t1, 3f
-	la	t6, _GLOBAL_CTX
+	beqz 	t0, 3f
+	la		t6, _GLOBAL_CTX
 	.set i, 0
 	.rept 32
 		save_fp	%i
@@ -85,23 +81,38 @@ m_trap_vector:
 	# usize trap_handler(mepc, mcause)
 	# trap_handler returns the new mepc
 	# via a0
-    la      sp, _stack_end
+	la		sp, _stack_end
+	li		t0, 0x10000
+	csrr	t1, mhartid
+	mul		t0, t0, t1
+	sub		sp, sp, t0
 	csrr	a0, mepc
 	csrr	a1, mtval
 	csrr	a2, mcause
 	csrr	a3, mhartid
-	call	m_trap
+	csrr	a4, mstatus
+	la		t1, m_trap
+	csrw	mepc, t1
+	la		ra, 3f
+	li		t2, 0b11 << 11
+	csrw	mstatus, t2
+	mret
+3:
 	csrw	mepc, a0
 
 	# Move to the context for this CPU
 	la		t6, _GLOBAL_CTX
+	# Go to the context for this hart
+	csrr	t5, mhartid
+	slli	t5, t5, 6
+	add		t6, t6, t5
+
 	csrr	t1, mstatus
 	srli	t0, t1, 13
 	andi	t0, t0, 3
-	li		t1, 3
 
 	# Skip loading the FP registers if the FP is turned off.
-	bne	t0, t1, 3f
+	beqz	t0, 3f
 	.set i, 0
 	.rept 32
 		load_fp	%i
@@ -109,127 +120,21 @@ m_trap_vector:
 	.endr
 
 3:
-
-	# csrr	t5, mhartid
-	# slli	t5, t5, CTX_SHL
-	# add	t6, t6, t5
 	# Restore the registers
-	.set i, 0
-	.rept 32
-		load_gp %i
-		.set i, i+1
-	.endr
-	# Get the MMU going
-	csrw	mscratch, t6
-	la		t6, _GLOBAL_CTX
-	ld		t6, 32*8(t6)
-	csrw	satp, t6
-	sfence.vma
-	csrr	t6, mscratch
-	# x31 gets restored at the last iteration
-	mret
-
-
-.global s_trap_vector
-# This must be aligned by 4 since the last two bits
-# of the mtvec register do not contribute to the address
-# of this vector.
-.align 4
-s_trap_vector:
-	# We have to save t6 (x31), since it will be our
-	# base register for saving
-	csrw	sscratch, t6
-
-	# Disable the MMU since we're switching.
-	csrr	t6, satp
-	slli	t6, t6, 4
-	srli	t6, t6, 4
-	csrw	satp, t6
-
-	# Disable interrupts
-	li		t6, 1 << 3
-	csrrc	zero, sstatus, t6
-
-    # Start saving the registers. We can't do much until the registers
-    # have been saved.
-	la		t6, _GLOBAL_CTX
-	.set i, 0
+	.set i, 1
 	.rept 31
-		save_gp	%i
-		.set	i, i+1
-	.endr
-	# We saved 31 registers. All but t6
-	# t5 is saved, so we can overwrite it.
-	mv		t5, t6
-	csrr	t6, sscratch
-	save_gp	31, t5
-
-	# csrr	t0, satp
-	# sd		t0, 32*8(t5)
-
-	csrr	t1, sstatus
-	srli	t0, t1, 13
-	andi	t0, t0, 3
-	li		t1, 3
-	
-	# Skip saving the FP registers if the FP is turned off.
-	bne	t0, t1, 3f
-	la	t6, _GLOBAL_CTX
-	.set i, 0
-	.rept 32
-		save_fp	%i
-		.set	i, i+1
-	.endr
-
-3:
-	# Go to Rust
-	# usize trap_handler(mepc, mcause)
-	# trap_handler returns the new mepc
-	# via a0
-    la      sp, _stack_end
-	csrr	a0, sepc
-	csrr	a1, stval
-	csrr	a2, scause
-	call	s_trap
-	csrw	sepc, a0
-
-	# Move to the context for this CPU
-	la		t6, _GLOBAL_CTX
-	csrr	t1, sstatus
-	srli	t0, t1, 13
-	andi	t0, t0, 3
-	li		t1, 3
-
-	# Skip loading the FP registers if the FP is turned off.
-	bne	t0, t1, 3f
-	.set i, 0
-	.rept 32
-		load_fp	%i
-		.set	i, i+1
-	.endr
-
-3:
-
-	# csrr	t5, mhartid
-	# slli	t5, t5, CTX_SHL
-	# add	t6, t6, t5
-	# Restore the registers
-	.set i, 0
-	.rept 32
 		load_gp %i
 		.set i, i+1
 	.endr
-	# Get the MMU going
-	csrw	sscratch, t6
-	la		t6, _GLOBAL_CTX
-	ld		t6, 32*8(t6)
-	csrw	satp, t6
-	sfence.vma
-	csrr	t6, mscratch
+
+	# The MMU should be going at this point via
+	# Rust.
+
+	li		t2, (1 << 8) | (1 << 5)
+	csrw	mstatus, t2
+
 	# x31 gets restored at the last iteration
 	sret
-
-
 
 .global make_syscall
 make_syscall:

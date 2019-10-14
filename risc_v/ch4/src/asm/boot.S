@@ -47,9 +47,14 @@ _start:
 	# to the very end of the stack range.
 	la		sp, _stack_end
 	# Setting `mstatus` register:
-	# 0b11 << 11: Machine's previous protection mode is 3 (MPP=3).
+	# 0b01 << 11: Machine's previous protection mode is 2 (MPP=2).
 	li		t0, 0b11 << 11
 	csrw	mstatus, t0
+	# li		t2, (1 << 1) | (1 << 5) | (1 << 9)
+	# li		t2, 0xffff
+	# csrw	mideleg, t2
+	li		t3, 0xaaa
+	csrw	mie, t3
 	# Machine's exception program counter (MEPC) is set to `kinit`.
 	la		t1, kinit
 	csrw	mepc, t1
@@ -71,10 +76,10 @@ _start:
 	# 1 << 1    : Supervisor's interrupt-enable bit will be set to 1 after sret.
 	# We set the "previous" bits because the sret will write the current bits
 	# with the previous bits.
-	li		t0, (1 << 8) | (1 << 5)
-	csrw	sstatus, t0
+	li		t0, (1 << 11)
+	csrw	mstatus, t0
 	la		t1, kmain
-	csrw	sepc, t1
+	csrw	mepc, t1
 	# Setting `mideleg` (machine interrupt delegate) register:
 	# 1 << 1   : Software interrupt delegated to supervisor mode
 	# 1 << 5   : Timer interrupt delegated to supervisor mode
@@ -83,20 +88,19 @@ _start:
 	# cause an elevation to the machine privilege mode (mode 3).
 	# When we delegate, we're telling the CPU to only elevate to
 	# the supervisor privilege mode (mode 1)
-	li		t2, (1 << 1) | (1 << 5) | (1 << 9)
-	csrw	mideleg, t2
 	# Setting `sie` (supervisor interrupt enable) register:
 	# This register takes the same bits as mideleg
 	# 1 << 1    : Supervisor software interrupt enable (SSIE=1 [Enabled])
 	# 1 << 5    : Supervisor timer interrupt enable (STIE=1 [Enabled])
 	# 1 << 9    : Supervisor external interrupt enable (SEIE=1 [Enabled])
-	csrw	sie, t2
+	# li		t2, (1 << 1) | (1 << 5) | (1 << 9)
+	# csrw	sie, t2
 	# Setting `stvec` (supervisor trap vector) register:
 	# Essentially this is a function pointer, but the last two bits can be 00 or 01
 	# 00        : All exceptions set pc to BASE
 	# 01        : Asynchronous interrupts set pc to BASE + 4 x scause
-	la		t3, s_trap_vector
-	csrw	stvec, t3
+	# la		t3, s_trap
+	# csrw	stvec, t3
 	# kinit() is required to return back the SATP value (including MODE) via a0
 	csrw	satp, a0
 	# Force the CPU to take our SATP register.
@@ -105,8 +109,10 @@ _start:
 	# it in memory, it will be the old table. So, sfence.vma will ensure that the MMU always
 	# grabs a fresh copy of the SATP register and associated tables.
 	sfence.vma
+	# ret
+	# call	kmain
 	# sret will put us in supervisor mode and re-enable interrupts
-	sret
+	mret
 3:
 
 	# Parked harts go here. We need to set these
@@ -117,6 +123,27 @@ _start:
 	# where base address is 0x0200_0000 (MMIO CLINT base address)
 	# We only use additional harts to run user-space programs, although this may
 	# change.
+
+	la		sp, _stack_end
+	li		t0, 0x10000
+	csrr	t1, mhartid
+	mul		t0, t0, t1
+	sub		sp, sp, t0
+
+	li		t0, 0b01 << 11 | (1 << 5)
+	csrw	mstatus, t0
+	li		t3, 0xaaa
+	csrw	mie, t3
+	# Machine's exception program counter (MEPC) is set to `kinit`.
+	la		t1, 4f
+	csrw	mepc, t1
+	# Machine's trap vector base address is set to `m_trap_vector`, for
+	# "machine" trap vector.
+	la		t2, m_trap_vector
+	csrw	mtvec, t2
+	# We use mret here so that the mstatus register is properly updated.
+	mret
+
 4:
 	wfi
 	j		4b
