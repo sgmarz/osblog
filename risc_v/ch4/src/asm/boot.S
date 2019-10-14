@@ -99,8 +99,8 @@ _start:
 	# Essentially this is a function pointer, but the last two bits can be 00 or 01
 	# 00        : All exceptions set pc to BASE
 	# 01        : Asynchronous interrupts set pc to BASE + 4 x scause
-	# la		t3, s_trap
-	# csrw	stvec, t3
+	la		t3, s_trap_vector
+	csrw	stvec, t3
 	# kinit() is required to return back the SATP value (including MODE) via a0
 	csrw	satp, a0
 	# Force the CPU to take our SATP register.

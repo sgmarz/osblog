@@ -91,12 +91,11 @@ m_trap_vector:
 	csrr	a2, mcause
 	csrr	a3, mhartid
 	csrr	a4, mstatus
-	la		t1, m_trap
-	csrw	mepc, t1
 	la		ra, 3f
-	li		t2, 0b11 << 11
-	csrw	mstatus, t2
-	mret
+	# li		t2, 0b11 << 11
+	# csrw	mstatus, t2
+	call	m_trap
+	# mret
 3:
 	csrw	mepc, a0
 
@@ -130,11 +129,109 @@ m_trap_vector:
 	# The MMU should be going at this point via
 	# Rust.
 
-	li		t2, (1 << 8) | (1 << 5)
+	li		t2, (1 << 11) | (1 << 3)
 	csrw	mstatus, t2
 
 	# x31 gets restored at the last iteration
+	mret
+
+.global s_trap_vector
+# This must be aligned by 4 since the last two bits
+# of the mtvec register do not contribute to the address
+# of this vector.
+.align 4
+s_trap_vector:
+	# We have to save t6 (x31), since it will be our
+	# base register for saving
+	csrw	sscratch, t6
+
+	csrr	t6, satp
+	slli	t6, t6, 1
+	srli	t6, t6, 1
+	csrw	satp, t6
+    # Start saving the registers. We can't do much until the registers
+    # have been saved.
+	la		t6, _GLOBAL_CTX
+
+	# Set i = 1. i = 0 is the zero register and is a waste of time.
+	.set i, 1
+	.rept 30
+		save_gp	%i
+		.set	i, i+1
+	.endr
+	# We saved 31 registers. All but t6
+	# t5 is saved, so we can overwrite it.
+	mv		t5, t6
+	csrr	t6, sscratch
+	save_gp	31, t5
+
+	# We need to check the status of the floating
+	# point system. (FS bits are described in 3.1.6.5
+	# and table 3.3 in the RISC-V Privilege spec).
+	csrr	t1, sstatus
+	srli	t0, t1, 13
+	andi	t0, t0, 3
+	
+	# Skip saving the FP registers if the FP is turned off.
+	beqz 	t0, 3f
+	la		t6, _GLOBAL_CTX
+	.set i, 0
+	.rept 32
+		save_fp	%i
+		.set	i, i+1
+	.endr
+
+3:
+	# Go to Rust
+	# usize trap_handler(mepc, mcause)
+	# trap_handler returns the new mepc
+	# via a0
+	la		sp, _stack_end
+	csrr	a0, sepc
+	csrr	a1, stval
+	csrr	a2, scause
+	csrr	a4, sstatus
+	la		t1, s_trap
+	csrw	sepc, t1
+	la		ra, 3f
+	li		t2, 1 << 11
+	csrw	sstatus, t2
+	mret
+3:
+	csrw	sepc, a0
+
+	# Move to the context for this CPU
+	la		t6, _GLOBAL_CTX
+	# Go to the context for this hart
+	csrr	t1, sstatus
+	srli	t0, t1, 13
+	andi	t0, t0, 3
+
+	# Skip loading the FP registers if the FP is turned off.
+	beqz	t0, 3f
+	.set i, 0
+	.rept 32
+		load_fp	%i
+		.set	i, i+1
+	.endr
+
+3:
+	# Restore the registers
+	.set i, 1
+	.rept 31
+		load_gp %i
+		.set i, i+1
+	.endr
+
+	# The MMU should be going at this point via
+	# Rust.
+
+	li		t2, (1 << 8) | (1 << 5)
+	csrw	sstatus, t2
+
+	# x31 gets restored at the last iteration
 	sret
+
 
 .global make_syscall
 make_syscall:
