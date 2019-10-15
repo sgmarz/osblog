@@ -257,13 +257,21 @@ extern "C" fn kinit() {
 							as *mut cpu::KernelTrapFrame)
 							as usize,
 		);
+		cpu::sscratch_write(cpu::mscratch_read());
 		cpu::KERNEL_TRAP_FRAME[0].satp = satp_value;
-		cpu::KERNEL_TRAP_FRAME[0].trap_stack = page::zalloc(1);
+		// Move the stack pointer to the very bottom.
+		cpu::KERNEL_TRAP_FRAME[0].trap_stack = page::zalloc(1).add(4096);
 		id_map_range(
 	            &mut root,
+	            cpu::KERNEL_TRAP_FRAME[0].trap_stack as usize - 4096,
 	            cpu::KERNEL_TRAP_FRAME[0].trap_stack as usize,
-	            cpu::KERNEL_TRAP_FRAME[0].trap_stack as usize | 0xfff,
 	            page::EntryBits::ReadWrite.val(),
+		);
+		id_map_range(
+				&mut root,
+				cpu::mscratch_read(),
+				cpu::mscratch_read() | 0xfff,
+				page::EntryBits::ReadWrite.val(),
 		);
 		let p = cpu::KERNEL_TRAP_FRAME[0].trap_stack as usize;
 		let m = page::virt_to_phys(&root, p).unwrap_or(0);
@@ -292,6 +300,8 @@ extern "C" fn kinit_hart(hartid: usize) {
 							as *mut cpu::KernelTrapFrame)
 							as usize,
 		);
+		cpu::sscratch_write(cpu::mscratch_read());
+		cpu::KERNEL_TRAP_FRAME[hartid].hartid = hartid;
 		// cpu::KERNEL_TRAP_FRAME[hartid].satp = cpu::KERNEL_TRAP_FRAME[0].satp;
 		// cpu::KERNEL_TRAP_FRAME[hartid].trap_stack = page::zalloc(1);
 	}
@@ -326,7 +336,9 @@ extern "C" fn kmain() {
 	unsafe {
 		let mtimecmp = 0x0200_4000 as *mut u64;
 		let mtime = 0x0200_bff8 as *const u64;
-		mtimecmp.write_volatile(mtime.read_volatile() + 10_000_000);
+		// mtimecmp.write_volatile(mtime.read_volatile() + 10_000_000);
+		let v = 0x0 as *mut u64;
+		v.write_volatile(0);
 	}
 	// If we get here, the Box, vec, and String should all be freed since
 	// they go out of scope. This calls their "Drop" trait.

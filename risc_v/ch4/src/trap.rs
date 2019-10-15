@@ -8,14 +8,9 @@ use crate::cpu::KernelTrapFrame;
 
 #[no_mangle]
 extern "C"
-fn s_trap(epc: usize, tval: usize, cause: isize) -> usize {
-	println!("STRAP (cause: 0x{:x} @ 0x{:x})", cause, epc);
-	if cause < 0 {
-		epc
-	}
-	else {
-		epc  + 4
-	}
+fn s_trap(epc: usize, tval: usize, cause: usize, hart: usize, stat: usize, frame: &mut KernelTrapFrame) -> usize {
+	println!("STRAP (cause: 0x{:x} @ 0x{:x}) [cpu: {}]", cause, epc, hart);
+	epc  + 4
 }
 
 #[no_mangle]
@@ -31,7 +26,8 @@ fn m_trap(epc: usize, tval: usize, cause: usize, hart: usize, stat: usize, frame
 			// println!("cause: {}", cause & 0xff);
 			// println!("Kernel table = 0x{:x}", KERNEL_TABLE);
 			// asm!("csrw satp, $0" :: "r"(satp) :: "volatile");
-			let mtimecmp = 0x0200_4000 as *mut u64;
+			let addr = 0x0200_4000 + hart * 8;
+			let mtimecmp = addr as *mut u64;
 			let mtime = 0x0200_bff8 as *const u64;
 			mtimecmp.write_volatile(mtime.read_volatile() + 10_000_000);
 			asm!("csrw sip, $0" ::"r"(2));

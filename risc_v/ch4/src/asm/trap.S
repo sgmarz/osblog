@@ -99,6 +99,47 @@ m_trap_vector:
 # of this vector.
 .align 4
 s_trap_vector:
+	csrrw	t6, sscratch, t6
+
+	.set 	i, 1
+	.rept	30
+		save_gp	%i
+		.set	i, i+1
+	.endr
+
+	# Save the actual t6 register, which we swapped into
+	# mscratch
+	mv		t5, t6
+	csrr	t6, sscratch
+	save_gp 31, t5
+
+	# Restore the kernel trap frame into mscratch
+	csrw	sscratch, t5
+
+	# csrw	satp, zero
+
+	# Get ready to go into Rust (trap.rs)
+	# We don't want to write into the user's stack or whomever
+	# messed with us here.
+	csrr	a0, sepc
+	csrr	a1, stval
+	csrr	a2, scause
+	ld		a3, 528(t5)
+	csrr	a4, sstatus
+	mv		a5, t5
+	ld		sp, 520(a5)
+	call	s_trap
+
+	csrw	sepc, a0
+	# Now load the trap frame back into t6
+	csrr	t6, sscratch
+
+	# Restore all GP registers
+	.set	i, 1
+	.rept	31
+		load_gp %i
+		.set	i, i+1
+	.endr
 	sret
 
 

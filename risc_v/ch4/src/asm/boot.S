@@ -90,23 +90,23 @@ _start:
 	# 1 << 5    : Supervisor timer interrupt enable (STIE=1 [Enabled])
 	# 1 << 9    : Supervisor external interrupt enable (SEIE=1 [Enabled])
 	# 0xaaa = MEIP/SEIP and MTIP/STIP and MSIP/SSIP
-	li		t2, 0xaaa
-	csrw	mie, t2
+	# Machine's trap vector base address is set to `m_trap_vector`, for
+	# "machine" trap vector.
+	la		t2, m_trap_vector
+	csrw	mtvec, t2
 	# Setting `stvec` (supervisor trap vector) register:
 	# Essentially this is a function pointer, but the last two bits can be 00 or 01
 	# 00        : All exceptions set pc to BASE
 	# 01        : Asynchronous interrupts set pc to BASE + 4 x scause
 	la		t3, s_trap_vector
 	csrw	stvec, t3
-	# Machine's trap vector base address is set to `m_trap_vector`, for
-	# "machine" trap vector.
-	la		t2, m_trap_vector
-	csrw	mtvec, t2
 	# Jump to kmain. We put the MPP = 01 for supervisor mode, so after
 	# mret, we will jump to kmain in supervisor mode.
 	la		t1, kmain
 	csrw	mepc, t1
-
+	li		t2, 0xaaa
+	csrw	mie, t2
+	csrw	sie, t2
 	csrr	a0, mhartid
 	mret
 3:
