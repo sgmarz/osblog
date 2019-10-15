@@ -336,9 +336,9 @@ extern "C" fn kmain() {
 	unsafe {
 		let mtimecmp = 0x0200_4000 as *mut u64;
 		let mtime = 0x0200_bff8 as *const u64;
-		// mtimecmp.write_volatile(mtime.read_volatile() + 10_000_000);
-		let v = 0x0 as *mut u64;
-		v.write_volatile(0);
+		mtimecmp.write_volatile(mtime.read_volatile() + 10_000_000);
+		// let v = 0x0 as *mut u64;
+		// v.write_volatile(0);
 	}
 	// If we get here, the Box, vec, and String should all be freed since
 	// they go out of scope. This calls their "Drop" trait.

@@ -22,17 +22,11 @@ fn m_trap(epc: usize, tval: usize, cause: usize, hart: usize, stat: usize, frame
 	// mode (s_trap).
 	if cause == 0x8000_0000_0000_0007 {
 		unsafe {
-			// let satp: usize = KERNEL_TABLE >> 12 | 8 << 60;
-			// println!("cause: {}", cause & 0xff);
-			// println!("Kernel table = 0x{:x}", KERNEL_TABLE);
-			// asm!("csrw satp, $0" :: "r"(satp) :: "volatile");
 			let addr = 0x0200_4000 + hart * 8;
 			let mtimecmp = addr as *mut u64;
 			let mtime = 0x0200_bff8 as *const u64;
 			mtimecmp.write_volatile(mtime.read_volatile() + 10_000_000);
 			asm!("csrw sip, $0" ::"r"(2));
-			// asm!("sfence.vma" :::: "volatile");
-			// asm!("csrw mie, zero" :::: "volatile");
 		}
 		epc
 	}
