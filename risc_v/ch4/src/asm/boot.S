@@ -15,13 +15,7 @@
 # Execution starts here.
 .global _start
 _start:
-	# Any hardware threads (hart) that are not bootstrapping
-	# need to wait for an IPI
-	csrr	t0, mhartid
-	bnez	t0, 3f
-	# SATP should be zero, but let's make sure
-	csrw	satp, zero
-	
+
 	# Disable linker instruction relaxation for the `la` instruction below.
 	# This disallows the assembler from assuming that `gp` is already initialized.
 	# This causes the value stored in `gp` to be calculated from `pc`.
@@ -29,6 +23,13 @@ _start:
 .option norelax
 	la		gp, _global_pointer
 .option pop
+	csrw	satp, zero
+	# Any hardware threads (hart) that are not bootstrapping
+	# need to wait for an IPI
+	csrr	t0, mhartid
+	bnez	t0, 3f
+	# SATP should be zero, but let's make sure
+
 	# Set all bytes in the BSS section to zero.
 	la 		a0, _bss_start
 	la		a1, _bss_end
@@ -53,15 +54,12 @@ _start:
 	# li		t2, (1 << 1) | (1 << 5) | (1 << 9)
 	li		t2, 0xffff
 	csrw	mideleg, t2
-	li		t3, 0xaaa
-	csrw	mie, t3
+	csrw	medeleg, t2
+	# Do not allow interrupts while running kinit
+	csrw	mie, zero
 	# Machine's exception program counter (MEPC) is set to `kinit`.
 	la		t1, kinit
 	csrw	mepc, t1
-	# Machine's trap vector base address is set to `m_trap_vector`, for
-	# "machine" trap vector.
-	la		t2, m_trap_vector
-	csrw	mtvec, t2
 	# Set the return address to get us into supervisor mode
 	la		ra, 2f
 	# We use mret here so that the mstatus register is properly updated.
@@ -76,10 +74,8 @@ _start:
 	# 1 << 1    : Supervisor's interrupt-enable bit will be set to 1 after sret.
 	# We set the "previous" bits because the sret will write the current bits
 	# with the previous bits.
-	li		t0, (1 << 11)
+	li		t0, (1 << 11) | (1 << 5)
 	csrw	mstatus, t0
-	la		t1, kmain
-	csrw	mepc, t1
 	# Setting `mideleg` (machine interrupt delegate) register:
 	# 1 << 1   : Software interrupt delegated to supervisor mode
 	# 1 << 5   : Timer interrupt delegated to supervisor mode
@@ -93,25 +89,25 @@ _start:
 	# 1 << 1    : Supervisor software interrupt enable (SSIE=1 [Enabled])
 	# 1 << 5    : Supervisor timer interrupt enable (STIE=1 [Enabled])
 	# 1 << 9    : Supervisor external interrupt enable (SEIE=1 [Enabled])
-	# li		t2, (1 << 1) | (1 << 5) | (1 << 9)
-	# csrw	sie, t2
+	# 0xaaa = MEIP/SEIP and MTIP/STIP and MSIP/SSIP
+	li		t2, 0xaaa
+	csrw	mie, t2
 	# Setting `stvec` (supervisor trap vector) register:
 	# Essentially this is a function pointer, but the last two bits can be 00 or 01
 	# 00        : All exceptions set pc to BASE
 	# 01        : Asynchronous interrupts set pc to BASE + 4 x scause
 	la		t3, s_trap_vector
 	csrw	stvec, t3
-	# kinit() is required to return back the SATP value (including MODE) via a0
-	csrw	satp, a0
-	# Force the CPU to take our SATP register.
-	# To be efficient, if the address space identifier (ASID) portion of SATP is already
-	# in cache, it will just grab whatever's in cache. However, that means if we've updated
-	# it in memory, it will be the old table. So, sfence.vma will ensure that the MMU always
-	# grabs a fresh copy of the SATP register and associated tables.
-	sfence.vma
-	# ret
-	# call	kmain
-	# sret will put us in supervisor mode and re-enable interrupts
+	# Machine's trap vector base address is set to `m_trap_vector`, for
+	# "machine" trap vector.
+	la		t2, m_trap_vector
+	csrw	mtvec, t2
+	# Jump to kmain. We put the MPP = 01 for supervisor mode, so after
+	# mret, we will jump to kmain in supervisor mode.
+	la		t1, kmain
+	csrw	mepc, t1
+
+	csrr	a0, mhartid
 	mret
 3:
 
@@ -126,21 +122,24 @@ _start:
 
 	la		sp, _stack_end
 	li		t0, 0x10000
-	csrr	t1, mhartid
-	mul		t0, t0, t1
+	csrr	a0, mhartid
+	mul		t0, t0, a0
 	sub		sp, sp, t0
 
-	li		t0, 0b01 << 11 | (1 << 5)
+	li		t0, 0b11 << 11 | (1 << 7)
 	csrw	mstatus, t0
-	li		t3, 0xaaa
+	# Allow for MSIP (Software interrupt)
+	li		t3, (1 << 3)
 	csrw	mie, t3
-	# Machine's exception program counter (MEPC) is set to `kinit`.
-	la		t1, 4f
+	# Machine's exception program counter (MEPC) is set to the waiting loop.
+	la		t1, kinit_hart
 	csrw	mepc, t1
 	# Machine's trap vector base address is set to `m_trap_vector`, for
 	# "machine" trap vector.
 	la		t2, m_trap_vector
 	csrw	mtvec, t2
+
+	la		ra, 4f
 	# We use mret here so that the mstatus register is properly updated.
 	mret
 
