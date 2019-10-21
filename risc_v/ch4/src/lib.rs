@@ -260,17 +260,17 @@ extern "C" fn kinit() {
 		cpu::sscratch_write(cpu::mscratch_read());
 		cpu::KERNEL_TRAP_FRAME[0].satp = satp_value;
 		// Move the stack pointer to the very bottom.
-		cpu::KERNEL_TRAP_FRAME[0].trap_stack = page::zalloc(1).add(4096);
+		cpu::KERNEL_TRAP_FRAME[0].trap_stack = page::zalloc(1).add(page::PAGE_SIZE);
 		id_map_range(
 	            &mut root,
-	            cpu::KERNEL_TRAP_FRAME[0].trap_stack as usize - 4096,
-	            cpu::KERNEL_TRAP_FRAME[0].trap_stack as usize,
+	            cpu::KERNEL_TRAP_FRAME[0].trap_stack.sub(page::PAGE_SIZE) as usize,
+	            cpu::KERNEL_TRAP_FRAME[0].trap_stack as usize + 1,
 	            page::EntryBits::ReadWrite.val(),
 		);
 		id_map_range(
 				&mut root,
 				cpu::mscratch_read(),
-				cpu::mscratch_read() | 0xfff,
+				cpu::mscratch_read() + core::mem::size_of::<cpu::KernelTrapFrame>(),
 				page::EntryBits::ReadWrite.val(),
 		);
 		let p = cpu::KERNEL_TRAP_FRAME[0].trap_stack as usize;
@@ -300,6 +300,8 @@ extern "C" fn kinit_hart(hartid: usize) {
 							as *mut cpu::KernelTrapFrame)
 							as usize,
 		);
+		// Copy the same mscratch over to the supervisor version of the same
+		// register.
 		cpu::sscratch_write(cpu::mscratch_read());
 		cpu::KERNEL_TRAP_FRAME[hartid].hartid = hartid;
 		// cpu::KERNEL_TRAP_FRAME[hartid].satp = cpu::KERNEL_TRAP_FRAME[0].satp;
@@ -337,8 +339,8 @@ extern "C" fn kmain() {
 		let mtimecmp = 0x0200_4000 as *mut u64;
 		let mtime = 0x0200_bff8 as *const u64;
 		mtimecmp.write_volatile(mtime.read_volatile() + 10_000_000);
-		// let v = 0x0 as *mut u64;
-		// v.write_volatile(0);
+		let v = 0x0 as *mut u64;
+		v.write_volatile(0);
 	}
 	// If we get here, the Box, vec, and String should all be freed since
 	// they go out of scope. This calls their "Drop" trait.

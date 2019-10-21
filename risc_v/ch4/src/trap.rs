@@ -9,7 +9,7 @@ use crate::cpu::KernelTrapFrame;
 #[no_mangle]
 extern "C"
 fn s_trap(epc: usize, tval: usize, cause: usize, hart: usize, stat: usize, frame: &mut KernelTrapFrame) -> usize {
-	println!("STRAP (cause: 0x{:x} @ 0x{:x}) [cpu: {}]", cause, epc, hart);
+	println!("STRAP (cause: {} @ 0x{:x}) [cpu: {}]", cause, epc, hart);
 	epc  + 4
 }
 

@@ -114,6 +114,21 @@ pub fn sscratch_swap(to: usize) -> usize {
 	}
 }
 
+pub fn sepc_write(val: usize) {
+	unsafe {
+		asm!("csrw sepc, $0" :: "r"(val));
+	}
+}
+
+pub fn sepc_read() -> usize {
+	unsafe {
+		let rval;
+		asm!("csrr $0, sepc" :"=r"(rval));
+		rval
+	}
+}
+
+
 pub fn satp_write(val: usize) {
 	unsafe {
 		asm!("csrw satp, $0" :: "r"(val));

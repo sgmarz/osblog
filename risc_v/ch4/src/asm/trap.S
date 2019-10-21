@@ -101,6 +101,15 @@ m_trap_vector:
 s_trap_vector:
 	csrrw	t6, sscratch, t6
 
+	# addi	sp, sp, -16
+	# sd		a0, 0(sp)
+	# sd		a1, 8(sp)
+
+	# ld		a1, 512(t6)
+
+	# csrw	satp, a1
+	# switch to kernel's satp
+
 	.set 	i, 1
 	.rept	30
 		save_gp	%i
@@ -115,8 +124,6 @@ s_trap_vector:
 
 	# Restore the kernel trap frame into mscratch
 	csrw	sscratch, t5
-
-	# csrw	satp, zero
 
 	# Get ready to go into Rust (trap.rs)
 	# We don't want to write into the user's stack or whomever
