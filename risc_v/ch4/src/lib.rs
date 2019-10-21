@@ -264,7 +264,7 @@ extern "C" fn kinit() {
 		id_map_range(
 	            &mut root,
 	            cpu::KERNEL_TRAP_FRAME[0].trap_stack.sub(page::PAGE_SIZE) as usize,
-	            cpu::KERNEL_TRAP_FRAME[0].trap_stack as usize + 1,
+	            cpu::KERNEL_TRAP_FRAME[0].trap_stack as usize,
 	            page::EntryBits::ReadWrite.val(),
 		);
 		id_map_range(
@@ -273,7 +273,7 @@ extern "C" fn kinit() {
 				cpu::mscratch_read() + core::mem::size_of::<cpu::KernelTrapFrame>(),
 				page::EntryBits::ReadWrite.val(),
 		);
-		let p = cpu::KERNEL_TRAP_FRAME[0].trap_stack as usize;
+		let p = cpu::KERNEL_TRAP_FRAME[0].trap_stack as usize - 1;
 		let m = page::virt_to_phys(&root, p).unwrap_or(0);
 		println!("Walk 0x{:x} = 0x{:x}", p, m);
 	}
