@@ -143,9 +143,14 @@ pub fn satp_read() -> usize {
 	}
 }
 
-pub fn satp_fence() {
+pub fn satp_fence(vaddr: usize, asid: usize) {
 	unsafe {
-		asm!("sfence.vma");
+		asm!("sfence.vma $0, $1" :: "r"(vaddr), "r"(asid));
 	}
 }
 
+pub fn satp_fence_asid(asid: usize) {
+	unsafe {
+		asm!("sfence.vma zero, $0" :: "r"(asid));
+	}
+}

@@ -37,12 +37,13 @@ m_trap_vector:
 	csrrw	t6, mscratch, t6
 	# csrrw will atomically swap t6 into mscratch and the old
 	# value of mscratch into t6. This is nice because we just
-	# switched values and didn't destroy any value.
+	# switched values and didn't destroy anything -- all atomically!
 	# in cpu.rs we have a structure of:
 	#  32 gp regs		0
 	#  32 fp regs		256
 	#  SATP register	512
 	#  Trap stack       520
+	#  CPU HARTID		528
 	# We use t6 as the temporary register because it is the very
 	# bottom register (x31)
 	.set 	i, 1

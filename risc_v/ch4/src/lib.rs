@@ -159,6 +159,7 @@ extern "C" fn kinit() {
 	             kheap_head + total_pages * page::PAGE_SIZE,
 	             page::EntryBits::ReadWrite.val(),
 	);
+	// Using statics is inherently unsafe.
 	unsafe {
 		// Map heap descriptors
 		let num_pages = HEAP_SIZE / page::PAGE_SIZE;
@@ -237,7 +238,6 @@ extern "C" fn kinit() {
 	             0x0c20_8000,
 	             page::EntryBits::ReadWrite.val(),
 	);
-	page::print_page_allocations();
 	// When we return from here, we'll go back to boot.S and switch into
 	// supervisor mode We will return the SATP register to be written when
 	// we return. root_u is the root page table's address. When stored into
@@ -247,6 +247,7 @@ extern "C" fn kinit() {
 	// 0 = Bare (no translation)
 	// 8 = Sv39
 	// 9 = Sv48
+	// build_satp has these parameters: mode, asid, page table address.
 	let satp_value = cpu::build_satp(8, 0, root_u);
 	unsafe {
 		// We have to store the kernel's table. The tables will be moved
@@ -259,7 +260,10 @@ extern "C" fn kinit() {
 		);
 		cpu::sscratch_write(cpu::mscratch_read());
 		cpu::KERNEL_TRAP_FRAME[0].satp = satp_value;
-		// Move the stack pointer to the very bottom.
+		// Move the stack pointer to the very bottom. The stack is actually in a
+		// non-mapped page. The stack is decrement-before push and increment after
+		// pop. Therefore, the stack will be allocated (decremented)
+		// before it is stored.
 		cpu::KERNEL_TRAP_FRAME[0].trap_stack = page::zalloc(1).add(page::PAGE_SIZE);
 		id_map_range(
 	            &mut root,
@@ -267,12 +271,14 @@ extern "C" fn kinit() {
 	            cpu::KERNEL_TRAP_FRAME[0].trap_stack as usize,
 	            page::EntryBits::ReadWrite.val(),
 		);
+		// The trap frame itself is stored in the mscratch register.
 		id_map_range(
 				&mut root,
 				cpu::mscratch_read(),
 				cpu::mscratch_read() + core::mem::size_of::<cpu::KernelTrapFrame>(),
 				page::EntryBits::ReadWrite.val(),
 		);
+		page::print_page_allocations();
 		let p = cpu::KERNEL_TRAP_FRAME[0].trap_stack as usize - 1;
 		let m = page::virt_to_phys(&root, p).unwrap_or(0);
 		println!("Walk 0x{:x} = 0x{:x}", p, m);
@@ -285,7 +291,7 @@ extern "C" fn kinit() {
 	println!("Setting 0x{:x}", satp_value);
 	println!("Scratch reg = 0x{:x}", cpu::mscratch_read());
 	cpu::satp_write(satp_value);
-	cpu::satp_fence();
+	cpu::satp_fence_asid(0);
 }
 
 #[no_mangle]
@@ -304,6 +310,7 @@ extern "C" fn kinit_hart(hartid: usize) {
 		// register.
 		cpu::sscratch_write(cpu::mscratch_read());
 		cpu::KERNEL_TRAP_FRAME[hartid].hartid = hartid;
+		// We can't do the following until zalloc() is locked, but we don't have locks, yet :(
 		// cpu::KERNEL_TRAP_FRAME[hartid].satp = cpu::KERNEL_TRAP_FRAME[0].satp;
 		// cpu::KERNEL_TRAP_FRAME[hartid].trap_stack = page::zalloc(1);
 	}
