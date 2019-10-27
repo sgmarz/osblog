@@ -68,13 +68,13 @@ _start:
 	# We set the return address (ra above) to this label. When kinit() is finished
 	# in Rust, it will return here.
 
-	# Setting `sstatus` (supervisor status) register:
-	# 1 << 8    : Supervisor's previous protection mode is 1 (SPP=1 [Supervisor]).
-	# 1 << 5    : Supervisor's previous interrupt-enable bit is 1 (SPIE=1 [Enabled]).
-	# 1 << 1    : Supervisor's interrupt-enable bit will be set to 1 after sret.
+	# Setting `mstatus` (supervisor status) register:
+	# 0b01 << 11 : Previous protection mode is 1 (MPP=01 [Supervisor]).
+	# 1 << 7     : Previous machine interrupt-enable bit is 1 (MPIE=1 [Enabled])
+	# 1 << 5     : Previous interrupt-enable bit is 1 (SPIE=1 [Enabled]).
 	# We set the "previous" bits because the sret will write the current bits
 	# with the previous bits.
-	li		t0, (1 << 11) | (1 << 5)
+	li		t0, (0b01 << 11) | (1 << 7) | (1 << 5)
 	csrw	mstatus, t0
 	# Setting `mideleg` (machine interrupt delegate) register:
 	# 1 << 1   : Software interrupt delegated to supervisor mode

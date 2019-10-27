@@ -248,7 +248,7 @@ extern "C" fn kinit() {
 	// 8 = Sv39
 	// 9 = Sv48
 	// build_satp has these parameters: mode, asid, page table address.
-	let satp_value = cpu::build_satp(8, 0, root_u);
+	let satp_value = cpu::build_satp(cpu::SatpMode::Sv39, 0, root_u);
 	unsafe {
 		// We have to store the kernel's table. The tables will be moved
 		// back and forth between the kernel's table and user

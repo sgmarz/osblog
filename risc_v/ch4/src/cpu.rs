@@ -6,6 +6,13 @@
 
 use core::ptr::null_mut;
 
+#[repr(usize)]
+pub enum SatpMode {
+	Off = 0,
+	Sv39 = 8,
+	Sv48 = 9
+}
+
 #[repr(C)]
 #[derive(Clone,Copy)]
 pub struct KernelTrapFrame {
@@ -30,8 +37,8 @@ impl KernelTrapFrame {
 
 pub static mut KERNEL_TRAP_FRAME: [KernelTrapFrame; 8] = [KernelTrapFrame::zero(); 8];
 
-pub const fn build_satp(mode: usize, asid: usize, addr: usize) -> usize {
-	(mode << 60) | ((asid & 0xffff) << 44) | ((addr >> 12) & 0xff_ffff_ffff)
+pub const fn build_satp(mode: SatpMode, asid: usize, addr: usize) -> usize {
+	(mode as usize) << 60 | (asid & 0xffff) << 44 | (addr >> 12) & 0xff_ffff_ffff
 }
 
 pub fn mhartid_read() -> usize {
