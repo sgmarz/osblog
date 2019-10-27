@@ -254,29 +254,33 @@ extern "C" fn kinit() {
 		// back and forth between the kernel's table and user
 		// applicatons' tables.
 		cpu::mscratch_write(
-							(&mut cpu::KERNEL_TRAP_FRAME[0]
-							as *mut cpu::KernelTrapFrame)
-							as usize,
+		                    (&mut cpu::KERNEL_TRAP_FRAME[0]
+		                     as *mut cpu::KernelTrapFrame)
+		                    as usize,
 		);
 		cpu::sscratch_write(cpu::mscratch_read());
 		cpu::KERNEL_TRAP_FRAME[0].satp = satp_value;
-		// Move the stack pointer to the very bottom. The stack is actually in a
-		// non-mapped page. The stack is decrement-before push and increment after
-		// pop. Therefore, the stack will be allocated (decremented)
-		// before it is stored.
-		cpu::KERNEL_TRAP_FRAME[0].trap_stack = page::zalloc(1).add(page::PAGE_SIZE);
+		// Move the stack pointer to the very bottom. The stack is
+		// actually in a non-mapped page. The stack is decrement-before
+		// push and increment after pop. Therefore, the stack will be
+		// allocated (decremented) before it is stored.
+		cpu::KERNEL_TRAP_FRAME[0].trap_stack =
+			page::zalloc(1).add(page::PAGE_SIZE);
 		id_map_range(
-	            &mut root,
-	            cpu::KERNEL_TRAP_FRAME[0].trap_stack.sub(page::PAGE_SIZE) as usize,
-	            cpu::KERNEL_TRAP_FRAME[0].trap_stack as usize,
-	            page::EntryBits::ReadWrite.val(),
+		             &mut root,
+		             cpu::KERNEL_TRAP_FRAME[0].trap_stack
+		                                      .sub(page::PAGE_SIZE,)
+		             as usize,
+		             cpu::KERNEL_TRAP_FRAME[0].trap_stack as usize,
+		             page::EntryBits::ReadWrite.val(),
 		);
 		// The trap frame itself is stored in the mscratch register.
 		id_map_range(
-				&mut root,
-				cpu::mscratch_read(),
-				cpu::mscratch_read() + core::mem::size_of::<cpu::KernelTrapFrame>(),
-				page::EntryBits::ReadWrite.val(),
+		             &mut root,
+		             cpu::mscratch_read(),
+		             cpu::mscratch_read()
+		             + core::mem::size_of::<cpu::KernelTrapFrame,>(),
+		             page::EntryBits::ReadWrite.val(),
 		);
 		page::print_page_allocations();
 		let p = cpu::KERNEL_TRAP_FRAME[0].trap_stack as usize - 1;
@@ -302,16 +306,17 @@ extern "C" fn kinit_hart(hartid: usize) {
 		// back and forth between the kernel's table and user
 		// applicatons' tables.
 		cpu::mscratch_write(
-							(&mut cpu::KERNEL_TRAP_FRAME[hartid]
-							as *mut cpu::KernelTrapFrame)
-							as usize,
+		                    (&mut cpu::KERNEL_TRAP_FRAME[hartid]
+		                     as *mut cpu::KernelTrapFrame)
+		                    as usize,
 		);
-		// Copy the same mscratch over to the supervisor version of the same
-		// register.
+		// Copy the same mscratch over to the supervisor version of the
+		// same register.
 		cpu::sscratch_write(cpu::mscratch_read());
 		cpu::KERNEL_TRAP_FRAME[hartid].hartid = hartid;
-		// We can't do the following until zalloc() is locked, but we don't have locks, yet :(
-		// cpu::KERNEL_TRAP_FRAME[hartid].satp = cpu::KERNEL_TRAP_FRAME[0].satp;
+		// We can't do the following until zalloc() is locked, but we
+		// don't have locks, yet :( cpu::KERNEL_TRAP_FRAME[hartid].satp
+		// = cpu::KERNEL_TRAP_FRAME[0].satp;
 		// cpu::KERNEL_TRAP_FRAME[hartid].trap_stack = page::zalloc(1);
 	}
 }

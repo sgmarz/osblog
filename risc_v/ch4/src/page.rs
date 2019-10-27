@@ -398,7 +398,12 @@ impl Table {
 ///       The bits MUST include one or more of the following:
 ///          Read, Write, Execute
 ///       The valid bit automatically gets added.
-pub fn map(root: &mut Table, vaddr: usize, paddr: usize, bits: i64, level: usize) {
+pub fn map(root: &mut Table,
+           vaddr: usize,
+           paddr: usize,
+           bits: i64,
+           level: usize)
+{
 	// Make sure that Read, Write, or Execute have been provided
 	// otherwise, we'll leak memory and always create a page fault.
 	assert!(bits & 0xe != 0);
@@ -462,9 +467,9 @@ pub fn map(root: &mut Table, vaddr: usize, paddr: usize, bits: i64, level: usize
 				EntryBits::Valid.val() |  // Valid bit
 				EntryBits::Dirty.val() |  // Some machines require this to =1
 				EntryBits::Access.val()   // Just like dirty, some machines require this
-				;   
-			 // Set the entry. V should be set to the correct pointer by the loop
-			 // above.
+				;
+	// Set the entry. V should be set to the correct pointer by the loop
+	// above.
 	v.set_entry(entry);
 }
 
@@ -482,7 +487,8 @@ pub fn unmap(root: &mut Table) {
 			// This is a valid entry, so drill down and free.
 			let memaddr_lv1 = (entry_lv2.get_entry() & !0x3ff) << 2;
 			let table_lv1 = unsafe {
-				// Make table_lv1 a mutable reference instead of a pointer.
+				// Make table_lv1 a mutable reference instead of
+				// a pointer.
 				(memaddr_lv1 as *mut Table).as_mut().unwrap()
 			};
 			for lv1 in 0..Table::len() {

@@ -58,7 +58,6 @@ static mut KMEM_HEAD: *mut AllocList = null_mut();
 static mut KMEM_ALLOC: usize = 0;
 static mut KMEM_PAGE_TABLE: *mut Table = null_mut();
 
-
 // These functions are safe helpers around an unsafe
 // operation.
 pub fn get_head() -> *mut u8 {

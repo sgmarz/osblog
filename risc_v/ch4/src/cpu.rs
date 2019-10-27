@@ -10,35 +10,36 @@ use core::ptr::null_mut;
 pub enum SatpMode {
 	Off = 0,
 	Sv39 = 8,
-	Sv48 = 9
+	Sv48 = 9,
 }
 
 #[repr(C)]
-#[derive(Clone,Copy)]
+#[derive(Clone, Copy)]
 pub struct KernelTrapFrame {
-	pub regs: [usize; 32],		// 0 - 255
-	pub fregs: [usize; 32],		// 256 - 511
-	pub satp: usize,			// 512 - 519
-	pub trap_stack: *mut u8,    // 520
-	pub hartid: usize,			// 528
+	pub regs:       [usize; 32], // 0 - 255
+	pub fregs:      [usize; 32], // 256 - 511
+	pub satp:       usize,       // 512 - 519
+	pub trap_stack: *mut u8,     // 520
+	pub hartid:     usize,       // 528
 }
 
 impl KernelTrapFrame {
 	pub const fn zero() -> Self {
-		KernelTrapFrame {
-			regs: [0; 32],
-			fregs: [0; 32],
-			satp: 0,
-			trap_stack: null_mut(),
-			hartid: 0
-		}
+		KernelTrapFrame { regs:       [0; 32],
+		                  fregs:      [0; 32],
+		                  satp:       0,
+		                  trap_stack: null_mut(),
+		                  hartid:     0, }
 	}
 }
 
-pub static mut KERNEL_TRAP_FRAME: [KernelTrapFrame; 8] = [KernelTrapFrame::zero(); 8];
+pub static mut KERNEL_TRAP_FRAME: [KernelTrapFrame; 8] =
+	[KernelTrapFrame::zero(); 8];
 
 pub const fn build_satp(mode: SatpMode, asid: usize, addr: usize) -> usize {
-	(mode as usize) << 60 | (asid & 0xffff) << 44 | (addr >> 12) & 0xff_ffff_ffff
+	(mode as usize) << 60
+	| (asid & 0xffff) << 44
+	| (addr >> 12) & 0xff_ffff_ffff
 }
 
 pub fn mhartid_read() -> usize {
@@ -134,7 +135,6 @@ pub fn sepc_read() -> usize {
 		rval
 	}
 }
-
 
 pub fn satp_write(val: usize) {
 	unsafe {
