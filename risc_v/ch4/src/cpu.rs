@@ -15,7 +15,7 @@ pub enum SatpMode {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct KernelTrapFrame {
+pub struct TrapFrame {
 	pub regs:       [usize; 32], // 0 - 255
 	pub fregs:      [usize; 32], // 256 - 511
 	pub satp:       usize,       // 512 - 519
@@ -23,18 +23,18 @@ pub struct KernelTrapFrame {
 	pub hartid:     usize,       // 528
 }
 
-impl KernelTrapFrame {
+impl TrapFrame {
 	pub const fn zero() -> Self {
-		KernelTrapFrame { regs:       [0; 32],
-		                  fregs:      [0; 32],
-		                  satp:       0,
-		                  trap_stack: null_mut(),
-		                  hartid:     0, }
+		TrapFrame { regs:       [0; 32],
+		            fregs:      [0; 32],
+		            satp:       0,
+		            trap_stack: null_mut(),
+		             hartid:     0, }
 	}
 }
 
-pub static mut KERNEL_TRAP_FRAME: [KernelTrapFrame; 8] =
-	[KernelTrapFrame::zero(); 8];
+pub static mut KERNEL_TRAP_FRAME: [TrapFrame; 8] =
+	[TrapFrame::zero(); 8];
 
 pub const fn build_satp(mode: SatpMode, asid: usize, addr: usize) -> usize {
 	(mode as usize) << 60

@@ -100,15 +100,19 @@ m_trap_vector:
 # of this vector.
 .align 4
 s_trap_vector:
+	# Turn off the MMU. Since user processes will trap here,
+	# we need to get back to the kernel MMU. However, with this
+	# being off, we will deal with physical addresses.
+	csrw	satp, zero
 	csrrw	t6, sscratch, t6
 
 	# addi	sp, sp, -16
 	# sd		a0, 0(sp)
 	# sd		a1, 8(sp)
 
-	# ld		a1, 512(t6)
+	ld		a1, 512(t6)
 
-	# csrw	satp, a1
+	csrw	satp, a1
 	# switch to kernel's satp
 
 	.set 	i, 1

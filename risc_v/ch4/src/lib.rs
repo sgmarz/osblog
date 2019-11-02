@@ -252,10 +252,11 @@ extern "C" fn kinit() {
 	unsafe {
 		// We have to store the kernel's table. The tables will be moved
 		// back and forth between the kernel's table and user
-		// applicatons' tables.
+		// applicatons' tables. Note that we're writing the physical address
+		// of the trap frame.
 		cpu::mscratch_write(
 		                    (&mut cpu::KERNEL_TRAP_FRAME[0]
-		                     as *mut cpu::KernelTrapFrame)
+		                     as *mut cpu::TrapFrame)
 		                    as usize,
 		);
 		cpu::sscratch_write(cpu::mscratch_read());
@@ -279,7 +280,7 @@ extern "C" fn kinit() {
 		             &mut root,
 		             cpu::mscratch_read(),
 		             cpu::mscratch_read()
-		             + core::mem::size_of::<cpu::KernelTrapFrame,>(),
+		             + core::mem::size_of::<cpu::TrapFrame,>(),
 		             page::EntryBits::ReadWrite.val(),
 		);
 		page::print_page_allocations();
@@ -307,7 +308,7 @@ extern "C" fn kinit_hart(hartid: usize) {
 		// applicatons' tables.
 		cpu::mscratch_write(
 		                    (&mut cpu::KERNEL_TRAP_FRAME[hartid]
-		                     as *mut cpu::KernelTrapFrame)
+		                     as *mut cpu::TrapFrame)
 		                    as usize,
 		);
 		// Copy the same mscratch over to the supervisor version of the
@@ -347,10 +348,17 @@ extern "C" fn kmain() {
 	}
 	println!("\n\nEverything should now be free:");
 	kmem::print_table();
+
 	unsafe {
+		// Set the next machine timer to fire.
 		let mtimecmp = 0x0200_4000 as *mut u64;
 		let mtime = 0x0200_bff8 as *const u64;
+		// The frequency given by QEMU is 10_000_000 Hz, so this sets
+		// the next interrupt to fire one second from now.
 		mtimecmp.write_volatile(mtime.read_volatile() + 10_000_000);
+
+		// Let's cause a page fault and see what happens. This should trap
+		// to s_trap under trap.rs
 		let v = 0x0 as *mut u64;
 		v.write_volatile(0);
 	}

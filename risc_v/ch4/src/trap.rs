@@ -3,7 +3,7 @@
 // Stephen Marz
 // 10 October 2019
 
-use crate::cpu::KernelTrapFrame;
+use crate::cpu::TrapFrame;
 
 #[no_mangle]
 extern "C" fn s_trap(epc: usize,
@@ -11,10 +11,14 @@ extern "C" fn s_trap(epc: usize,
                      cause: usize,
                      hart: usize,
                      stat: usize,
-                     frame: &mut KernelTrapFrame)
+                     frame: &mut TrapFrame)
                      -> usize
 {
+	// Harts in supervisor mode with delegated traps will come here.
+	// Right now, these are exceptions.
 	println!("STRAP (cause: {} @ 0x{:x}) [cpu: {}]", cause, epc, hart);
+	// If this is an exception, we will skip the faulting instruction. This is
+	// dangerous, but we don't actually handle anything, yet.
 	epc + 4
 }
 
@@ -24,13 +28,13 @@ extern "C" fn m_trap(epc: usize,
                      cause: usize,
                      hart: usize,
                      stat: usize,
-                     frame: &mut KernelTrapFrame)
+                     frame: &mut TrapFrame)
                      -> usize
 {
-	// println!("MTRAP ({}) (cause: 0x{:x} @ 0x{:x}) [0x{:x}]", hart, cause,
-	// epc, stat); println!("Stack = {:p}", &frame.trap_stack);
 	// Only machine timers should come here. Everything else should be
-	// brought to supervisor mode (s_trap).
+	// brought to supervisor mode (s_trap). However, the software interrupt
+	// and timer interrupts will trap to machine mode. Below (cause = 7) is
+	// a timer interrupt.
 	if cause == 0x8000_0000_0000_0007 {
 		unsafe {
 			let addr = 0x0200_4000 + hart * 8;
@@ -40,7 +44,6 @@ extern "C" fn m_trap(epc: usize,
 			                        mtime.read_volatile()
 			                        + 10_000_000,
 			);
-			asm!("csrw sip, $0" ::"r"(2));
 		}
 		epc
 	}
