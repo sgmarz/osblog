@@ -94,66 +94,6 @@ m_trap_vector:
 
 	mret
 
-.global s_trap_vector
-# This must be aligned by 4 since the last two bits
-# of the mtvec register do not contribute to the address
-# of this vector.
-.align 4
-s_trap_vector:
-	# Turn off the MMU. Since user processes will trap here,
-	# we need to get back to the kernel MMU. However, with this
-	# being off, we will deal with physical addresses.
-	csrw	satp, zero
-	csrrw	t6, sscratch, t6
-
-	# addi	sp, sp, -16
-	# sd		a0, 0(sp)
-	# sd		a1, 8(sp)
-
-	ld		a1, 512(t6)
-
-	csrw	satp, a1
-	# switch to kernel's satp
-
-	.set 	i, 1
-	.rept	30
-		save_gp	%i
-		.set	i, i+1
-	.endr
-
-	# Save the actual t6 register, which we swapped into
-	# mscratch
-	mv		t5, t6
-	csrr	t6, sscratch
-	save_gp 31, t5
-
-	# Restore the kernel trap frame into mscratch
-	csrw	sscratch, t5
-
-	# Get ready to go into Rust (trap.rs)
-	# We don't want to write into the user's stack or whomever
-	# messed with us here.
-	csrr	a0, sepc
-	csrr	a1, stval
-	csrr	a2, scause
-	ld		a3, 528(t5)
-	csrr	a4, sstatus
-	mv		a5, t5
-	ld		sp, 520(a5)
-	call	s_trap
-
-	csrw	sepc, a0
-	# Now load the trap frame back into t6
-	csrr	t6, sscratch
-
-	# Restore all GP registers
-	.set	i, 1
-	.rept	31
-		load_gp %i
-		.set	i, i+1
-	.endr
-	sret
-
 
 .global make_syscall
 make_syscall:
