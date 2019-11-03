@@ -103,7 +103,9 @@ impl Page {
 /// 4. Others
 pub fn init() {
 	unsafe {
+		// let desc_per_page = PAGE_SIZE / size_of::<Page>();
 		let num_pages = HEAP_SIZE / PAGE_SIZE;
+		// let num_desc_pages = num_pages / desc_per_page;
 		let ptr = HEAP_START as *mut Page;
 		// Clear all pages to make sure that they aren't accidentally
 		// taken
@@ -117,7 +119,7 @@ pub fn init() {
 		// & !(PAGE_SIZE - 1);
 		ALLOC_START = align_val(
 		                        HEAP_START
-		                        + num_pages * size_of::<Page,>(),
+		                        + num_pages * size_of::<Page>(),
 		                        PAGE_ORDER,
 		);
 	}

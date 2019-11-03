@@ -6,23 +6,6 @@
 use crate::cpu::TrapFrame;
 
 #[no_mangle]
-extern "C" fn s_trap(epc: usize,
-                     tval: usize,
-                     cause: usize,
-                     hart: usize,
-                     stat: usize,
-                     frame: &mut TrapFrame)
-                     -> usize
-{
-	// Harts in supervisor mode with delegated traps will come here.
-	// Right now, these are exceptions.
-	println!("STRAP (cause: {} @ 0x{:x}) [cpu: {}]", cause, epc, hart);
-	// If this is an exception, we will skip the faulting instruction. This is
-	// dangerous, but we don't actually handle anything, yet.
-	epc + 4
-}
-
-#[no_mangle]
 extern "C" fn m_trap(epc: usize,
                      tval: usize,
                      cause: usize,

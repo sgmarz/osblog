@@ -48,11 +48,6 @@ _start:
 	# 0b01 << 11: Machine's previous protection mode is 2 (MPP=2).
 	li		t0, 0b11 << 11
 	csrw	mstatus, t0
-	# li		t2, (1 << 1) | (1 << 5) | (1 << 9)
-	li		t2, 0xffff
-	# Exceptions are synchronous. We're going to delegate these to supervisor
-	# mode.
-	csrw	medeleg, t2
 	# Do not allow interrupts while running kinit
 	csrw	mie, zero
 	# Machine's exception program counter (MEPC) is set to `kinit`.
@@ -82,8 +77,8 @@ _start:
 	# Essentially this is a function pointer, but the last two bits can be 00 or 01
 	# 00        : All exceptions set pc to BASE
 	# 01        : Asynchronous interrupts set pc to BASE + 4 x scause
-	la		t3, s_trap_vector
-	csrw	stvec, t3
+	# la		t3, s_trap_vector
+	# csrw	stvec, t3
 	# Jump to kmain. We put the MPP = 01 for supervisor mode, so after
 	# mret, we will jump to kmain in supervisor mode.
 	la		t1, kmain
@@ -94,7 +89,7 @@ _start:
 	# 1 << 5    : Supervisor timer interrupt enable (STIE=1 [Enabled])
 	# 1 << 9    : Supervisor external interrupt enable (SEIE=1 [Enabled])
 	# 0xaaa = MEIP/SEIP and MTIP/STIP and MSIP/SSIP
-	li		t2, 0xaaa
+	li		t2, 0x888
 	csrw	mie, t2
 	mret
 3:
