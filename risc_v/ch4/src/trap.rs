@@ -18,22 +18,49 @@ extern "C" fn m_trap(epc: usize,
 	// brought to supervisor mode (s_trap). However, the software interrupt
 	// and timer interrupts will trap to machine mode. Below (cause = 7) is
 	// a timer interrupt.
-	if cause == 0x8000_0000_0000_0007 {
-		unsafe {
-			let addr = 0x0200_4000 + hart * 8;
-			let mtimecmp = addr as *mut u64;
-			let mtime = 0x0200_bff8 as *const u64;
-			mtimecmp.write_volatile(
-			                        mtime.read_volatile()
-			                        + 10_000_000,
-			);
+	let is_async = {
+		if cause >> 63 & 1 == 1 {
+			true
 		}
-		epc
+		else {
+			false
+		}
+	};
+	let cause_num = cause & 0xfff;
+	if is_async {
+		// Asynchronous trap
+		match cause_num {
+			7 => {
+				// Machine timer
+				epc
+			},
+			_ => {
+				panic!("Unhandled sync trap CPU#{} -> {}\n", hart, cause_num);
+			}
+		}
 	}
 	else {
-		panic!(
-		       "Non-timer machine interrupt: 0x{:x} on hart {}",
-		       cause, hart
-		)
+		// Synchronous trap
+		match cause_num {
+			// Page faults
+			12 => {
+				// Instruction page fault
+				println!("Instruction page fault CPU#{} -> 0x{:08x}: 0x{:08x}", hart, epc, tval);
+				epc + 4
+			},
+			13 => {
+				// Load page fault
+				println!("Load page fault CPU#{} -> 0x{:08x}: 0x{:08x}", hart, epc, tval);
+				epc + 4
+			},
+			15 => {
+				// Store page fault
+				println!("Store page fault CPU#{} -> 0x{:08x}: 0x{:08x}", hart, epc, tval);
+				epc + 4
+			},
+			_ => {
+				panic!("Unhandled async trap CPU#{} -> {}\n", hart, cause_num);
+			}
+		}
 	}
 }
