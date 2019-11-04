@@ -14,10 +14,9 @@ extern "C" fn m_trap(epc: usize,
                      frame: &mut TrapFrame)
                      -> usize
 {
-	// Only machine timers should come here. Everything else should be
-	// brought to supervisor mode (s_trap). However, the software interrupt
-	// and timer interrupts will trap to machine mode. Below (cause = 7) is
-	// a timer interrupt.
+	// We're going to handle all traps in machine mode. RISC-V lets
+	// us delegate to supervisor mode, but switching out SATP (virtual memory)
+	// gets hairy.
 	let is_async = {
 		if cause >> 63 & 1 == 1 {
 			true
@@ -29,7 +28,7 @@ extern "C" fn m_trap(epc: usize,
 	// The cause contains the type of trap (sync, async) as well as the cause
 	// number. So, here we narrow down just the cause number.
 	let cause_num = cause & 0xfff;
-	if is_async {
+	let return_pc = if is_async {
 		// Asynchronous trap
 		match cause_num {
 			3 => {
@@ -77,4 +76,6 @@ extern "C" fn m_trap(epc: usize,
 			}
 		}
 	}
+	// Finally, return the updated program counter
+	return_pc
 }
