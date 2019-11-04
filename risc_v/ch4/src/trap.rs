@@ -62,10 +62,12 @@ extern "C" fn m_trap(epc: usize,
 			},
 			8 => {
 				// Environment (system) call from User mode
+				println!("E-call from User mode! CPU#{} -> 0x{:08x}", hart, epc);
 				epc + 4
 			},
 			9 => {
 				// Environment (system) call from Supervisor mode
+				println!("E-call from Supervisor mode! CPU#{} -> 0x{:08x}", hart, epc);
 				epc + 4
 			},
 			11 => {
