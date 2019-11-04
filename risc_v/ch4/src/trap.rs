@@ -34,7 +34,7 @@ extern "C" fn m_trap(epc: usize,
 		match cause_num {
 			3 => {
 				// Machine software
-			}.
+			},
 			7 => {
 				// Machine timer
 				epc
