@@ -396,5 +396,6 @@ extern "C" fn kmain() {
 pub mod cpu;
 pub mod kmem;
 pub mod page;
+pub mod plic;
 pub mod trap;
 pub mod uart;
