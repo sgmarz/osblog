@@ -10,7 +10,7 @@ extern "C" fn m_trap(epc: usize,
                      tval: usize,
                      cause: usize,
                      hart: usize,
-                     stat: usize,
+                     status: usize,
                      frame: &mut TrapFrame)
                      -> usize
 {
