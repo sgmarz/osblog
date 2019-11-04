@@ -75,7 +75,7 @@ extern "C" fn m_trap(epc: usize,
 				panic!("Unhandled async trap CPU#{} -> {}\n", hart, cause_num);
 			}
 		}
-	}
+	};
 	// Finally, return the updated program counter
 	return_pc
 }
