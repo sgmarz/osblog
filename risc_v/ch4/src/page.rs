@@ -243,7 +243,7 @@ pub fn dealloc(ptr: *mut u8) {
 /// This is mainly used for debugging.
 pub fn print_page_allocations() {
 	unsafe {
-		let num_pages = HEAP_SIZE / PAGE_SIZE;
+		let num_pages = (HEAP_SIZE - (ALLOC_START - HEAP_START)) / PAGE_SIZE;
 		let mut beg = HEAP_START as *const Page;
 		let end = beg.add(num_pages);
 		let alloc_beg = ALLOC_START;
