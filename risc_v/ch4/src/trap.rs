@@ -35,8 +35,13 @@ extern "C" fn m_trap(epc: usize,
 				// Machine software
 				epc
 			},
-			7 => {
+			7 => unsafe {
 				// Machine timer
+				let mtimecmp = 0x0200_4000 as *mut u64;
+				let mtime = 0x0200_bff8 as *const u64;
+				// The frequency given by QEMU is 10_000_000 Hz, so this sets
+				// the next interrupt to fire one second from now.
+				mtimecmp.write_volatile(mtime.read_volatile() + 10_000_000);
 				epc
 			},
 			11 => {
@@ -54,6 +59,18 @@ extern "C" fn m_trap(epc: usize,
 			2 => {
 				// Illegal instruction
 				panic!("Illegal instruction CPU#{} -> 0x{:08x}: 0x{:08x}\n", hart, epc, tval);
+			},
+			8 => {
+				// Environment (system) call from User mode
+				epc + 4
+			},
+			9 => {
+				// Environment (system) call from Supervisor mode
+				epc + 4
+			},
+			11 => {
+				// Environment (system) call from Machine mode
+				panic!("E-call from Machine mode! CPU#{} -> 0x{:08x}\n", hart, epc);
 			},
 			// Page faults
 			12 => {
