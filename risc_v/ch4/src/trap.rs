@@ -28,12 +28,12 @@ extern "C" fn m_trap(epc: usize,
 	// The cause contains the type of trap (sync, async) as well as the cause
 	// number. So, here we narrow down just the cause number.
 	let cause_num = cause & 0xfff;
-	let return_pc = if is_async {
+	let mut return_pc = epc;
+	if is_async {
 		// Asynchronous trap
 		match cause_num {
 			3 => {
 				// Machine software
-				epc
 			},
 			7 => unsafe {
 				// Machine timer
@@ -42,11 +42,9 @@ extern "C" fn m_trap(epc: usize,
 				// The frequency given by QEMU is 10_000_000 Hz, so this sets
 				// the next interrupt to fire one second from now.
 				mtimecmp.write_volatile(mtime.read_volatile() + 10_000_000);
-				epc
 			},
 			11 => {
 				// Machine external (interrupt from Platform Interrupt Controller (PLIC))
-				epc
 			},
 			_ => {
 				panic!("Unhandled async trap CPU#{} -> {}\n", hart, cause_num);
@@ -63,12 +61,12 @@ extern "C" fn m_trap(epc: usize,
 			8 => {
 				// Environment (system) call from User mode
 				println!("E-call from User mode! CPU#{} -> 0x{:08x}", hart, epc);
-				epc + 4
+				return_pc += 4;
 			},
 			9 => {
 				// Environment (system) call from Supervisor mode
 				println!("E-call from Supervisor mode! CPU#{} -> 0x{:08x}", hart, epc);
-				epc + 4
+				return_pc += 4;
 			},
 			11 => {
 				// Environment (system) call from Machine mode
@@ -78,17 +76,17 @@ extern "C" fn m_trap(epc: usize,
 			12 => {
 				// Instruction page fault
 				println!("Instruction page fault CPU#{} -> 0x{:08x}: 0x{:08x}", hart, epc, tval);
-				epc + 4
+				return_pc += 4;
 			},
 			13 => {
 				// Load page fault
 				println!("Load page fault CPU#{} -> 0x{:08x}: 0x{:08x}", hart, epc, tval);
-				epc + 4
+				return_pc += 4;
 			},
 			15 => {
 				// Store page fault
 				println!("Store page fault CPU#{} -> 0x{:08x}: 0x{:08x}", hart, epc, tval);
-				epc + 4
+				return_pc += 4;
 			},
 			_ => {
 				panic!("Unhandled sync trap CPU#{} -> {}\n", hart, cause_num);
