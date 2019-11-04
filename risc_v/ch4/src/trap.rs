@@ -44,7 +44,7 @@ extern "C" fn m_trap(epc: usize,
 				epc
 			},
 			_ => {
-				panic!("Unhandled sync trap CPU#{} -> {}\n", hart, cause_num);
+				panic!("Unhandled async trap CPU#{} -> {}\n", hart, cause_num);
 			}
 		}
 	}
@@ -72,7 +72,7 @@ extern "C" fn m_trap(epc: usize,
 				epc + 4
 			},
 			_ => {
-				panic!("Unhandled async trap CPU#{} -> {}\n", hart, cause_num);
+				panic!("Unhandled sync trap CPU#{} -> {}\n", hart, cause_num);
 			}
 		}
 	};
