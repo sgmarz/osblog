@@ -88,6 +88,10 @@ pub fn set_priority(id: u32, prio: u8) {
     let actual_prio = prio as u32 & 7;
     let prio_reg = PLIC_PRIORITY as *mut u32;
     unsafe {
+        // The offset for the interrupt id is:
+        // PLIC_PRIORITY + 4 * id
+        // Since we're using pointer arithmetic on a u32 type,
+        // it will automatically multiply the id by 4.
         prio_reg.add(id as usize).write_volatile(actual_prio);
     }
 }
