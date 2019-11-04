@@ -70,12 +70,7 @@ pub fn is_pending(id: u32) -> bool {
     unsafe {
         pend_ids = pend.read_volatile();
     }
-    if actual_id & pend_ids != 0 {
-        true
-    }
-    else {
-        false
-    }
+    actual_id & pend_ids != 0
 }
 
 // Enable a given interrupt id
