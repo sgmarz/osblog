@@ -34,6 +34,7 @@ extern "C" fn m_trap(epc: usize,
 		match cause_num {
 			3 => {
 				// Machine software
+				epc
 			},
 			7 => {
 				// Machine timer
@@ -41,6 +42,7 @@ extern "C" fn m_trap(epc: usize,
 			},
 			11 => {
 				// Machine external (interrupt from Platform Interrupt Controller (PLIC))
+				epc
 			},
 			_ => {
 				panic!("Unhandled sync trap CPU#{} -> {}\n", hart, cause_num);
