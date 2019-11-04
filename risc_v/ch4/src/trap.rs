@@ -26,13 +26,21 @@ extern "C" fn m_trap(epc: usize,
 			false
 		}
 	};
+	// The cause contains the type of trap (sync, async) as well as the cause
+	// number. So, here we narrow down just the cause number.
 	let cause_num = cause & 0xfff;
 	if is_async {
 		// Asynchronous trap
 		match cause_num {
+			3 => {
+				// Machine software
+			}.
 			7 => {
 				// Machine timer
 				epc
+			},
+			11 => {
+				// Machine external (interrupt from Platform Interrupt Controller (PLIC))
 			},
 			_ => {
 				panic!("Unhandled sync trap CPU#{} -> {}\n", hart, cause_num);
@@ -42,6 +50,10 @@ extern "C" fn m_trap(epc: usize,
 	else {
 		// Synchronous trap
 		match cause_num {
+			2 => {
+				// Illegal instruction
+				panic!("Illegal instruction CPU#{} -> 0x{:08x}: 0x{:08x}\n", hart, epc, tval);
+			},
 			// Page faults
 			12 => {
 				// Instruction page fault
