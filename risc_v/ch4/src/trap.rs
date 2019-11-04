@@ -34,6 +34,7 @@ extern "C" fn m_trap(epc: usize,
 		match cause_num {
 			3 => {
 				// Machine software
+				println!("Machine software interrupt CPU#{}", hart);
 			},
 			7 => unsafe {
 				// Machine timer
@@ -45,6 +46,7 @@ extern "C" fn m_trap(epc: usize,
 			},
 			11 => {
 				// Machine external (interrupt from Platform Interrupt Controller (PLIC))
+				println!("Machine external interrupt CPU#{}", hart);
 			},
 			_ => {
 				panic!("Unhandled async trap CPU#{} -> {}\n", hart, cause_num);

@@ -358,7 +358,7 @@ extern "C" fn kmain() {
 		mtimecmp.write_volatile(mtime.read_volatile() + 10_000_000);
 
 		// Let's cause a page fault and see what happens. This should trap
-		// to s_trap under trap.rs
+		// to m_trap under trap.rs
 		let v = 0x0 as *mut u64;
 		v.write_volatile(0);
 	}
