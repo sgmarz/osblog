@@ -3,11 +3,11 @@
 // Stephen Marz
 // 1 Nov 2019
 
-pub const PLIC_PRIORITY: usize = 0x0c00_0000;
-pub const PLIC_PENDING: usize = 0x0c00_1000;
-pub const PLIC_INT_ENABLE: usize = 0x0c00_2000;
-pub const PLIC_THRESHOLD: usize = 0x0c20_0000;
-pub const PLIC_CLAIM: usize = 0x0c20_0004;
+const PLIC_PRIORITY: usize = 0x0c00_0000;
+const PLIC_PENDING: usize = 0x0c00_1000;
+const PLIC_INT_ENABLE: usize = 0x0c00_2000;
+const PLIC_THRESHOLD: usize = 0x0c20_0000;
+const PLIC_CLAIM: usize = 0x0c20_0004;
 
 // Each register is 4-bytes (u32)
 // The PLIC is an external interrupt controller. The one
