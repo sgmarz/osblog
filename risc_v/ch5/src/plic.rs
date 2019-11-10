@@ -23,10 +23,10 @@ const PLIC_CLAIM: usize = 0x0c20_0004;
 // PCIE = [32..35]
 
 
-// Get the next available interrupt. This is the "claim" process.
-// The plic will automatically sort by priority and hand us the
-// ID of the interrupt. For example, if the UART is interrupting
-// and it's next, we will get the value 10.
+/// Get the next available interrupt. This is the "claim" process.
+/// The plic will automatically sort by priority and hand us the
+/// ID of the interrupt. For example, if the UART is interrupting
+/// and it's next, we will get the value 10.
 pub fn next() -> Option<u32> {
     let claim_reg = PLIC_CLAIM as *const u32;
     let claim_no;
@@ -41,8 +41,8 @@ pub fn next() -> Option<u32> {
     }
 }
 
-// Complete a pending interrupt by id. The id should come
-// from the next() function above.
+/// Complete a pending interrupt by id. The id should come
+/// from the next() function above.
 pub fn complete(id: u32) {
     let complete_reg = PLIC_CLAIM as *mut u32;
     unsafe {
@@ -50,10 +50,10 @@ pub fn complete(id: u32) {
     }
 }
 
-// Set the global threshold. The threshold can be a value [0..7].
-// The PLIC will mask any interrupts at or below the given threshold.
-// This means that a threshold of 7 will mask ALL interrupts and
-// a threshold of 0 will allow ALL interrupts.
+/// Set the global threshold. The threshold can be a value [0..7].
+/// The PLIC will mask any interrupts at or below the given threshold.
+/// This means that a threshold of 7 will mask ALL interrupts and
+/// a threshold of 0 will allow ALL interrupts.
 pub fn set_threshold(tsh: u8) {
     let actual_tsh = tsh & 7;
     let tsh_reg = PLIC_THRESHOLD as *mut u32;
@@ -62,7 +62,7 @@ pub fn set_threshold(tsh: u8) {
     }
 }
 
-// See if a given interrupt id is pending.
+/// See if a given interrupt id is pending.
 pub fn is_pending(id: u32) -> bool {
     let pend = PLIC_PENDING as *const u32;
     let actual_id = 1 << id;
@@ -73,7 +73,7 @@ pub fn is_pending(id: u32) -> bool {
     actual_id & pend_ids != 0
 }
 
-// Enable a given interrupt id
+/// Enable a given interrupt id
 pub fn enable(id: u32) {
     let enables = PLIC_INT_ENABLE as *mut u32;
     let actual_id = 1 << id;
@@ -82,8 +82,8 @@ pub fn enable(id: u32) {
     }
 }
 
-// Set a given interrupt priority to the given priority.
-// The priority must be [0..7]
+/// Set a given interrupt priority to the given priority.
+/// The priority must be [0..7]
 pub fn set_priority(id: u32, prio: u8) {
     let actual_prio = prio as u32 & 7;
     let prio_reg = PLIC_PRIORITY as *mut u32;
