@@ -229,13 +229,13 @@ extern "C" fn kinit() {
 	id_map_range(
 	             &mut root,
 	             0x0c00_0000,
-	             0x0c00_2000,
+	             0x0c00_2001,
 	             page::EntryBits::ReadWrite.val(),
 	);
 	id_map_range(
 	             &mut root,
 	             0x0c20_0000,
-	             0x0c20_8000,
+	             0x0c20_8001,
 	             page::EntryBits::ReadWrite.val(),
 	);
 	// When we return from here, we'll go back to boot.S and switch into
@@ -364,29 +364,19 @@ extern "C" fn kmain() {
 	}
 	// If we get here, the Box, vec, and String should all be freed since
 	// they go out of scope. This calls their "Drop" trait.
-	// Now see if we can read stuff:
-	// Usually we can use #[test] modules in Rust, but it would convolute
-	// the task at hand, and it requires us to create the testing harness
-	// since the embedded testing system is part of the "std" library.
-	loop {
-		if let Some(c) = my_uart.get() {
-			match c {
-				8 => {
-					// This is a backspace, so we
-					// essentially have to write a space and
-					// backup again:
-					print!("{} {}", 8 as char, 8 as char);
-				},
-				10 | 13 => {
-					// Newline or carriage-return
-					println!();
-				},
-				_ => {
-					print!("{}", c as char);
-				},
-			}
-		}
-	}
+
+	// Let's set up the interrupt system via the PLIC. We have to set the threshold to something
+	// that won't mask all interrupts.
+	println!("Setting up interrupts and PLIC...");
+	// We lower the threshold wall so our interrupts can jump over it.
+	plic::set_threshold(0);
+	// VIRTIO = [1..8]
+	// UART0 = 10
+	// PCIE = [32..35]
+	// Enable the UART interrupt.
+	plic::enable(10);
+	plic::set_priority(10, 1);
+	println!("UART interrupts have been enabled and are awaiting your command");
 }
 
 // ///////////////////////////////////

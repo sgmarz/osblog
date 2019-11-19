@@ -89,8 +89,9 @@ _start:
 	# 1 << 5    : Supervisor timer interrupt enable (STIE=1 [Enabled])
 	# 1 << 9    : Supervisor external interrupt enable (SEIE=1 [Enabled])
 	# 0xaaa = MEIP/SEIP and MTIP/STIP and MSIP/SSIP
-	li		t2, 0x888
+	li		t2, 0xaaa
 	csrw	mie, t2
+	la		ra, 4f
 	mret
 3:
 

@@ -73,6 +73,19 @@ pub fn mhartid_read() -> usize {
 		rval
 	}
 }
+pub fn mie_read() -> usize {
+	unsafe {
+		let rval;
+		asm!("csrr $0, mie" :"=r"(rval));
+		rval
+	}
+}
+
+pub fn mie_write(val: usize) {
+	unsafe {
+		asm!("csrw mie, $0" :: "r"(val));
+	}
+}
 
 pub fn mstatus_write(val: usize) {
 	unsafe {

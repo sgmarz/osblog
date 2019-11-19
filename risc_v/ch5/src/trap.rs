@@ -4,6 +4,7 @@
 // 10 October 2019
 
 use crate::cpu::TrapFrame;
+use crate::{plic, uart};
 
 #[no_mangle]
 /// The m_trap stands for "machine trap". Right now, we are handling
@@ -50,7 +51,39 @@ extern "C" fn m_trap(epc: usize,
 			},
 			11 => {
 				// Machine external (interrupt from Platform Interrupt Controller (PLIC))
-				println!("Machine external interrupt CPU#{}", hart);
+				// println!("Machine external interrupt CPU#{}", hart);
+				if let Some(interrupt) = plic::next() {
+					match interrupt {
+						10 => {
+							// UART
+							// We would typically set this to be handled out of the interrupt context,
+							// but we're testing here! C'mon!
+							let mut my_uart = uart::Uart::new(0x1000_0000);
+							if let Some(c) = my_uart.get() {
+								match c {
+									8 => {
+										// This is a backspace, so we
+										// essentially have to write a space and
+										// backup again:
+										print!("{} {}", 8 as char, 8 as char);
+									},
+									10 | 13 => {
+										// Newline or carriage-return
+										println!();
+									},
+									_ => {
+										print!("{}", c as char);
+									},
+								}
+							}
+					
+						},
+						_ => {}
+					}
+					// We've claimed it, so now say that we've handled it. This resets the interrupt pending
+					// and allows the UART to interrupt again. Otherwise, the UART will get "stuck".
+					plic::complete(interrupt);
+				}
 			},
 			_ => {
 				panic!("Unhandled async trap CPU#{} -> {}\n", hart, cause_num);
