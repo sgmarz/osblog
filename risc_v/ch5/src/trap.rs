@@ -61,8 +61,7 @@ extern "C" fn m_trap(epc: usize,
 					// automatically prioritize the next interrupt, so when we get it from claim, it
 					// will be the next in priority order.
 					match interrupt {
-						10 => {
-							// UART
+						10 => { // Interrupt 10 is the UART interrupt.
 							// We would typically set this to be handled out of the interrupt context,
 							// but we're testing here! C'mon!
 							// We haven't yet used the singleton pattern for my_uart, but remember, this
