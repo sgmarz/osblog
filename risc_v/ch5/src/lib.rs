@@ -369,7 +369,7 @@ extern "C" fn kmain() {
 	// that won't mask all interrupts.
 	println!("Setting up interrupts and PLIC...");
 	// We lower the threshold wall so our interrupts can jump over it.
-	plic::set_threshold(1);
+	plic::set_threshold(0);
 	// VIRTIO = [1..8]
 	// UART0 = 10
 	// PCIE = [32..35]
