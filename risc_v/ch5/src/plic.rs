@@ -30,13 +30,17 @@ const PLIC_CLAIM: usize = 0x0c20_0004;
 pub fn next() -> Option<u32> {
     let claim_reg = PLIC_CLAIM as *const u32;
     let claim_no;
+    // The claim register is filled with the highest-priority, enabled interrupt.
     unsafe {
         claim_no = claim_reg.read_volatile();
     }
     if claim_no == 0 {
+        // The interrupt 0 is hardwired to 0, which tells us that there is no
+        // interrupt to claim, hence we return None.
         None
     }
     else {
+        // If we get here, we've gotten a non-0 interrupt.
         Some(claim_no)
     }
 }
@@ -46,6 +50,9 @@ pub fn next() -> Option<u32> {
 pub fn complete(id: u32) {
     let complete_reg = PLIC_CLAIM as *mut u32;
     unsafe {
+        // We actually write a u32 into the entire complete_register.
+        // This is the same register as the claim register, but it can
+        // differentiate based on whether we're reading or writing.
         complete_reg.write_volatile(id);
     }
 }
@@ -55,6 +62,9 @@ pub fn complete(id: u32) {
 /// This means that a threshold of 7 will mask ALL interrupts and
 /// a threshold of 0 will allow ALL interrupts.
 pub fn set_threshold(tsh: u8) {
+    // We do tsh because we're using a u8, but our maximum number
+    // is a 3-bit 0b111. So, we and with 7 (0b111) to just get the
+    // last three bits.
     let actual_tsh = tsh & 7;
     let tsh_reg = PLIC_THRESHOLD as *mut u32;
     unsafe {
@@ -78,6 +88,10 @@ pub fn enable(id: u32) {
     let enables = PLIC_INT_ENABLE as *mut u32;
     let actual_id = 1 << id;
     unsafe {
+        // Unlike the complete and claim registers, the plic_int_enable
+        // register is a bitset where the id is the bit index. The register
+        // is a 32-bit register, so that gives us enables for interrupts
+        // 31 through 1 (0 is hardwired to 0).
         enables.write_volatile(enables.read_volatile() | actual_id);
     }
 }
