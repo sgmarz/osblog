@@ -9,10 +9,10 @@
            alloc_prelude,
            const_raw_ptr_to_usize_cast)]
 
-#[macro_use]
+// #[macro_use]
 extern crate alloc;
 // This is experimental and requires alloc_prelude as a feature
-use alloc::prelude::v1::*;
+// use alloc::prelude::v1::*;
 
 // ///////////////////////////////////
 // / RUST MACROS
@@ -327,38 +327,24 @@ extern "C" fn kmain() {
 	// kmain() starts in supervisor mode. So, we should have the trap
 	// vector setup and the MMU turned on when we get here.
 
-	// Create a new scope so that we can test the global allocator and
-	// deallocator
-	{
-		// We have the global allocator, so let's see if that works!
-		let k = Box::<u32>::new(100);
-		println!("Boxed value = {}", *k);
-		// The following comes from the Rust documentation:
-		// some bytes, in a vector
-		let sparkle_heart = vec![240, 159, 146, 150];
-		// We know these bytes are valid, so we'll use `unwrap()`.
-		// This will MOVE the vector.
-		let sparkle_heart = String::from_utf8(sparkle_heart).unwrap();
-		println!("String = {}", sparkle_heart);
-		println!("\n\nAllocations of a box, vector, and string");
-		kmem::print_table();
-	}
-	println!("\n\nEverything should now be free:");
+	// Initialize the process list and anything else that needs to be done,
+	// here.
+	process::init();
 	kmem::print_table();
 
-	unsafe {
+	// unsafe {
 		// Set the next machine timer to fire.
-		let mtimecmp = 0x0200_4000 as *mut u64;
-		let mtime = 0x0200_bff8 as *const u64;
+		// let mtimecmp = 0x0200_4000 as *mut u64;
+		// let mtime = 0x0200_bff8 as *const u64;
 		// The frequency given by QEMU is 10_000_000 Hz, so this sets
 		// the next interrupt to fire one second from now.
-		mtimecmp.write_volatile(mtime.read_volatile() + 10_000_000);
+		// mtimecmp.write_volatile(mtime.read_volatile() + 10_000_000);
 
 		// Let's cause a page fault and see what happens. This should trap
 		// to m_trap under trap.rs
-		let v = 0x0 as *mut u64;
-		v.write_volatile(0);
-	}
+		// let v = 0x0 as *mut u64;
+		// v.write_volatile(0);
+	// }
 	// If we get here, the Box, vec, and String should all be freed since
 	// they go out of scope. This calls their "Drop" trait.
 
