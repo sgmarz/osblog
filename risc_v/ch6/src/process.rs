@@ -163,7 +163,12 @@ impl Drop for Process {
 	fn drop(&mut self) {
 		// We allocate the stack as a page.
         dealloc(self.stack);
-        unmap(&mut *self.root);
+        // This is unsafe, but it's at the drop stage, so we won't
+        // be using this again.
+        unsafe {
+            unmap(&mut *self.root);
+        }
+        dealloc(self.root as *mut u8);
 	}
 }
 
