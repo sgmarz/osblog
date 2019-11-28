@@ -17,7 +17,11 @@ use alloc::collections::linked_list::LinkedList;
 // How many pages are we going to give a process for their
 // stack?
 const STACK_PAGES: usize = 2;
+// We want to adjust the stack to be at the bottom of the memory allocation
+// regardless of where it is on the kernel heap.
 const STACK_ADDR_ADJ: usize = 0x3f_0000_0000;
+// All processes will have a defined starting point in virtual memory.
+const PROCESS_STARTING_ADDR: usize = 0x2000_0000;
 
 // Here, we store a process list. It uses the global allocator
 // that we made before and its job is to store all processes.
