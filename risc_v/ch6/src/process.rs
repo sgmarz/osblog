@@ -4,7 +4,7 @@
 // 27 Nov 2019
 
 use crate::{cpu::TrapFrame,
-            page::{alloc, dealloc, Table, PAGE_SIZE}};
+            page::{alloc, dealloc, zalloc, Table, PAGE_SIZE}};
 use alloc::collections::linked_list::LinkedList;
 
 const STACK_PAGES: usize = 2;
@@ -142,7 +142,7 @@ impl Process {
 			          stack:           alloc(STACK_PAGES),
 			          program_counter: func as usize,
 			          pid:             pd,
-			          root:            alloc(1) as *mut Table,
+			          root:            zalloc(1) as *mut Table,
 			          state:           ProcessState::Waiting,
 			          data:            ProcessData::zero(), };
 		// Now we move the stack pointer to the bottom of the
