@@ -162,11 +162,10 @@ extern "C" fn kinit() {
 	// Using statics is inherently unsafe.
 	unsafe {
 		// Map heap descriptors
-		let num_pages = HEAP_SIZE / page::PAGE_SIZE;
 		id_map_range(
 		             &mut root,
 		             HEAP_START,
-		             HEAP_START + num_pages,
+		             HEAP_START + HEAP_SIZE + 1,
 		             page::EntryBits::ReadWrite.val(),
 		);
 		// Map executable section

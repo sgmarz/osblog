@@ -4,10 +4,20 @@
 // 27 Nov 2019
 
 use crate::{cpu::TrapFrame,
-            page::{alloc, dealloc, zalloc, unmap, Table, PAGE_SIZE}};
+            page::{alloc,
+                   dealloc,
+                   map,
+                   unmap,
+                   zalloc,
+                   EntryBits,
+                   Table,
+                   PAGE_SIZE}};
 use alloc::collections::linked_list::LinkedList;
 
+// How many pages are we going to give a process for their
+// stack?
 const STACK_PAGES: usize = 2;
+const STACK_ADDR_ADJ: usize = 0x3f_0000_0000;
 
 // Here, we store a process list. It uses the global allocator
 // that we made before and its job is to store all processes.
@@ -151,8 +161,26 @@ impl Process {
 		// We could use ret_proc.stack.add, but that's an unsafe
 		// function which would require an unsafe block. So, convert it
 		// to usize first and then add PAGE_SIZE is better.
-		ret_proc.frame.regs[2] =
-			ret_proc.stack as usize + PAGE_SIZE * STACK_PAGES;
+		// We also need to set the stack adjustment so that it is at the
+		// bottom of the memory and far away from heap allocations.
+		ret_proc.frame.regs[2] = ret_proc.stack as usize
+		                         + STACK_ADDR_ADJ + PAGE_SIZE
+		                                            * STACK_PAGES;
+		// Map the stack on the MMU
+		let pt;
+		unsafe {
+			pt = &mut *ret_proc.root;
+		}
+		let saddr = ret_proc.stack as usize;
+		for i in 0..STACK_PAGES {
+			map(
+			    pt,
+			    saddr + i * PAGE_SIZE,
+			    saddr + STACK_ADDR_ADJ + i * PAGE_SIZE,
+			    EntryBits::UserReadWrite.val(),
+			    0,
+			);
+		}
 		ret_proc
 	}
 }
@@ -162,13 +190,16 @@ impl Process {
 impl Drop for Process {
 	fn drop(&mut self) {
 		// We allocate the stack as a page.
-        dealloc(self.stack);
-        // This is unsafe, but it's at the drop stage, so we won't
-        // be using this again.
-        unsafe {
-            unmap(&mut *self.root);
-        }
-        dealloc(self.root as *mut u8);
+		dealloc(self.stack);
+		// This is unsafe, but it's at the drop stage, so we won't
+		// be using this again.
+		unsafe {
+			// Remember that unmap unmaps all levels of page tables
+			// except for the root. It also deallocates the memory
+			// associated with the tables.
+			unmap(&mut *self.root);
+		}
+		dealloc(self.root as *mut u8);
 	}
 }
 
