@@ -4,7 +4,7 @@
 // 27 Nov 2019
 
 use crate::{cpu::TrapFrame,
-            page::{alloc, dealloc, zalloc, Table, PAGE_SIZE}};
+            page::{alloc, dealloc, zalloc, unmap, Table, PAGE_SIZE}};
 use alloc::collections::linked_list::LinkedList;
 
 const STACK_PAGES: usize = 2;
@@ -162,7 +162,8 @@ impl Process {
 impl Drop for Process {
 	fn drop(&mut self) {
 		// We allocate the stack as a page.
-		dealloc(self.stack);
+        dealloc(self.stack);
+        unmap(&mut *self.root);
 	}
 }
 
