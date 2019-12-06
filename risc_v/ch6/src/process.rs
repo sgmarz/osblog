@@ -12,7 +12,7 @@ use crate::{cpu::TrapFrame,
                    EntryBits,
                    Table,
                    PAGE_SIZE}};
-use alloc::collections::linked_list::LinkedList;
+use alloc::collections::vec_deque::VecDeque;
 
 // How many pages are we going to give a process for their
 // stack?
@@ -27,40 +27,14 @@ const PROCESS_STARTING_ADDR: usize = 0x2000_0000;
 // that we made before and its job is to store all processes.
 // We will have this list OWN the process. So, anytime we want
 // the process, we will consult the process list.
-static mut PROCESS_LIST: LinkedList<Process> = LinkedList::new();
+static mut PROCESS_LIST: Option<VecDeque<Process>> = None;
+// We can search through the process list to get a new PID, but
+// it's probably easier and faster just to increase the pid:
+static mut NEXT_PID: u16 = 1;
 // CURRENT will store the PID of the process on a given hart. I'm
 // statically allocating a slot per CPU, but we could easily create
 // a vector here based on the number of CPUs.
 static mut CURRENT: [u16; 2] = [0; 2];
-
-/// Get the currently running process on a given hart. Essentially,
-/// we have to convert the PID to the actual process.
-pub fn current(hartid: usize) -> Option<&'static Process> {
-	unsafe {
-		if CURRENT.len() > hartid && CURRENT[hartid] != 0 {
-			for i in PROCESS_LIST.iter() {
-				if i.pid == CURRENT[hartid] {
-					return Some(i);
-				}
-			}
-		}
-		None
-	}
-}
-/// Get the currently running process as a mutable reference. If we
-/// don't need to change the Process, use current().
-pub fn current_mut(hartid: usize) -> Option<&'static mut Process> {
-	unsafe {
-		if CURRENT.len() > hartid && CURRENT[hartid] != 0 {
-			for i in PROCESS_LIST.iter_mut() {
-				if i.pid == CURRENT[hartid] {
-					return Some(i);
-				}
-			}
-		}
-		None
-	}
-}
 
 /// We will eventually move this function out of here, but its
 /// job is just to take a slot in the process list.
@@ -77,22 +51,39 @@ fn init_process() {
 /// to create a new stack, etc.
 pub fn add_process_default(pr: fn()) {
 	unsafe {
-		let p = Process::new_default(pr);
-		PROCESS_LIST.push_back(p);
+		// This is the Rust-ism that really trips up C++ programmers.
+		// PROCESS_LIST is wrapped in an Option<> enumeration, which
+		// means that the Option owns the Deque. We can only borrow from
+		// it or move ownership to us. In this case, we choose the
+		// latter, where we move ownership to us, add a process, and
+		// then move ownership back to the PROCESS_LIST.
+		// This allows mutual exclusion as anyone else trying to grab
+		// the process list will get None rather than the Deque.
+		if let Some(mut pl) = PROCESS_LIST.take() {
+			// .take() will replace PROCESS_LIST with None and give
+			// us the only copy of the Deque.
+			let p = Process::new_default(pr);
+			pl.push_back(p);
+			// Now, we no longer need the owned Deque, so we hand it
+			// back by replacing the PROCESS_LIST's None with the
+			// Some(pl).
+			PROCESS_LIST.replace(pl);
+		}
+		// TODO: When we get to multi-hart processing, we need to keep
+		// trying to grab the process list. We can do this with an
+		// atomic instruction. but right now, we're a single-processor
+		// computer.
 	}
 }
 
-// This should only be called once, and its job is to create
-// the init process. Right now, this process is in the kernel,
-// but later, it should call the shell.
+/// This should only be called once, and its job is to create
+/// the init process. Right now, this process is in the kernel,
+/// but later, it should call the shell.
 pub fn init() {
-	add_process_default(init_process);
 	unsafe {
-		let p = PROCESS_LIST.back();
-		if let Some(pd) = p {
-			// Put the initial process on the first CPU.
-			CURRENT[0] = pd.pid;
-		}
+		PROCESS_LIST = Some(VecDeque::with_capacity(5));
+		add_process_default(init_process);
+		CURRENT[0] = 1;
 	}
 }
 
@@ -127,38 +118,19 @@ pub struct Process {
 
 impl Process {
 	pub fn new_default(func: fn()) -> Self {
-		// This probably shouldn't go here, but we need to calculate
-		// a new PID. For now, this just takes the bottom of the list
-		// and adds one to the PID. We assume that we're sorting the
-		// list in increasing PID order.
-
-		// Rust will automatically determine the data type of pd.
-		// Since we don't know what value pd will take until we check
-		// an unsafe operation, we forward declare it here and let
-		// Rust figure it out later.
-		let pd;
-		unsafe {
-			let plb = PROCESS_LIST.back();
-			if let Some(p) = plb {
-				pd = p.pid + 1;
-			}
-			else {
-				// If the list is empty, we allocate pid 1.
-				pd = 1
-			}
-		}
-		// Now that we have a PID, let's create a new process.
-		// We set the process as waiting so that whomever called us
-		// can wake it up themselves. This allows us to take our time
-		// and allocate the process.
+		let func_addr = func as usize;
+		// We will convert NEXT_PID below into an atomic increment.
 		let mut ret_proc =
 			Process { frame:           TrapFrame::zero(),
 			          stack:           alloc(STACK_PAGES),
-			          program_counter: func as usize,
-			          pid:             pd,
+			          program_counter: PROCESS_STARTING_ADDR,
+			          pid:             unsafe { NEXT_PID },
 			          root:            zalloc(1) as *mut Table,
 			          state:           ProcessState::Waiting,
 			          data:            ProcessData::zero(), };
+		unsafe {
+			NEXT_PID += 1;
+		}
 		// Now we move the stack pointer to the bottom of the
 		// allocation. The spec shows that register x2 (2) is the stack
 		// pointer.
@@ -176,22 +148,41 @@ impl Process {
 			pt = &mut *ret_proc.root;
 		}
 		let saddr = ret_proc.stack as usize;
+		// We need to map the stack onto the user process' virtual
+		// memory This gets a little hairy because we need to also map
+		// the function code too.
 		for i in 0..STACK_PAGES {
+			let addr = saddr + i * PAGE_SIZE;
 			map(
 			    pt,
-			    saddr + i * PAGE_SIZE,
-			    saddr + STACK_ADDR_ADJ + i * PAGE_SIZE,
+			    addr + STACK_ADDR_ADJ,
+			    addr,
 			    EntryBits::UserReadWrite.val(),
 			    0,
 			);
 		}
+		// Map the program counter on the MMU
+		map(
+		    pt,
+		    PROCESS_STARTING_ADDR,
+		    func_addr,
+		    EntryBits::UserReadExecute.val(),
+		    0,
+		);
+		map(
+		    pt,
+		    PROCESS_STARTING_ADDR + 0x1001,
+		    func_addr + 0x1001,
+		    EntryBits::UserReadExecute.val(),
+		    0,
+		);
 		ret_proc
 	}
 }
 
-// Since we're storing ownership of a Process in the linked list,
-// we can cause it to deallocate automatically when it is removed.
 impl Drop for Process {
+	/// Since we're storing ownership of a Process in the linked list,
+	/// we can cause it to deallocate automatically when it is removed.
 	fn drop(&mut self) {
 		// We allocate the stack as a page.
 		dealloc(self.stack);
