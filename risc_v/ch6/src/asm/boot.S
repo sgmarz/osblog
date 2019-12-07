@@ -67,28 +67,15 @@ _start:
 	# 1 << 5     : Previous interrupt-enable bit is 1 (SPIE=1 [Enabled]).
 	# We set the "previous" bits because the mret will write the current bits
 	# with the previous bits.
-	li		t0, (0b01 << 11) | (1 << 7) | (1 << 5)
+	li		t0, (0b00 << 11) | (1 << 7) | (1 << 5)
 	csrw	mstatus, t0
 	# Machine's trap vector base address is set to `m_trap_vector`, for
 	# "machine" trap vector.
 	la		t2, m_trap_vector
 	csrw	mtvec, t2
-	# Setting `stvec` (supervisor trap vector) register:
-	# Essentially this is a function pointer, but the last two bits can be 00 or 01
-	# 00        : All exceptions set pc to BASE
-	# 01        : Asynchronous interrupts set pc to BASE + 4 x scause
-	# la		t3, s_trap_vector
-	# csrw	stvec, t3
-	# Jump to kmain. We put the MPP = 01 for supervisor mode, so after
-	# mret, we will jump to kmain in supervisor mode.
-	la		t1, kmain
-	csrw	mepc, t1
-	# Setting `sie` (supervisor interrupt enable) register:
-	# This register takes the same bits as mideleg
-	# 1 << 1    : Supervisor software interrupt enable (SSIE=1 [Enabled])
-	# 1 << 5    : Supervisor timer interrupt enable (STIE=1 [Enabled])
-	# 1 << 9    : Supervisor external interrupt enable (SEIE=1 [Enabled])
-	# 0xaaa = MEIP/SEIP and MTIP/STIP and MSIP/SSIP
+	# Jump to first process. We put the MPP = 00 for user mode, so after
+	# mret, we will jump to the first process' addresss in user mode.
+	csrw	mepc, a0
 	li		t2, 0xaaa
 	csrw	mie, t2
 	la		ra, 4f

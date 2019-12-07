@@ -3,7 +3,12 @@
 // Stephen Marz
 // 27 Nov 2019
 
-use crate::{cpu::TrapFrame,
+use crate::{cpu::{build_satp,
+                  mscratch_write,
+                  satp_fence_asid,
+                  satp_write,
+                  SatpMode,
+                  TrapFrame},
             page::{alloc,
                    dealloc,
                    map,
@@ -20,8 +25,10 @@ const STACK_PAGES: usize = 2;
 // We want to adjust the stack to be at the bottom of the memory allocation
 // regardless of where it is on the kernel heap.
 const STACK_ADDR_ADJ: usize = 0x3f_0000_0000;
+// const STACK_ADDR_ADJ: usize = 0;
 // All processes will have a defined starting point in virtual memory.
 const PROCESS_STARTING_ADDR: usize = 0x2000_0000;
+// const PROCESS_STARTING_ADDR: usize = 0;
 
 // Here, we store a process list. It uses the global allocator
 // that we made before and its job is to store all processes.
@@ -39,11 +46,9 @@ static mut CURRENT: [u16; 2] = [0; 2];
 /// We will eventually move this function out of here, but its
 /// job is just to take a slot in the process list.
 fn init_process() {
-	loop {
-		unsafe {
-			asm!("wfi");
-		}
-	}
+	// We can't do much here until we have system calls because
+	// we're running in User space.
+	loop {}
 }
 
 /// Add a process given a function address and then
@@ -79,11 +84,32 @@ pub fn add_process_default(pr: fn()) {
 /// This should only be called once, and its job is to create
 /// the init process. Right now, this process is in the kernel,
 /// but later, it should call the shell.
-pub fn init() {
+pub fn init() -> usize {
 	unsafe {
 		PROCESS_LIST = Some(VecDeque::with_capacity(5));
 		add_process_default(init_process);
 		CURRENT[0] = 1;
+		// Ugh....Rust is giving me fits over here!
+		// I just want a memory address to the trap frame, but
+		// due to the borrow rules of Rust, I'm fighting here. So,
+		// instead, let's move the value out of PROCESS_LIST, get
+		// the address, and then move it right back in.
+		let pl = PROCESS_LIST.take().unwrap();
+		let p = pl.front().unwrap().frame;
+		let frame = &p as *const TrapFrame as usize;
+		mscratch_write(frame);
+		satp_write(build_satp(
+			SatpMode::Sv39,
+			1,
+			pl.front().unwrap().root as usize,
+		),);
+		// Synchronize PID 1. We use ASID as the PID.
+		satp_fence_asid(1);
+		// Put the process list back in the global.
+		PROCESS_LIST.replace(pl);
+		// Return the first instruction's address to execute.
+		// Since we use the MMU, all start here.
+		PROCESS_STARTING_ADDR
 	}
 }
 
@@ -119,7 +145,9 @@ pub struct Process {
 impl Process {
 	pub fn new_default(func: fn()) -> Self {
 		let func_addr = func as usize;
-		// We will convert NEXT_PID below into an atomic increment.
+		// We will convert NEXT_PID below into an atomic increment when
+		// we start getting into multi-hart processing. For now, we want
+		// a process. Get it to work, then improve it!
 		let mut ret_proc =
 			Process { frame:           TrapFrame::zero(),
 			          stack:           alloc(STACK_PAGES),
