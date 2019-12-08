@@ -24,7 +24,7 @@ use alloc::collections::vec_deque::VecDeque;
 const STACK_PAGES: usize = 2;
 // We want to adjust the stack to be at the bottom of the memory allocation
 // regardless of where it is on the kernel heap.
-const STACK_ADDR_ADJ: usize = 0x3f_0000_0000;
+const STACK_ADDR: usize = 0xf_0000_0000;
 // const STACK_ADDR_ADJ: usize = 0;
 // All processes will have a defined starting point in virtual memory.
 const PROCESS_STARTING_ADDR: usize = 0x2000_0000;
@@ -34,6 +34,11 @@ const PROCESS_STARTING_ADDR: usize = 0x2000_0000;
 // that we made before and its job is to store all processes.
 // We will have this list OWN the process. So, anytime we want
 // the process, we will consult the process list.
+// Using an Option here is one method of creating a "lazy static".
+// Rust requires that all statics be initialized, but all
+// initializations must be at compile-time. We cannot allocate
+// a VecDeque at compile time, so we are somewhat forced to
+// do this.
 static mut PROCESS_LIST: Option<VecDeque<Process>> = None;
 // We can search through the process list to get a new PID, but
 // it's probably easier and faster just to increase the pid:
@@ -167,9 +172,8 @@ impl Process {
 		// to usize first and then add PAGE_SIZE is better.
 		// We also need to set the stack adjustment so that it is at the
 		// bottom of the memory and far away from heap allocations.
-		ret_proc.frame.regs[2] = ret_proc.stack as usize
-		                         + STACK_ADDR_ADJ + PAGE_SIZE
-		                                            * STACK_PAGES;
+		ret_proc.frame.regs[2] = STACK_ADDR + PAGE_SIZE
+		                                           * STACK_PAGES;
 		// Map the stack on the MMU
 		let pt;
 		unsafe {
@@ -180,11 +184,11 @@ impl Process {
 		// memory This gets a little hairy because we need to also map
 		// the function code too.
 		for i in 0..STACK_PAGES {
-			let addr = saddr + i * PAGE_SIZE;
+			let addr = i * PAGE_SIZE;
 			map(
 			    pt,
-			    addr + STACK_ADDR_ADJ,
-			    addr,
+			    STACK_ADDR + addr,
+			    saddr + addr,
 			    EntryBits::UserReadWrite.val(),
 			    0,
 			);

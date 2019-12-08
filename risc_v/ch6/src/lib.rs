@@ -125,6 +125,7 @@ extern "C" fn kinit() -> usize {
 	page::init();
 	kmem::init();
 	let ret = process::init();
+	println!("Init process created at address 0x{:08x}", ret);
 	// We lower the threshold wall so our interrupts can jump over it.
 	plic::set_threshold(0);
 	// VIRTIO = [1..8]
@@ -133,7 +134,7 @@ extern "C" fn kinit() -> usize {
 	// Enable the UART interrupt.
 	plic::enable(10);
 	plic::set_priority(10, 1);
-	println!("UART interrupts have been enabled and are awaiting your command");
+	println!("UART interrupts have been enabled and are awaiting your command.");
 	println!("Getting ready for first process.");
 	println!("Issuing the first context-switch timer.");
 	unsafe {
