@@ -81,6 +81,7 @@ extern "C" fn abort() -> ! {
 // themselves are their values, which can cause issues.
 // Instead, I created doubleword values in mem.S in the .rodata and .data
 // sections.
+/*
 extern "C" {
 	static TEXT_START: usize;
 	static TEXT_END: usize;
@@ -95,6 +96,7 @@ extern "C" {
 	static HEAP_START: usize;
 	static HEAP_SIZE: usize;
 }
+*/
 /// Identity map range
 /// Takes a contiguous allocation of memory and maps it using PAGE_SIZE
 /// This assumes that start <= end

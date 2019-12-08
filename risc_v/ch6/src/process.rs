@@ -25,10 +25,8 @@ const STACK_PAGES: usize = 2;
 // We want to adjust the stack to be at the bottom of the memory allocation
 // regardless of where it is on the kernel heap.
 const STACK_ADDR: usize = 0xf_0000_0000;
-// const STACK_ADDR_ADJ: usize = 0;
 // All processes will have a defined starting point in virtual memory.
 const PROCESS_STARTING_ADDR: usize = 0x2000_0000;
-// const PROCESS_STARTING_ADDR: usize = 0;
 
 // Here, we store a process list. It uses the global allocator
 // that we made before and its job is to store all processes.
@@ -43,10 +41,6 @@ static mut PROCESS_LIST: Option<VecDeque<Process>> = None;
 // We can search through the process list to get a new PID, but
 // it's probably easier and faster just to increase the pid:
 static mut NEXT_PID: u16 = 1;
-// CURRENT will store the PID of the process on a given hart. I'm
-// statically allocating a slot per CPU, but we could easily create
-// a vector here based on the number of CPUs.
-static mut CURRENT: [u16; 2] = [0; 2];
 
 /// We will eventually move this function out of here, but its
 /// job is just to take a slot in the process list.
@@ -93,7 +87,6 @@ pub fn init() -> usize {
 	unsafe {
 		PROCESS_LIST = Some(VecDeque::with_capacity(5));
 		add_process_default(init_process);
-		CURRENT[0] = 1;
 		// Ugh....Rust is giving me fits over here!
 		// I just want a memory address to the trap frame, but
 		// due to the borrow rules of Rust, I'm fighting here. So,
@@ -172,8 +165,7 @@ impl Process {
 		// to usize first and then add PAGE_SIZE is better.
 		// We also need to set the stack adjustment so that it is at the
 		// bottom of the memory and far away from heap allocations.
-		ret_proc.frame.regs[2] = STACK_ADDR + PAGE_SIZE
-		                                           * STACK_PAGES;
+		ret_proc.frame.regs[2] = STACK_ADDR + PAGE_SIZE * STACK_PAGES;
 		// Map the stack on the MMU
 		let pt;
 		unsafe {
