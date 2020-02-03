@@ -101,7 +101,14 @@ impl Uart {
 
 	pub fn put(&mut self, c: u8) {
 		let ptr = self.base_address as *mut u8;
+		loop {
+			// Wait until previous data is flushed
+			if unsafe { ptr.add(5).read_volatile() } & (1 << 5) != 0 {
+				break;
+			}
+		}
 		unsafe {
+			// Write data
 			ptr.add(0).write_volatile(c);
 		}
 	}
