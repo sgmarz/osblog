@@ -94,6 +94,36 @@ m_trap_vector:
 
 	mret
 
+.global switch_to_user
+switch_to_user:
+    # a0 - Frame address
+	# a1 - Program counter
+	# a2 - SATP Register
+    csrw    mscratch, a0
+	mv		t6, a0
+
+	# 1 << 7 is MPIE
+	# Since user mode is 00, we don't need to set anything
+	# in MPP (bits 12:11)
+	li		t0, 1 << 7
+	csrw	mstatus, t0
+	csrw	mepc, a1
+	csrw	satp, a2
+	# This fence forces the MMU to flush the TLB. However, since
+	# we're using the PID as the address space identifier, we might
+	# only need this when we create a process. Right now, this ensures
+	# correctness, however it isn't the most efficient.
+	sfence.vma
+
+	# A0 is the context frame, so we need to reload it back
+	# and mret so we can start running the program.
+	.set	i, 1
+	.rept	31
+		load_gp %i
+		.set	i, i+1
+	.endr
+    mret
+
 
 .global make_syscall
 make_syscall:

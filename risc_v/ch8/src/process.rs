@@ -117,6 +117,7 @@ pub fn init() -> usize {
 // Waiting - means that the process is waiting on I/O
 // Dead - We should never get here, but we can flag a process as Dead and clean
 //        it out of the list later.
+#[repr(u8)]
 pub enum ProcessState {
 	Running,
 	Sleeping,
@@ -138,9 +139,28 @@ pub struct Process {
 	root:            *mut Table,
 	state:           ProcessState,
 	data:            ProcessData,
+	sleep_until:	 usize,
 }
 
 impl Process {
+	pub fn get_frame_address(&self) -> usize {
+		((&self.frame) as *const TrapFrame) as usize
+	}
+	pub fn get_program_counter(&self) -> usize {
+		self.program_counter
+	}
+	pub fn get_table_address(&self) -> usize {
+		self.root as usize
+	}
+	pub fn get_state(&self) -> &ProcessState {
+		&self.state
+	}
+	pub fn get_pid(&self) -> u16 {
+		self.pid
+	}
+	pub fn get_sleep_until(&self) -> usize {
+		self.sleep_until
+	}
 	pub fn new_default(func: fn()) -> Self {
 		let func_addr = func as usize;
 		// We will convert NEXT_PID below into an atomic increment when
@@ -153,7 +173,9 @@ impl Process {
 			          pid:             unsafe { NEXT_PID },
 			          root:            zalloc(1) as *mut Table,
 			          state:           ProcessState::Waiting,
-			          data:            ProcessData::zero(), };
+					  data:            ProcessData::zero(), 
+					  sleep_until:     0
+					};
 		unsafe {
 			NEXT_PID += 1;
 		}
