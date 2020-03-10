@@ -147,7 +147,7 @@ extern "C" fn kinit() {
 		let mtime = 0x0200_bff8 as *const u64;
 		// The frequency given by QEMU is 10_000_000 Hz, so this sets
 		// the next interrupt to fire one second from now.
-		// mtimecmp.write_volatile(mtime.read_volatile() + 1_000_000);
+		mtimecmp.write_volatile(mtime.read_volatile() + 1_000_000);
 	}
 	sched::schedule();
 	// When we return, we put the return value into mepc and start there. This
