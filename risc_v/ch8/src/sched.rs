@@ -33,9 +33,6 @@ pub fn schedule() {
 				}
 			}
 			PROCESS_LIST.replace(pl);
-			println!("Sched ->\n  frame = 0x{:08x}\n  mepc = 0x{:08x}\n  satp = 0x{:08x}\n  pid = {}",
-				frame_addr, mepc, satp, pid
-			);
 			if frame_addr != 0 {
 				// MODE 8 is 39-bit virtual address MMU
 				// I'm using the PID as the address space identifier to hopefully

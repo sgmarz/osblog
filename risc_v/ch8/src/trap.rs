@@ -123,7 +123,7 @@ extern "C" fn m_trap(epc: usize,
 			},
 			8 => {
 				// Environment (system) call from User mode
-				println!("E-call from User mode! CPU#{} -> 0x{:08x}", hart, epc);
+				// println!("E-call from User mode! CPU#{} -> 0x{:08x}", hart, epc);
 				return_pc = do_syscall(return_pc, frame);
 			},
 			9 => {

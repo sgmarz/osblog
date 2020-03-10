@@ -24,7 +24,7 @@ use alloc::collections::vec_deque::VecDeque;
 const STACK_PAGES: usize = 2;
 // We want to adjust the stack to be at the bottom of the memory allocation
 // regardless of where it is on the kernel heap.
-const STACK_ADDR: usize = 0x8000_0000;
+const STACK_ADDR: usize = 0x1_0000_0000;
 // All processes will have a defined starting point in virtual memory.
 const PROCESS_STARTING_ADDR: usize = 0x8000_0000;
 
