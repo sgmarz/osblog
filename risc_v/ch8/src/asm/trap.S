@@ -32,7 +32,6 @@ m_trap_vector:
 	# All registers are volatile here, we need to save them
 	# before we do anything.
 	csrrw	t6, mscratch, t6
-	# j .
 	# csrrw will atomically swap t6 into mscratch and the old
 	# value of mscratch into t6. This is nice because we just
 	# switched values and didn't destroy anything -- all atomically!

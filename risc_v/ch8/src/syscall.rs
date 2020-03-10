@@ -20,6 +20,9 @@ pub fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
     match syscall_number {
         0 => {
             // Exit
+            // Currently, we cannot kill a process, it runs forever. We will delete
+            // the process later and free the resources, but for now, we want to get
+            // used to how processes will be scheduled on the CPU.
             mepc + 4
         },
         1 => {

@@ -3,12 +3,7 @@
 // Stephen Marz
 // 27 Nov 2019
 
-use crate::{cpu::{build_satp,
-                  mscratch_write,
-                  satp_fence_asid,
-                  satp_write,
-                  SatpMode,
-                  TrapFrame},
+use crate::{cpu::TrapFrame,
             page::{alloc,
                    dealloc,
                    map,
