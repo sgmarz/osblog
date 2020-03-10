@@ -140,6 +140,8 @@ extern "C" fn kinit() {
 	plic::enable(10);
 	plic::set_priority(10, 1);
 	println!("UART interrupts have been enabled and are awaiting your command.");
+	println!("Loading VirtIO");
+	virtio::probe();
 	println!("Getting ready for first process.");
 	println!("Issuing the first context-switch timer.");
 	unsafe {
@@ -190,3 +192,4 @@ pub mod sched;
 pub mod syscall;
 pub mod trap;
 pub mod uart;
+pub mod virtio;
