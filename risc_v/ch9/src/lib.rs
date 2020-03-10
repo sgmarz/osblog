@@ -140,7 +140,7 @@ extern "C" fn kinit() {
 	plic::enable(10);
 	plic::set_priority(10, 1);
 	println!("UART interrupts have been enabled and are awaiting your command.");
-	println!("Loading VirtIO");
+	block::init_block_system();
 	virtio::probe();
 	println!("Getting ready for first process.");
 	println!("Issuing the first context-switch timer.");
@@ -183,6 +183,7 @@ extern "C" fn kinit_hart(hartid: usize) {
 // / RUST MODULES
 // ///////////////////////////////////
 
+pub mod block;
 pub mod cpu;
 pub mod kmem;
 pub mod page;
