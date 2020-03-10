@@ -54,7 +54,7 @@ fn init_process() {
 	let mut i: usize = 0;
 	loop {
 		i += 1;
-		if i > 10_000_000 {
+		if i > 70_000_000 {
 			unsafe {
 				make_syscall(1);
 			}
