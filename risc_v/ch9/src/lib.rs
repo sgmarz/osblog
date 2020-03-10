@@ -145,7 +145,7 @@ extern "C" fn kinit() {
 	unsafe {
 		let mtimecmp = 0x0200_4000 as *mut u64;
 		let mtime = 0x0200_bff8 as *const u64;
-		mtimecmp.write_volatile(mtime.read_volatile().wrapping_add(10_000_000));
+		mtimecmp.write_volatile(mtime.read_volatile().wrapping_add(cpu::CONTEXT_SWITCH_TIME));
 	}
 	let (frame, mepc, satp) = sched::schedule();
 	unsafe {

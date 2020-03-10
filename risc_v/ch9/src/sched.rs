@@ -3,9 +3,10 @@
 // Stephen Marz
 // 27 Dec 2019
 
-use crate::{process::{ProcessState, PROCESS_LIST}};
+use crate::{cpu::{build_satp, SatpMode},
+            process::{ProcessState, PROCESS_LIST}};
 
-pub fn schedule() ->  (usize, usize, usize) {
+pub fn schedule() -> (usize, usize, usize) {
 	unsafe {
 		if let Some(mut pl) = PROCESS_LIST.take() {
 			pl.rotate_left(1);
@@ -19,12 +20,10 @@ pub fn schedule() ->  (usize, usize, usize) {
 						frame_addr =
 							prc.get_frame_address();
 						mepc = prc.get_program_counter();
-						satp = prc.get_table_address() >> 12;
+						satp = prc.get_table_address();
 						pid = prc.get_pid() as usize;
 					},
-					ProcessState::Sleeping => {
-						
-					},
+					ProcessState::Sleeping => {},
 					_ => {},
 				}
 			}
@@ -32,10 +31,18 @@ pub fn schedule() ->  (usize, usize, usize) {
 			PROCESS_LIST.replace(pl);
 			if frame_addr != 0 {
 				// MODE 8 is 39-bit virtual address MMU
-				// I'm using the PID as the address space identifier to hopefully
-				// help with (not?) flushing the TLB whenever we switch processes.
+				// I'm using the PID as the address space
+				// identifier to hopefully help with (not?)
+				// flushing the TLB whenever we switch
+				// processes.
 				if satp != 0 {
-					return (frame_addr, mepc, (8 << 60) | (pid << 44) | satp);
+					return (frame_addr,
+					        mepc,
+					        build_satp(
+					                   SatpMode::Sv39,
+					                   pid,
+					                   satp,
+					));
 				}
 				else {
 					return (frame_addr, mepc, 0);
