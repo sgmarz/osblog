@@ -140,6 +140,12 @@ extern "C" fn kinit() -> usize {
 	println!("Getting ready for first process.");
 	println!("Issuing the first context-switch timer.");
 	unsafe {
+		cpu::mscratch_write(
+			(&mut cpu::KERNEL_TRAP_FRAME[0]
+			 as *mut cpu::TrapFrame)
+			as usize,
+		);
+		cpu::KERNEL_TRAP_FRAME[0].hartid = 0;
 		let mtimecmp = 0x0200_4000 as *mut u64;
 		let mtime = 0x0200_bff8 as *const u64;
 		// The frequency given by QEMU is 10_000_000 Hz, so this sets

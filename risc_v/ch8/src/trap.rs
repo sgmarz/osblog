@@ -118,6 +118,7 @@ extern "C" fn m_trap(epc: usize,
 			2 => {
 				// Illegal instruction
 				panic!("Illegal instruction CPU#{} -> 0x{:08x}: 0x{:08x}\n", hart, epc, tval);
+				while true {}
 			},
 			8 => {
 				// Environment (system) call from User mode
@@ -137,16 +138,19 @@ extern "C" fn m_trap(epc: usize,
 			12 => {
 				// Instruction page fault
 				println!("Instruction page fault CPU#{} -> 0x{:08x}: 0x{:08x}", hart, epc, tval);
+				while true {}
 				return_pc += 4;
 			},
 			13 => {
 				// Load page fault
 				println!("Load page fault CPU#{} -> 0x{:08x}: 0x{:08x}", hart, epc, tval);
+				while true {}
 				return_pc += 4;
 			},
 			15 => {
 				// Store page fault
 				println!("Store page fault CPU#{} -> 0x{:08x}: 0x{:08x}", hart, epc, tval);
+				while true {}
 				return_pc += 4;
 			},
 			_ => {

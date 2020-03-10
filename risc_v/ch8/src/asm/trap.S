@@ -24,7 +24,6 @@
 	fld	f\i, ((NUM_GP_REGS+(\i))*REG_SIZE)(\basereg)
 .endm
 
-
 .section .text
 .global m_trap_vector
 # This must be aligned by 4 since the last two bits
@@ -69,8 +68,8 @@ m_trap_vector:
 	csrr	a2, mcause
 	csrr	a3, mhartid
 	csrr	a4, mstatus
-	mv		a5, t5
-	ld		sp, 520(a5)
+	la		t0, KERNEL_STACK_END
+	ld		sp, 0(t0)
 	call	m_trap
 
 	# When we get here, we've returned from m_trap, restore registers
@@ -109,6 +108,8 @@ switch_to_user:
 	csrw	mstatus, t0
 	csrw	mepc, a1
 	csrw	satp, a2
+	li		t1, 0xaaa
+	csrw	mie, t1
 	# This fence forces the MMU to flush the TLB. However, since
 	# we're using the PID as the address space identifier, we might
 	# only need this when we create a process. Right now, this ensures

@@ -26,7 +26,7 @@ const STACK_PAGES: usize = 2;
 // regardless of where it is on the kernel heap.
 const STACK_ADDR: usize = 0xf_0000_0000;
 // All processes will have a defined starting point in virtual memory.
-const PROCESS_STARTING_ADDR: usize = 0x2000_0000;
+const PROCESS_STARTING_ADDR: usize = 0x8000_0000;
 
 // Here, we store a process list. It uses the global allocator
 // that we made before and its job is to store all processes.
@@ -94,6 +94,7 @@ pub fn init() -> usize {
 		// the address, and then move it right back in.
 		let pl = PROCESS_LIST.take().unwrap();
 		let p = pl.front().unwrap().frame;
+		let func_vaddr = pl.front().unwrap().program_counter;
 		let frame = &p as *const TrapFrame as usize;
 		mscratch_write(frame);
 		satp_write(build_satp(
@@ -107,7 +108,7 @@ pub fn init() -> usize {
 		PROCESS_LIST.replace(pl);
 		// Return the first instruction's address to execute.
 		// Since we use the MMU, all start here.
-		PROCESS_STARTING_ADDR
+		func_vaddr
 	}
 }
 
@@ -163,13 +164,15 @@ impl Process {
 	}
 	pub fn new_default(func: fn()) -> Self {
 		let func_addr = func as usize;
+		let func_vaddr = func_addr; //- 0x6000_0000;
+		// println!("func_addr = {:x} -> {:x}", func_addr, func_vaddr);
 		// We will convert NEXT_PID below into an atomic increment when
 		// we start getting into multi-hart processing. For now, we want
 		// a process. Get it to work, then improve it!
 		let mut ret_proc =
 			Process { frame:           TrapFrame::zero(),
 			          stack:           alloc(STACK_PAGES),
-			          program_counter: PROCESS_STARTING_ADDR,
+			          program_counter: func_vaddr,
 			          pid:             unsafe { NEXT_PID },
 			          root:            zalloc(1) as *mut Table,
 			          state:           ProcessState::Waiting,
@@ -207,21 +210,17 @@ impl Process {
 			    0,
 			);
 		}
-		// Map the program counter on the MMU
-		map(
-		    pt,
-		    PROCESS_STARTING_ADDR,
-		    func_addr,
-		    EntryBits::UserReadExecute.val(),
-		    0,
-		);
-		map(
-		    pt,
-		    PROCESS_STARTING_ADDR + 0x1001,
-		    func_addr + 0x1001,
-		    EntryBits::UserReadExecute.val(),
-		    0,
-		);
+		// Map the program counter on the MMU and other bits
+		for i in 0..=100 {
+			let modifier = i * 0x1000;
+			map(
+				pt,
+				func_vaddr + modifier,
+				func_addr + modifier,
+				EntryBits::UserReadWriteExecute.val(),
+				0,
+			);
+		}
 		ret_proc
 	}
 }
