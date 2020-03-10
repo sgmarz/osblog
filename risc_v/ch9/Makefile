@@ -23,8 +23,8 @@ CPU=rv64
 CPUS=4
 MEM=128M
 DISK=hdd.dsk
-# DRIVE= -drive if=none,format=raw,file=$(DISK),id=foo -device virtio-blk-device,scsi=off,drive=foo
-DRIVE=
+DRIVE= -drive if=none,format=raw,file=$(DISK),id=foo -device virtio-blk-device,scsi=off,drive=foo
+#DRIVE=
 
 
 all:
