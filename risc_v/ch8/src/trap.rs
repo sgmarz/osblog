@@ -6,6 +6,11 @@
 use crate::cpu::TrapFrame;
 use crate::{plic, uart};
 use crate::syscall::do_syscall;
+use crate::sched::schedule;
+
+extern "C" {
+	fn switch_to_user(frame: usize, mepc: usize, satp: usize) -> !;
+}
 
 #[no_mangle]
 /// The m_trap stands for "machine trap". Right now, we are handling
@@ -47,7 +52,8 @@ extern "C" fn m_trap(epc: usize,
 				// We would typically invoke the scheduler here to pick another
 				// process to run.
 				// Machine timer
-				println!("CTX");
+				// println!("CTX");
+				let (frame, mepc, satp) = schedule();
 				let mtimecmp = 0x0200_4000 as *mut u64;
 				let mtime = 0x0200_bff8 as *const u64;
 				// The frequency given by QEMU is 10_000_000 Hz, so this sets
@@ -55,6 +61,9 @@ extern "C" fn m_trap(epc: usize,
 				// This is much too slow for normal operations, but it gives us
 				// a visual of what's happening behind the scenes.
 				mtimecmp.write_volatile(mtime.read_volatile() + 10_000_000);
+				unsafe {
+					switch_to_user(frame, mepc, satp);
+				}
 			},
 			11 => {
 				// Machine external (interrupt from Platform Interrupt Controller (PLIC))

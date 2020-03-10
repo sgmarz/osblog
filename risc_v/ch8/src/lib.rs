@@ -149,10 +149,12 @@ extern "C" fn kinit() {
 		// the next interrupt to fire one second from now.
 		mtimecmp.write_volatile(mtime.read_volatile() + 1_000_000);
 	}
-	sched::schedule();
-	// When we return, we put the return value into mepc and start there. This
-	// should be init's starting point.
-	// ret
+	let (frame, mepc, satp) = sched::schedule();
+	unsafe {
+		switch_to_user(frame, mepc, satp);
+	}
+	// switch_to_user will not return, so we should never get here
+	println!("WE DIDN'T SCHEDULE?! THIS ISN'T RIGHT!");
 }
 #[no_mangle]
 extern "C" fn kinit_hart(hartid: usize) {

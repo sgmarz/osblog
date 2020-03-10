@@ -5,11 +5,7 @@
 
 use crate::{process::{ProcessState, PROCESS_LIST}};
 
-extern "C" {
-	fn switch_to_user(frame: usize, mepc: usize, satp: usize) -> !;
-}
-
-pub fn schedule() {
+pub fn schedule() ->  (usize, usize, usize) {
 	unsafe {
 		if let Some(mut pl) = PROCESS_LIST.take() {
 			pl.rotate_left(1);
@@ -32,18 +28,20 @@ pub fn schedule() {
 					_ => {},
 				}
 			}
+			println!("Scheduling {}", pid);
 			PROCESS_LIST.replace(pl);
 			if frame_addr != 0 {
 				// MODE 8 is 39-bit virtual address MMU
 				// I'm using the PID as the address space identifier to hopefully
 				// help with (not?) flushing the TLB whenever we switch processes.
 				if satp != 0 {
-					switch_to_user(frame_addr, mepc, (8 << 60) | (pid << 44) | satp);
+					return (frame_addr, mepc, (8 << 60) | (pid << 44) | satp);
 				}
 				else {
-					switch_to_user(frame_addr, mepc, 0);
+					return (frame_addr, mepc, 0);
 				}
 			}
 		}
 	}
+	(0, 0, 0)
 }

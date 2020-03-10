@@ -54,7 +54,7 @@ fn init_process() {
 	let mut i: usize = 0;
 	loop {
 		i += 1;
-		if i > 100_000_000 {
+		if i > 10_000_000 {
 			unsafe {
 				make_syscall(1);
 			}
@@ -230,7 +230,10 @@ impl Process {
 				0,
 			);
 		}
-		// // This is the make_syscall function
+		// This is the make_syscall function
+		// The reason we need this is because we're running a process
+		// that is inside of the kernel. When we start loading from a block
+		// devices, we can load the instructions anywhere in memory. 
 		map(pt, 0x8000_0000, 0x8000_0000, EntryBits::UserReadExecute.val(), 0);
 		ret_proc
 	}
