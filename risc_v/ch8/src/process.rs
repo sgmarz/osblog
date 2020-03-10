@@ -24,7 +24,7 @@ use alloc::collections::vec_deque::VecDeque;
 const STACK_PAGES: usize = 2;
 // We want to adjust the stack to be at the bottom of the memory allocation
 // regardless of where it is on the kernel heap.
-const STACK_ADDR: usize = 0xf_0000_0000;
+const STACK_ADDR: usize = 0x8000_0000;
 // All processes will have a defined starting point in virtual memory.
 const PROCESS_STARTING_ADDR: usize = 0x8000_0000;
 
@@ -42,12 +42,25 @@ pub static mut PROCESS_LIST: Option<VecDeque<Process>> = None;
 // it's probably easier and faster just to increase the pid:
 static mut NEXT_PID: u16 = 1;
 
+extern "C" {
+	fn make_syscall(a: usize) -> usize;
+}
+
 /// We will eventually move this function out of here, but its
 /// job is just to take a slot in the process list.
 fn init_process() {
 	// We can't do much here until we have system calls because
 	// we're running in User space.
-	loop {}
+	let mut i: usize = 0;
+	loop {
+		i += 1;
+		if i > 100_000_000 {
+			unsafe {
+				make_syscall(1);
+			}
+			i = 0;
+		}
+	}
 }
 
 /// Add a process given a function address and then
@@ -85,7 +98,7 @@ pub fn add_process_default(pr: fn()) {
 /// but later, it should call the shell.
 pub fn init() -> usize {
 	unsafe {
-		PROCESS_LIST = Some(VecDeque::with_capacity(5));
+		PROCESS_LIST = Some(VecDeque::with_capacity(15));
 		add_process_default(init_process);
 		// Ugh....Rust is giving me fits over here!
 		// I just want a memory address to the trap frame, but
@@ -95,15 +108,8 @@ pub fn init() -> usize {
 		let pl = PROCESS_LIST.take().unwrap();
 		let p = pl.front().unwrap().frame;
 		let func_vaddr = pl.front().unwrap().program_counter;
-		let frame = &p as *const TrapFrame as usize;
-		mscratch_write(frame);
-		satp_write(build_satp(
-			SatpMode::Sv39,
-			1,
-			pl.front().unwrap().root as usize,
-		),);
-		// Synchronize PID 1. We use ASID as the PID.
-		satp_fence_asid(1);
+		let frame = p as *const TrapFrame as usize;
+		println!("Init's frame is at 0x{:08x}", frame);
 		// Put the process list back in the global.
 		PROCESS_LIST.replace(pl);
 		// Return the first instruction's address to execute.
@@ -133,7 +139,7 @@ pub enum ProcessState {
 // C-style ABI.
 #[repr(C)]
 pub struct Process {
-	frame:           TrapFrame,
+	frame:           *mut TrapFrame,
 	stack:           *mut u8,
 	program_counter: usize,
 	pid:             u16,
@@ -145,7 +151,7 @@ pub struct Process {
 
 impl Process {
 	pub fn get_frame_address(&self) -> usize {
-		((&self.frame) as *const TrapFrame) as usize
+		self.frame as usize
 	}
 	pub fn get_program_counter(&self) -> usize {
 		self.program_counter
@@ -170,12 +176,12 @@ impl Process {
 		// we start getting into multi-hart processing. For now, we want
 		// a process. Get it to work, then improve it!
 		let mut ret_proc =
-			Process { frame:           TrapFrame::zero(),
+			Process { frame:           zalloc(1) as *mut TrapFrame,
 			          stack:           alloc(STACK_PAGES),
 			          program_counter: func_vaddr,
 			          pid:             unsafe { NEXT_PID },
 			          root:            zalloc(1) as *mut Table,
-			          state:           ProcessState::Waiting,
+			          state:           ProcessState::Running,
 					  data:            ProcessData::zero(), 
 					  sleep_until:     0
 					};
@@ -190,13 +196,15 @@ impl Process {
 		// to usize first and then add PAGE_SIZE is better.
 		// We also need to set the stack adjustment so that it is at the
 		// bottom of the memory and far away from heap allocations.
-		ret_proc.frame.regs[2] = STACK_ADDR + PAGE_SIZE * STACK_PAGES;
+		let saddr = ret_proc.stack as usize;
+		unsafe {
+			(*ret_proc.frame).regs[2] = STACK_ADDR + PAGE_SIZE * STACK_PAGES;
+		}
 		// Map the stack on the MMU
 		let pt;
 		unsafe {
 			pt = &mut *ret_proc.root;
 		}
-		let saddr = ret_proc.stack as usize;
 		// We need to map the stack onto the user process' virtual
 		// memory This gets a little hairy because we need to also map
 		// the function code too.
@@ -209,6 +217,7 @@ impl Process {
 			    EntryBits::UserReadWrite.val(),
 			    0,
 			);
+			println!("Set stack from 0x{:016x} -> 0x{:016x}", STACK_ADDR + addr, saddr + addr);
 		}
 		// Map the program counter on the MMU and other bits
 		for i in 0..=100 {
@@ -221,6 +230,8 @@ impl Process {
 				0,
 			);
 		}
+		// // This is the make_syscall function
+		map(pt, 0x8000_0000, 0x8000_0000, EntryBits::UserReadExecute.val(), 0);
 		ret_proc
 	}
 }

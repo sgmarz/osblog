@@ -75,9 +75,6 @@ _start:
 	csrw	mtvec, t2
 	# Jump to first process. We put the MPP = 00 for user mode, so after
 	# mret, we will jump to the first process' addresss in user mode.
-	csrw	mepc, a0
-	li		t2, 0xaaa
-	csrw	mie, t2
 	la		ra, 4f
 	mret
 3:

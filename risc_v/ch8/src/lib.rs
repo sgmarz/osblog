@@ -118,11 +118,14 @@ pub fn id_map_range(root: &mut page::Table,
 		memaddr += 1 << 12;
 	}
 }
+extern "C" {
+	fn switch_to_user(frame: usize, mepc: usize, satp: usize) -> !;
+}
 // ///////////////////////////////////
 // / ENTRY POINT
 // ///////////////////////////////////
 #[no_mangle]
-extern "C" fn kinit() -> usize {
+extern "C" fn kinit() {
 	uart::Uart::new(0x1000_0000).init();
 	page::init();
 	kmem::init();
@@ -140,21 +143,16 @@ extern "C" fn kinit() -> usize {
 	println!("Getting ready for first process.");
 	println!("Issuing the first context-switch timer.");
 	unsafe {
-		cpu::mscratch_write(
-			(&mut cpu::KERNEL_TRAP_FRAME[0]
-			 as *mut cpu::TrapFrame)
-			as usize,
-		);
-		cpu::KERNEL_TRAP_FRAME[0].hartid = 0;
 		let mtimecmp = 0x0200_4000 as *mut u64;
 		let mtime = 0x0200_bff8 as *const u64;
 		// The frequency given by QEMU is 10_000_000 Hz, so this sets
 		// the next interrupt to fire one second from now.
-		mtimecmp.write_volatile(mtime.read_volatile() + 1_000_000);
+		// mtimecmp.write_volatile(mtime.read_volatile() + 1_000_000);
 	}
+	sched::schedule();
 	// When we return, we put the return value into mepc and start there. This
 	// should be init's starting point.
-	ret
+	// ret
 }
 #[no_mangle]
 extern "C" fn kinit_hart(hartid: usize) {
