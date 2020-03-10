@@ -1,0 +1,3 @@
+os.elf
+target/*
+Cargo.lock
