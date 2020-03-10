@@ -4,7 +4,8 @@
 // Stephen Marz
 // 14 October 2019
 
-use core::ptr::null_mut;
+// Let's do this 3 times per second for switching
+pub const CONTEXT_SWITCH_TIME: u64 = 10_000_000 / 250;
 
 /// In 64-bit mode, we're given three different modes for the MMU:
 /// 0 - The MMU is off -- no protection and no translation PA = VA
@@ -27,7 +28,7 @@ pub struct TrapFrame {
 	pub regs:       [usize; 32], // 0 - 255
 	pub fregs:      [usize; 32], // 256 - 511
 	pub satp:       usize,       // 512 - 519
-	pub trap_stack: *mut u8,     // 520
+	pub pc:         usize,       // 520
 	pub hartid:     usize,       // 528
 }
 
@@ -44,8 +45,8 @@ impl TrapFrame {
 		TrapFrame { regs:       [0; 32],
 		            fregs:      [0; 32],
 		            satp:       0,
-		            trap_stack: null_mut(),
-		             hartid:     0, }
+		            pc:		    0,
+		            hartid:     0, }
 	}
 }
 

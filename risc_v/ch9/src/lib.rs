@@ -145,9 +145,7 @@ extern "C" fn kinit() {
 	unsafe {
 		let mtimecmp = 0x0200_4000 as *mut u64;
 		let mtime = 0x0200_bff8 as *const u64;
-		// The frequency given by QEMU is 10_000_000 Hz, so this sets
-		// the next interrupt to fire one second from now.
-		mtimecmp.write_volatile(mtime.read_volatile() + 1_000_000);
+		mtimecmp.write_volatile(mtime.read_volatile().wrapping_add(10_000_000));
 	}
 	let (frame, mepc, satp) = sched::schedule();
 	unsafe {

@@ -30,7 +30,7 @@ _start:
 	# Any hardware threads (hart) that are not bootstrapping
 	# need to wait for an IPI
 	csrr	t0, mhartid
-	bnez	t0, 3f
+	bnez	t0, 4f
 
 	# Set all bytes in the BSS section to zero.
 	la 		a0, _bss_start

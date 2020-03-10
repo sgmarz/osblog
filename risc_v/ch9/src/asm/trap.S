@@ -57,12 +57,13 @@ m_trap_vector:
 
 	# Restore the kernel trap frame into mscratch
 	csrw	mscratch, t5
-
+	# csrw	mie, zero
 	# Get ready to go into Rust (trap.rs)
 	# We don't want to write into the user's stack or whomever
 	# messed with us here.
 	# csrw	mie, zero
 	csrr	a0, mepc
+	sd		a0, 520(t5)
 	csrr	a1, mtval
 	csrr	a2, mcause
 	csrr	a3, mhartid
@@ -113,7 +114,7 @@ switch_to_user:
 	# we're using the PID as the address space identifier, we might
 	# only need this when we create a process. Right now, this ensures
 	# correctness, however it isn't the most efficient.
-	sfence.vma
+	# sfence.vma
 	# A0 is the context frame, so we need to reload it back
 	# and mret so we can start running the program.
 	mv	t6, a0

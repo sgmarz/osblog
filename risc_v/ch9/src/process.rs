@@ -3,7 +3,7 @@
 // Stephen Marz
 // 27 Nov 2019
 
-use crate::{cpu::TrapFrame,
+use crate::{cpu::{TrapFrame, satp_fence_asid},
             page::{alloc,
                    dealloc,
                    map,
@@ -49,7 +49,7 @@ fn init_process() {
 	let mut i: usize = 0;
 	loop {
 		i += 1;
-		if i > 70_000_000 {
+		if i > 100_000_000 {
 			unsafe {
 				make_syscall(1);
 			}
@@ -102,14 +102,13 @@ pub fn init() -> usize {
 		// the address, and then move it right back in.
 		let pl = PROCESS_LIST.take().unwrap();
 		let p = pl.front().unwrap().frame;
-		let func_vaddr = pl.front().unwrap().program_counter;
 		let frame = p as *const TrapFrame as usize;
 		println!("Init's frame is at 0x{:08x}", frame);
 		// Put the process list back in the global.
 		PROCESS_LIST.replace(pl);
 		// Return the first instruction's address to execute.
 		// Since we use the MMU, all start here.
-		func_vaddr
+		(*p).pc
 	}
 }
 
@@ -136,7 +135,6 @@ pub enum ProcessState {
 pub struct Process {
 	frame:           *mut TrapFrame,
 	stack:           *mut u8,
-	program_counter: usize,
 	pid:             u16,
 	root:            *mut Table,
 	state:           ProcessState,
@@ -149,7 +147,7 @@ impl Process {
 		self.frame as usize
 	}
 	pub fn get_program_counter(&self) -> usize {
-		self.program_counter
+		unsafe { (*self.frame).pc }
 	}
 	pub fn get_table_address(&self) -> usize {
 		self.root as usize
@@ -173,7 +171,6 @@ impl Process {
 		let mut ret_proc =
 			Process { frame:           zalloc(1) as *mut TrapFrame,
 			          stack:           alloc(STACK_PAGES),
-			          program_counter: func_vaddr,
 			          pid:             unsafe { NEXT_PID },
 			          root:            zalloc(1) as *mut Table,
 			          state:           ProcessState::Running,
@@ -181,6 +178,7 @@ impl Process {
 					  sleep_until:     0
 					};
 		unsafe {
+			satp_fence_asid(NEXT_PID as usize);
 			NEXT_PID += 1;
 		}
 		// Now we move the stack pointer to the bottom of the
@@ -193,6 +191,7 @@ impl Process {
 		// bottom of the memory and far away from heap allocations.
 		let saddr = ret_proc.stack as usize;
 		unsafe {
+			(*ret_proc.frame).pc = func_vaddr;
 			(*ret_proc.frame).regs[2] = STACK_ADDR + PAGE_SIZE * STACK_PAGES;
 		}
 		// Map the stack on the MMU

@@ -28,7 +28,7 @@ pub fn schedule() ->  (usize, usize, usize) {
 					_ => {},
 				}
 			}
-			println!("Scheduling {}", pid);
+			// println!("Scheduling {}", pid);
 			PROCESS_LIST.replace(pl);
 			if frame_addr != 0 {
 				// MODE 8 is 39-bit virtual address MMU
