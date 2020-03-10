@@ -24,6 +24,8 @@ CPUS=4
 MEM=128M
 DISK=hdd.dsk
 DRIVE= -drive if=none,format=raw,file=$(DISK),id=foo -device virtio-blk-device,scsi=off,drive=foo
+OPTS=-nographic -serial mon:stdio -bios none -device virtio-rng-device -device virtio-gpu-device
+OPTS+=-device virtio-net-device -device virtio-tablet-device -device virtio-keyboard-device
 #DRIVE=
 
 
@@ -32,7 +34,7 @@ all:
 	$(CC) $(CFLAGS) $(LINKER_SCRIPT) $(INCLUDES) -o $(OUT) $(SOURCES_ASM) $(LIBS) $(LIB)
 	
 run: all
-	$(QEMU) -machine $(MACH) -cpu $(CPU) -smp $(CPUS) -m $(MEM) $(DRIVE) -nographic -serial mon:stdio -bios none -kernel $(OUT)
+	$(QEMU) -machine $(MACH) -cpu $(CPU) -smp $(CPUS) -m $(MEM) $(DRIVE) $(OPTS) -kernel $(OUT)
 
 
 .PHONY: clean
