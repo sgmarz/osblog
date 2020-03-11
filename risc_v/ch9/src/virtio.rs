@@ -3,7 +3,6 @@
 // Stephen Marz
 // 10 March 2020
 
-use crate::page::zalloc;
 use crate::block::setup_block_device;
 
 // Flags
@@ -18,94 +17,132 @@ pub const VIRTIO_AVAIL_F_NO_INTERRUPT: u16 = 1;
 
 pub const VIRTIO_USED_F_NO_NOTIFY: u16 = 1;
 
+pub const VIRTIO_RING_SIZE: usize = 256;
+
 // VirtIO structures
 #[repr(C)]
 pub struct Descriptor {
-    pub addr: u64,
-    pub len: u32,
-    pub flags: u16,
-    pub next: u16,
+	pub addr:  u64,
+	pub len:   u32,
+	pub flags: u16,
+	pub next:  u16,
 }
 
 #[repr(C)]
 pub struct Available {
-    pub flags: u16,
-    pub idx: u16,
-    pub ring: [u16; 1024],
-    pub event: u16,
+	pub flags: u16,
+	pub idx:   u16,
+	pub ring:  [u16; VIRTIO_RING_SIZE],
+	pub event: u16,
 }
 
 #[repr(C)]
 pub struct UsedElem {
-    pub id: u32,
-    pub len: u32,
+	pub id:  u32,
+	pub len: u32,
 }
 
 #[repr(C)]
 pub struct Used {
-    pub flags: u16,
-    pub idx: u16,
-    pub ring: [UsedElem; 1024],
-    pub event: u16,
+	pub flags: u16,
+	pub idx:   u16,
+	pub ring:  [UsedElem; VIRTIO_RING_SIZE],
+	pub event: u16,
 }
 
 #[repr(C)]
 pub struct Queue {
-    pub desc: [Descriptor; 1024],
-    pub avail: Available,
-    pub used: Used,
+	pub desc:  [Descriptor; VIRTIO_RING_SIZE],
+	pub avail: Available,
+	pub used:  Used,
 }
 
 #[repr(usize)]
 pub enum MmioOffsets {
-    MagicValue = 0x000,
-    Version = 0x004,
-    DeviceId = 0x008,
-    VendorId = 0x00c,
-    HostFeatures = 0x010,
-    HostFeaturesSel = 0x014,
-    GuestFeatures = 0x020,
-    GuestFeaturesSel = 0x024,
-    GuestPageSize = 0x028,
-    QueueSel = 0x030,
-    QueueNumMax = 0x034,
-    QueueNum = 0x038,
-    QueueAlign = 0x03c,
-    QueuePfn = 0x040,
-    QueueNotify = 0x050,
-    InterruptStatus = 0x060,
-    InterruptAck = 0x064,
-    Status = 0x070,
-    Config = 0x100
+	MagicValue = 0x000,
+	Version = 0x004,
+	DeviceId = 0x008,
+	VendorId = 0x00c,
+	HostFeatures = 0x010,
+	HostFeaturesSel = 0x014,
+	GuestFeatures = 0x020,
+	GuestFeaturesSel = 0x024,
+	GuestPageSize = 0x028,
+	QueueSel = 0x030,
+	QueueNumMax = 0x034,
+	QueueNum = 0x038,
+	QueueAlign = 0x03c,
+	QueuePfn = 0x040,
+	QueueNotify = 0x050,
+	InterruptStatus = 0x060,
+	InterruptAck = 0x064,
+	Status = 0x070,
+	Config = 0x100,
 }
 
 impl MmioOffsets {
+	pub fn val(self) -> usize {
+		self as usize
+	}
+
+	pub fn scaled(self, scale: usize) -> usize {
+		self.val() / scale
+	}
+
+	pub fn scale32(self) -> usize {
+		self.scaled(4)
+	}
+}
+
+
+pub enum StatusField {
+    Acknowledge = 1,
+    Driver = 2,
+    Failed = 128,
+    FeaturesOk = 8,
+    DriverOk = 4,
+    DeviceNeedsReset = 64,
+}
+
+impl StatusField {
     pub fn val(self) -> usize {
         self as usize
     }
-    pub fn scaled(self, scale: usize) -> usize {
-        self.val() / scale
+    pub fn val32(self) -> u32 {
+        self as u32
     }
-    pub fn scale32(self) -> usize {
-        self.scaled(4)
+    pub fn test(sf: u32, bit: StatusField) -> bool {
+        sf & bit.val32() != 0
+    }
+    pub fn is_failed(sf: u32) -> bool {
+        StatusField::test(sf, StatusField::Failed)
+    }
+    pub fn needs_reset(sf: u32) -> bool {
+        StatusField::test(sf, StatusField::DeviceNeedsReset)
+    }
+    pub fn driver_ok(sf: u32) -> bool {
+        StatusField::test(sf, StatusField::DriverOk)
+    }
+    pub fn features_ok(sf: u32) -> bool {
+        StatusField::test(sf, StatusField::FeaturesOk)
     }
 }
 
 // We probably shouldn't put these here, but it'll help
 // with probing the bus, etc. These are architecture specific
 // which is why I say that.
-pub const MMIO_VIRTIO_START: usize  = 0x1000_1000;
-pub const MMIO_VIRTIO_END: usize    = 0x1000_8000;
+pub const MMIO_VIRTIO_START: usize = 0x1000_1000;
+pub const MMIO_VIRTIO_END: usize = 0x1000_8000;
 pub const MMIO_VIRTIO_STRIDE: usize = 0x1000;
 pub const MMIO_VIRTIO_MAGIC: u32 = 0x74_72_69_76;
 
 /// Probe the VirtIO bus for devices that might be
 /// out there.
 pub fn probe() {
-    // Rust's for loop uses an Iterator object, which now has a step_by modifier
-    // to change how much it steps. Also recall that ..= means up to AND including
-    // MMIO_VIRTIO_END.
-    for addr in (MMIO_VIRTIO_START..=MMIO_VIRTIO_END).step_by(MMIO_VIRTIO_STRIDE) {
+	// Rust's for loop uses an Iterator object, which now has a step_by
+	// modifier to change how much it steps. Also recall that ..= means up
+	// to AND including MMIO_VIRTIO_END.
+	for addr in (MMIO_VIRTIO_START..=MMIO_VIRTIO_END).step_by(MMIO_VIRTIO_STRIDE) {
         print!("Virtio probing 0x{:08x}...", addr);
         let magicvalue;
         let deviceid;
@@ -190,17 +227,17 @@ pub fn probe() {
 }
 
 pub fn setup_entropy_device(ptr: *mut u32) -> bool {
-    false
+	false
 }
 
 pub fn setup_network_device(ptr: *mut u32) -> bool {
-    false
+	false
 }
 
 pub fn setup_gpu_device(ptr: *mut u32) -> bool {
-    false
+	false
 }
 
 pub fn setup_input_device(ptr: *mut u32) -> bool {
-    false
+	false
 }

@@ -4,7 +4,7 @@
 // 10 March 2020
 
 use crate::{page::{zalloc, PAGE_SIZE},
-            virtio::{MmioOffsets, Queue}};
+            virtio::{MmioOffsets, Queue, VIRTIO_RING_SIZE, StatusField}};
 use alloc::collections::VecDeque;
 use core::mem::size_of;
 
@@ -23,6 +23,11 @@ pub struct Topology {
 	opt_io_size:        u32,
 }
 
+// There is a configuration space for VirtIO that begins
+// at offset 0x100 and continues to the size of the configuration.
+// The structure below represents the configuration for a 
+// block device. Really, all that this OS cares about is the
+// capacity.
 #[repr(C)]
 pub struct Config {
 	capacity:                 u64,
@@ -71,21 +76,41 @@ pub fn init_block_system() {
 
 pub fn setup_block_device(ptr: *mut u32) -> bool {
 	unsafe {
-		// The following can get dangerous for multi-harts. For now, we
-		// only have a single hart, so we can assume there is no race
-		// condition when creating the BDA.
 		if let Some(mut vdq) = BLOCK_DEVICE_ARRAY.take() {
+			// [Driver] Device Initialization
+			// 1. Reset the device (write 0 into status)
+			ptr.add(MmioOffsets::Status.scale32()).write_volatile(0);
+			let mut status_bits = StatusField::Acknowledge.val32();
+			// 2. Set ACKNOWLEDGE status bit
+			ptr.add(MmioOffsets::Status.scale32()).write_volatile(status_bits);
+			// 3. Set the DRIVER status bit
+			status_bits |= StatusField::DriverOk.val32();
+			ptr.add(MmioOffsets::Status.scale32()).write_volatile(status_bits);
+			// 4. Read device feature bits, write subset of feature bits understood by OS and driver
+			//    to the device.
+			let host_features = ptr.add(MmioOffsets::HostFeatures.scale32()).read_volatile();
+			let guest_features = host_features & !(1 << VIRTIO_BLK_F_RO);
+			ptr.add(MmioOffsets::GuestFeatures.scale32()).write_volatile(guest_features);
+			// 5. Set the FEATURES_OK status bit
+			status_bits |= StatusField::FeaturesOk.val32();
+			ptr.add(MmioOffsets::Status.scale32()).write_volatile(status_bits);
+			// 6. Re-read status to ensure FEATURES_OK is still set. Otherwise, it doesn't support our features.
+			let status_ok = ptr.add(MmioOffsets::Status.scale32()).read_volatile();
+			// If the status field no longer has features_ok set, that means that the device couldn't accept
+			// the features that we request. Therefore, this is considered a "failed" state.
+			if false == StatusField::features_ok(status_ok) {
+				print!("features fail...");
+				ptr.add(MmioOffsets::Status.scale32()).write_volatile(StatusField::Failed.val32());
+				return false;
+			}
+			// 7. Perform device-specific setup.
 			// First, if the block device array is empty, create it!
-			// We add 4096 to round this up. Usually this queue
-			// comes out to be 6.5 pages, so we increase this to get
-			// 7 pages.
+			// We add 4096 to round this up and then do an integer divide
+			// to truncate the decimal.
 			let num_pages =
 				(size_of::<Queue>() + PAGE_SIZE) / PAGE_SIZE;
 			let queue_ptr = zalloc(num_pages) as *mut Queue;
 			let queue_pfn = queue_ptr as u32;
-			// let config_ptr =
-			// ptr.add(MmioOffsets::Config.scale32()) as
-			// *const Config; let ref config = *config_ptr;
             let bd = BlockDevice { queue: queue_ptr,
                                    dev: ptr,
 			                       idx:   1, };
@@ -93,6 +118,13 @@ pub fn setup_block_device(ptr: *mut u32) -> bool {
 			ptr.add(MmioOffsets::QueuePfn.scale32())
 			   .write_volatile(queue_pfn);
 			BLOCK_DEVICE_ARRAY.replace(vdq);
+
+			ptr.add(MmioOffsets::QueueNum.scale32()).write_volatile(VIRTIO_RING_SIZE as u32);
+			let qn = ptr.add(MmioOffsets::QueueNum.scale32()).read_volatile();
+			let qnmax = ptr.add(MmioOffsets::QueueNumMax.scale32()).read_volatile();
+			// 8. Set the DRIVER_OK status bit. Device is now "live"
+			status_bits |= StatusField::DriverOk.val32();
+			ptr.add(MmioOffsets::Status.scale32()).write_volatile(status_bits);
 			true
 		}
 		else {
