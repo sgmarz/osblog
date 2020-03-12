@@ -119,6 +119,12 @@ pub fn id_map_range(root: &mut page::Table,
 extern "C" {
 	fn switch_to_user(frame: usize, mepc: usize, satp: usize) -> !;
 }
+fn rust_switch_to_user(frame: usize, satp: usize) -> ! {
+	unsafe {
+		let frameptr = frame as *const cpu::TrapFrame;
+		switch_to_user(frame, (*frameptr).pc, satp);
+	}
+}
 // ///////////////////////////////////
 // / ENTRY POINT
 // ///////////////////////////////////
@@ -152,12 +158,9 @@ extern "C" fn kinit() {
 		let mtime = 0x0200_bff8 as *const u64;
 		mtimecmp.write_volatile(mtime.read_volatile().wrapping_add(cpu::CONTEXT_SWITCH_TIME));
 	}
-	let (frame, mepc, satp) = sched::schedule();
-	unsafe {
-		switch_to_user(frame, mepc, satp);
-	}
+	let (frame, satp) = sched::schedule();
+	rust_switch_to_user(frame, satp);
 	// switch_to_user will not return, so we should never get here
-	println!("WE DIDN'T SCHEDULE?! THIS ISN'T RIGHT!");
 }
 #[no_mangle]
 extern "C" fn kinit_hart(hartid: usize) {
