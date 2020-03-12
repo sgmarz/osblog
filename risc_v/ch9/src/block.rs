@@ -4,9 +4,11 @@
 // 10 March 2020
 
 use crate::{page::{zalloc, PAGE_SIZE},
-            virtio::{MmioOffsets, Queue, VIRTIO_RING_SIZE, StatusField}};
+			kmem::{kmalloc, kfree},
+            virtio::{MmioOffsets, Queue, VIRTIO_RING_SIZE, StatusField, Descriptor}};
 use alloc::collections::VecDeque;
 use core::mem::size_of;
+use crate::virtio;
 
 #[repr(C)]
 pub struct Geometry {
@@ -47,12 +49,49 @@ pub struct Config {
 	unused1:                  [u8; 3],
 }
 
+#[repr(C)]
+pub struct Header {
+	blktype: u32,
+	reserved: u32,
+	sector: u64,
+}
+
+#[repr(C)]
+pub struct Data {
+	data: *mut u8
+}
+
+#[repr(C)]
+pub struct Status {
+	status: u8
+}
+
+#[repr(C)]
+pub struct Request {
+	header: Header,
+	data: Data,
+	status: Status,
+	head: u16,
+}
+
 // Internal block device structure
 pub struct BlockDevice {
     queue: *mut Queue,
     dev: *mut u32,
 	idx:   u16,
 }
+
+// Type values
+pub const VIRTIO_BLK_T_IN: u32 = 0;
+pub const VIRTIO_BLK_T_OUT: u32 = 1;
+pub const VIRTIO_BLK_T_FLUSH: u32 = 4;
+pub const VIRTIO_BLK_T_DISCARD: u32 = 11;
+pub const VIRTIO_BLK_T_WRITE_ZEROES: u32 = 13;
+
+// Status values
+pub const VIRTIO_BLK_S_OK: u8 = 0;
+pub const VIRTIO_BLK_S_IOERR: u8 = 1;
+pub const VIRTIO_BLK_S_UNSUPP: u8 = 2;
 
 // Feature bits
 pub const VIRTIO_BLK_F_SIZE_MAX: u32 = 1;
@@ -161,6 +200,87 @@ pub fn setup_block_device(ptr: *mut u32) -> bool {
 			// If we get here, the block devices array couldn't be taken. This can
 			// be due to duplicate access or that init wasn't called before this setup.
 			false
+		}
+	}
+}
+
+pub fn fill_next_descriptor(bd: &mut BlockDevice, desc: Descriptor) -> u16 {
+	unsafe {
+		bd.idx = (bd.idx + 1) % VIRTIO_RING_SIZE as u16;
+		println!("idx = {}", bd.idx);
+		 (*bd.queue).desc[bd.idx as usize] = desc;
+		if (*bd.queue).desc[bd.idx as usize].flags & virtio::VIRTIO_DESC_F_NEXT != 0 {
+			(*bd.queue).desc[bd.idx as usize].next = (bd.idx + 1) % VIRTIO_RING_SIZE as u16;
+		}
+		bd.idx
+	}
+}
+
+
+pub fn read(dev: usize, buffer: *mut u8, size: u32, offset: usize) {
+	unsafe {
+		if let Some(mut bdev_alloc) = BLOCK_DEVICES.take() {
+			let bdev = bdev_alloc.get_mut(dev).unwrap();
+			let sector = offset / 512;
+			let blk_request_size = size_of::<Request>();
+			let blk_request = kmalloc(blk_request_size) as *mut Request;
+			let desc = Descriptor {
+				addr: &(*blk_request).header as *const Header as u64,
+				len: blk_request_size as u32,
+				flags: virtio::VIRTIO_DESC_F_NEXT,
+				next: 0,
+			};
+			let head_idx = fill_next_descriptor(bdev, desc);
+			(*blk_request).header.sector = sector as u64;
+			(*blk_request).header.blktype = VIRTIO_BLK_T_IN;
+			(*blk_request).data.data = buffer;
+			let desc = Descriptor {
+				addr: buffer as u64,
+				len: size,
+				flags: virtio::VIRTIO_DESC_F_NEXT | virtio::VIRTIO_DESC_F_WRITE,
+				next: 0,
+			};
+			let data_idx = fill_next_descriptor(bdev, desc);
+			let desc = Descriptor {
+				addr: &(*blk_request).status as *const Status as u64,
+				len: size_of::<Status>() as u32,
+				flags: virtio::VIRTIO_DESC_F_WRITE,
+				next: 0,
+			};
+			let status_idx = fill_next_descriptor(bdev, desc);
+			(*bdev.queue).avail.ring[(*bdev.queue).avail.idx as usize] = head_idx;
+			println!("Avail at {}, set head to {}", (*bdev.queue).avail.idx, head_idx);
+			(*bdev.queue).avail.idx = ((*bdev.queue).avail.idx + 1) % virtio::VIRTIO_RING_SIZE as u16;
+			bdev.dev.add(MmioOffsets::QueueNotify.scale32()).write_volatile(0);
+		}
+	}
+}
+pub fn write(dev: usize, buffer: *const u8, size: usize, offset: usize) {
+	unsafe {
+		if let Some(mut bdev_alloc) = BLOCK_DEVICES.take() {
+			let bdev = bdev_alloc.get_mut(dev).unwrap();
+			let sector = offset / 512;
+			let desc = Descriptor {
+				addr: 0,
+				len: 0,
+				flags: 0,
+				next: 0,
+			};
+			let head_idx = fill_next_descriptor(bdev, desc);
+			let desc = Descriptor {
+				addr: 0,
+				len: 0,
+				flags: 0,
+				next: 0,
+			};
+			let data_idx = fill_next_descriptor(bdev, desc);
+			let desc = Descriptor {
+				addr: 0,
+				len: 0,
+				flags: 0,
+				next: 0,
+			};
+			let status_idx = fill_next_descriptor(bdev, desc);
 		}
 	}
 }

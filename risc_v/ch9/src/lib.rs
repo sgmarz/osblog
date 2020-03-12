@@ -151,6 +151,18 @@ extern "C" fn kinit() {
 	// setup which requires a block queue.
 	block::init();
 	virtio::probe();
+	let buffer = kmem::kmalloc(512 * 10);
+	block::read(0, buffer, 512 * 10, 0);
+	let mut i = 0;
+	loop {
+		if i > 100_000_000 {
+			break;
+		}
+		i += 1;
+	}
+	unsafe {
+		println!("{}{}{}", buffer.add(0).read(), buffer.add(1).read(), buffer.add(2).read());
+	}
 	println!("Getting ready for first process.");
 	println!("Issuing the first context-switch timer.");
 	unsafe {
