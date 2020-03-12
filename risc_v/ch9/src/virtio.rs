@@ -17,7 +17,10 @@ pub const VIRTIO_AVAIL_F_NO_INTERRUPT: u16 = 1;
 
 pub const VIRTIO_USED_F_NO_NOTIFY: u16 = 1;
 
-pub const VIRTIO_RING_SIZE: usize = 256;
+// 157 is the maximum ring size so that the structure
+// takes up only 1 - 4KiB page. Kinda' an odd number,
+// but let's go with it.
+pub const VIRTIO_RING_SIZE: usize = 157;
 
 // VirtIO structures
 #[repr(C)]
