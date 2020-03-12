@@ -6,7 +6,7 @@
 use crate::{cpu::{build_satp, SatpMode},
             process::{ProcessState, PROCESS_LIST}};
 
-pub fn schedule() -> (usize, usize, usize) {
+pub fn schedule() -> (usize, usize) {
 	unsafe {
 		if let Some(mut pl) = PROCESS_LIST.take() {
 			pl.rotate_left(1);
@@ -19,7 +19,6 @@ pub fn schedule() -> (usize, usize, usize) {
 					ProcessState::Running => {
 						frame_addr =
 							prc.get_frame_address();
-						mepc = prc.get_program_counter();
 						satp = prc.get_table_address();
 						pid = prc.get_pid() as usize;
 					},
@@ -37,7 +36,6 @@ pub fn schedule() -> (usize, usize, usize) {
 				// processes.
 				if satp != 0 {
 					return (frame_addr,
-					        mepc,
 					        build_satp(
 					                   SatpMode::Sv39,
 					                   pid,
@@ -45,10 +43,10 @@ pub fn schedule() -> (usize, usize, usize) {
 					));
 				}
 				else {
-					return (frame_addr, mepc, 0);
+					return (frame_addr, 0);
 				}
 			}
 		}
 	}
-	(0, 0, 0)
+	(0, 0)
 }
