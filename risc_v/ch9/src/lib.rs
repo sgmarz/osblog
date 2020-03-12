@@ -81,22 +81,20 @@ extern "C" fn abort() -> ! {
 // themselves are their values, which can cause issues.
 // Instead, I created doubleword values in mem.S in the .rodata and .data
 // sections.
-/*
-extern "C" {
-	static TEXT_START: usize;
-	static TEXT_END: usize;
-	static DATA_START: usize;
-	static DATA_END: usize;
-	static RODATA_START: usize;
-	static RODATA_END: usize;
-	static BSS_START: usize;
-	static BSS_END: usize;
-	static KERNEL_STACK_START: usize;
-	static KERNEL_STACK_END: usize;
-	static HEAP_START: usize;
-	static HEAP_SIZE: usize;
-}
-*/
+// extern "C" {
+// static TEXT_START: usize;
+// static TEXT_END: usize;
+// static DATA_START: usize;
+// static DATA_END: usize;
+// static RODATA_START: usize;
+// static RODATA_END: usize;
+// static BSS_START: usize;
+// static BSS_END: usize;
+// static KERNEL_STACK_START: usize;
+// static KERNEL_STACK_END: usize;
+// static HEAP_START: usize;
+// static HEAP_SIZE: usize;
+// }
 /// Identity map range
 /// Takes a contiguous allocation of memory and maps it using PAGE_SIZE
 /// This assumes that start <= end
@@ -139,8 +137,13 @@ extern "C" fn kinit() {
 	// Enable the UART interrupt.
 	plic::enable(10);
 	plic::set_priority(10, 1);
-	println!("UART interrupts have been enabled and are awaiting your command.");
-	block::init_block_system();
+	println!(
+	         "UART interrupts have been enabled and are awaiting your \
+	          command."
+	);
+	// Ordering is quite important here. Virtio::probe() will call the block
+	// setup which requires a block queue.
+	block::init();
 	virtio::probe();
 	println!("Getting ready for first process.");
 	println!("Issuing the first context-switch timer.");
