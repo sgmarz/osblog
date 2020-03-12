@@ -7,10 +7,7 @@ use crate::cpu::{CONTEXT_SWITCH_TIME, TrapFrame};
 use crate::{plic, uart};
 use crate::syscall::do_syscall;
 use crate::sched::schedule;
-
-extern "C" {
-	fn switch_to_user(frame: usize, mepc: usize, satp: usize) -> !;
-}
+use crate::rust_switch_to_user;
 
 #[no_mangle]
 /// The m_trap stands for "machine trap". Right now, we are handling
@@ -45,7 +42,7 @@ extern "C" fn m_trap(epc: usize,
 		match cause_num {
 			3 => {
 				// Machine software
-				println!("Machine software interrupt CPU#{}", hart);
+				println!("Machine software interrupt CPU #{}", hart);
 			},
 			7 => unsafe {
 				// This is the context-switch timer.
@@ -53,13 +50,13 @@ extern "C" fn m_trap(epc: usize,
 				// process to run.
 				// Machine timer
 				// println!("CTX");
-				let (frame, mepc, satp) = schedule();
+				let (frame, satp) = schedule();
 				let mtimecmp = 0x0200_4000 as *mut u64;
 				let mtime = 0x0200_bff8 as *const u64;
 				// This is much too slow for normal operations, but it gives us
 				// a visual of what's happening behind the scenes.
 				mtimecmp.write_volatile(mtime.read_volatile().wrapping_add(CONTEXT_SWITCH_TIME));
-				switch_to_user(frame, mepc, satp);
+				rust_switch_to_user(frame, satp);
 			},
 			11 => {
 				// Machine external (interrupt from Platform Interrupt Controller (PLIC))
@@ -124,6 +121,9 @@ extern "C" fn m_trap(epc: usize,
 				// Illegal instruction
 				panic!("Illegal instruction CPU#{} -> 0x{:08x}: 0x{:08x}\n", hart, epc, tval);
 				// We need while trues here until we have a functioning "delete from scheduler"
+				// I use while true because Rust will warn us that it looks stupid.
+				// This is what I want so that I remember to remove this and replace
+				// them later.
 				while true {}
 			},
 			8 => {
