@@ -54,8 +54,6 @@ pub struct BlockDevice {
 	idx:   u16,
 }
 
-static mut BLOCK_DEVICE_ARRAY: Option<VecDeque<BlockDevice>> = None;
-
 // Feature bits
 pub const VIRTIO_BLK_F_SIZE_MAX: u32 = 1;
 pub const VIRTIO_BLK_F_SEG_MAX: u32 = 2;
@@ -68,15 +66,23 @@ pub const VIRTIO_BLK_F_CONFIG_WCE: u32 = 11;
 pub const VIRTIO_BLK_F_DISCARD: u32 = 13;
 pub const VIRTIO_BLK_F_WRITE_ZEROES: u32 = 14;
 
-pub fn init_block_system() {
+
+// Much like with processes, Rust requires some initialization
+// when we declare a static. In this case, we use the Option
+// value type to signal that the variable exists, but not the
+// queue itself. We will replace this with an actual queue when
+// we initialize the block system.
+static mut BLOCK_DEVICES: Option<VecDeque<BlockDevice>> = None;
+
+pub fn init() {
 	unsafe {
-		BLOCK_DEVICE_ARRAY.replace(VecDeque::with_capacity(1));
+		BLOCK_DEVICES.replace(VecDeque::with_capacity(1));
 	}
 }
 
 pub fn setup_block_device(ptr: *mut u32) -> bool {
 	unsafe {
-		if let Some(mut vdq) = BLOCK_DEVICE_ARRAY.take() {
+		if let Some(mut vdq) = BLOCK_DEVICES.take() {
 			// [Driver] Device Initialization
 			// 1. Reset the device (write 0 into status)
 			ptr.add(MmioOffsets::Status.scale32()).write_volatile(0);
@@ -104,30 +110,56 @@ pub fn setup_block_device(ptr: *mut u32) -> bool {
 				return false;
 			}
 			// 7. Perform device-specific setup.
+			// Set the queue num. We have to make sure that the queue size is valid
+			// because the device can only take a certain size.
+			let qnmax = ptr.add(MmioOffsets::QueueNumMax.scale32()).read_volatile();
+			ptr.add(MmioOffsets::QueueNum.scale32()).write_volatile(VIRTIO_RING_SIZE as u32);
+			if VIRTIO_RING_SIZE as u32 > qnmax {
+				print!("queue size fail...");
+				return false;
+			}
 			// First, if the block device array is empty, create it!
-			// We add 4096 to round this up and then do an integer divide
-			// to truncate the decimal.
+			// We add 4095 to round this up and then do an integer divide
+			// to truncate the decimal. We don't add 4096, because if it is
+			// exactly 4096 bytes, we would get two pages, not one.
 			let num_pages =
-				(size_of::<Queue>() + PAGE_SIZE) / PAGE_SIZE;
+				(size_of::<Queue>() + PAGE_SIZE - 1) / PAGE_SIZE;
+			// println!("np = {}", num_pages);
+			// We allocate a page for each device. This will the the descriptor
+			// where we can communicate with the block device. We will still use
+			// an MMIO register (in particular, QueueNotify) to actually tell
+			// the device we put something in memory.
+			// We also have to be careful with memory ordering. We don't want to
+			// issue a notify before all memory writes have finished. We will
+			// look at that later, but we need what is called a memory "fence"
+			// or barrier.
 			let queue_ptr = zalloc(num_pages) as *mut Queue;
 			let queue_pfn = queue_ptr as u32;
+			// QueuePFN is a physical page number, however it appears for QEMU
+			// we have to write the entire memory address. This is a physical
+			// memory address where we (the OS) and the block device have
+			// in common for making and receiving requests.
+			ptr.add(MmioOffsets::QueuePfn.scale32())
+			   .write_volatile(queue_pfn);
+			// We need to store all of this data as a "BlockDevice" structure
+			// We will be referring to this structure when making block requests
+			// AND when handling responses.
             let bd = BlockDevice { queue: queue_ptr,
                                    dev: ptr,
 			                       idx:   1, };
 			vdq.push_back(bd);
-			ptr.add(MmioOffsets::QueuePfn.scale32())
-			   .write_volatile(queue_pfn);
-			BLOCK_DEVICE_ARRAY.replace(vdq);
 
-			ptr.add(MmioOffsets::QueueNum.scale32()).write_volatile(VIRTIO_RING_SIZE as u32);
-			let qn = ptr.add(MmioOffsets::QueueNum.scale32()).read_volatile();
-			let qnmax = ptr.add(MmioOffsets::QueueNumMax.scale32()).read_volatile();
+			// Update the global block device array.
+			BLOCK_DEVICES.replace(vdq);
+
 			// 8. Set the DRIVER_OK status bit. Device is now "live"
 			status_bits |= StatusField::DriverOk.val32();
 			ptr.add(MmioOffsets::Status.scale32()).write_volatile(status_bits);
 			true
-		}
-		else {
+		} /* if let Some(mut vdq) = BLOCK_DEVICES.take() */
+		else { 
+			// If we get here, the block devices array couldn't be taken. This can
+			// be due to duplicate access or that init wasn't called before this setup.
 			false
 		}
 	}
