@@ -246,7 +246,7 @@ pub fn fill_next_descriptor(bd: &mut BlockDevice, desc: Descriptor) -> u16 {
 
 pub fn read(dev: usize, buffer: *mut u8, size: u32, offset: u64) {
 	unsafe {
-		if let Some(mut bdev) = BLOCK_DEVICES[dev - 1].as_mut() {
+		if let Some(bdev) = BLOCK_DEVICES[dev - 1].as_mut() {
 			let sector = offset / 512;
 			let blk_request_size = size_of::<Request>();
 			let blk_request =
@@ -291,7 +291,7 @@ pub fn read(dev: usize, buffer: *mut u8, size: u32, offset: u64) {
 
 pub fn write(dev: usize, buffer: *mut u8, size: u32, offset: u64) {
 	unsafe {
-		if let Some(mut bdev) = BLOCK_DEVICES[dev - 1].as_mut() {
+		if let Some(bdev) = BLOCK_DEVICES[dev - 1].as_mut() {
 			let sector = offset / 512;
 			let blk_request_size = size_of::<Request>();
 			let blk_request =
@@ -342,27 +342,13 @@ pub fn pending(bd: &mut BlockDevice) {
 	// Here we need to check the used ring and then free the resources
 	// given by the descriptor id.
 	unsafe {
-		// println!("Size of Queue = {}, Descriptor = {}, Avail = {}, Used = {}",
-		// 	size_of::<virtio::Queue>(),
-		// 	size_of::<virtio::Descriptor>(),
-		// 	size_of::<virtio::Available>(),
-		// 	size_of::<virtio::Used>()
-		// );
-		// println!("AL Dev {:p}", &(*bd.queue).used);
 		let ref queue = &*bd.queue;
 		while bd.ack_used_idx != queue.used.idx {
-			// println!("ACK = {}, Used = {}", bd.ack_used_idx, queue.used.idx);
 			let ref elem = queue.used.ring[bd.ack_used_idx as usize];
 			bd.ack_used_idx = (bd.ack_used_idx + 1) % VIRTIO_RING_SIZE as u16;
-			let idx = elem.id as usize;
-			let _len = elem.len as usize;
-			// println!("Elem id = {}, Len = {}", idx, len);
-			// let ref desc = queue.desc[idx];
-			// Free the header.
-			// let addr = desc.addr as *const Request;
-			// println!("Status returned as {}", (*addr).status.status);
-			// println!("Freeing {:p}", addr);
-			kfree(queue.desc[idx].addr as *mut u8);
+			kfree(queue.desc[elem.id as usize].addr as *mut u8);
+			// TODO: Awaken the process that will need this I/O. This is
+			// the purpose of the waiting state.
 		}
 	}
 }
@@ -371,7 +357,7 @@ pub fn pending(bd: &mut BlockDevice) {
 /// virtio determines that this is a block device, it sends it here.
 pub fn handle_interrupt(idx: usize) {
 	unsafe {
-		if let Some(mut bdev) = BLOCK_DEVICES[idx].as_mut() {
+		if let Some(bdev) = BLOCK_DEVICES[idx].as_mut() {
 			pending(bdev);
 		}
 		else {
