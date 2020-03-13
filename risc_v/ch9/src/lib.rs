@@ -140,21 +140,14 @@ extern "C" fn kinit() {
 	// UART0 = 10
 	// PCIE = [32..35]
 	// Enable the UART interrupt.
-	plic::enable(10);
-	plic::enable(1);
-	plic::enable(2);
-	plic::enable(3);
-	plic::enable(4);
-	plic::enable(5);
-	plic::enable(6);
-	plic::enable(7);
-	plic::enable(8);
-	plic::set_priority(10, 1);
-	plic::set_priority(8, 1);
-	println!(
-	         "UART interrupts have been enabled and are awaiting your \
-	          command."
-	);
+	for i in 1..=10 {
+		plic::enable(i);
+		plic::set_priority(i, 1);
+	}
+	// println!(
+	//          "UART interrupts have been enabled and are awaiting your \
+	//           command."
+	// );
 	// Ordering is quite important here. Virtio::probe() will call the block
 	// setup which requires a block queue.
 	block::init();
