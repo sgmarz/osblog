@@ -133,7 +133,7 @@ extern "C" fn kinit() {
 	page::init();
 	kmem::init();
 	let ret = process::init();
-	println!("Init process created at address 0x{:08x}", ret);
+	// println!("Init process created at address 0x{:08x}", ret);
 	// We lower the threshold wall so our interrupts can jump over it.
 	plic::set_threshold(0);
 	// VIRTIO = [1..8]

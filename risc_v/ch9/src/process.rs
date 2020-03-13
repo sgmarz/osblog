@@ -103,7 +103,7 @@ pub fn init() -> usize {
 		let pl = PROCESS_LIST.take().unwrap();
 		let p = pl.front().unwrap().frame;
 		let frame = p as *const TrapFrame as usize;
-		println!("Init's frame is at 0x{:08x}", frame);
+		// println!("Init's frame is at 0x{:08x}", frame);
 		// Put the process list back in the global.
 		PROCESS_LIST.replace(pl);
 		// Return the first instruction's address to execute.
@@ -212,7 +212,7 @@ impl Process {
 			    EntryBits::UserReadWrite.val(),
 			    0,
 			);
-			println!("Set stack from 0x{:016x} -> 0x{:016x}", STACK_ADDR + addr, saddr + addr);
+			// println!("Set stack from 0x{:016x} -> 0x{:016x}", STACK_ADDR + addr, saddr + addr);
 		}
 		// Map the program counter on the MMU and other bits
 		for i in 0..=100 {
