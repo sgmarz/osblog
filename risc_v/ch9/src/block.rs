@@ -12,7 +12,6 @@ use crate::{kmem::{kfree, kmalloc},
                      StatusField,
                      VIRTIO_RING_SIZE}};
 use core::mem::size_of;
-use crate::plic;
 
 #[repr(C)]
 pub struct Geometry {
@@ -301,6 +300,7 @@ pub fn write(dev: usize, buffer: *mut u8, size: u32, offset: u64) {
 			let head_idx = fill_next_descriptor(bdev, desc);
 			(*blk_request).header.sector = sector;
 			(*blk_request).header.blktype = VIRTIO_BLK_T_OUT;
+			(*blk_request).header.reserved = 0;
 			(*blk_request).data.data = buffer;
 			(*blk_request).status.status = 111;
 			let desc =
@@ -347,6 +347,7 @@ pub fn pending(bd: &mut BlockDevice) {
 		while bd.ack_used_idx != queue.used.idx {
 			// println!("ACK = {}, Used = {}", bd.ack_used_idx, queue.used.idx);
 			let ref elem = queue.used.ring[bd.ack_used_idx as usize];
+			bd.ack_used_idx = (bd.ack_used_idx + 1) % VIRTIO_RING_SIZE as u16;
 			let idx = elem.id as usize;
 			let len = elem.len as usize;
 			// println!("Elem id = {}, Len = {}", idx, len);
@@ -356,7 +357,6 @@ pub fn pending(bd: &mut BlockDevice) {
 			// println!("Status returned as {}", (*addr).status.status);
 			// println!("Freeing {:p}", addr);
 			kfree(addr as *mut u8);
-			bd.ack_used_idx = (bd.ack_used_idx + 1) % VIRTIO_RING_SIZE as u16;
 		}
 	}
 }
