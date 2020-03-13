@@ -132,21 +132,25 @@ extern "C" fn kinit() {
 	uart::Uart::new(0x1000_0000).init();
 	page::init();
 	kmem::init();
-	let ret = process::init();
-	// println!("Init process created at address 0x{:08x}", ret);
+	process::init();
 	// We lower the threshold wall so our interrupts can jump over it.
+	// Any priority > 0 will be able to be "heard"
 	plic::set_threshold(0);
 	// VIRTIO = [1..8]
 	// UART0 = 10
 	// PCIE = [32..35]
-	// Enable the UART interrupt.
+	// Enable PLIC interrupts.
 	for i in 1..=10 {
 		plic::enable(i);
 		plic::set_priority(i, 1);
 	}
+	// Set up virtio. This requires a working heap and page-grained allocator.
 	virtio::probe();
-	let buffer = kmem::kmalloc(512);
-	block::read(8, buffer, 512, 0);
+	// This just tests the block device. We know that it connects backwards (8, 7, ..., 1).
+	let buffer = kmem::kmalloc(1024);
+	// Offset 1024 is the first block, which is the superblock. In the minix 3 file system, the first
+	// block is the "boot block", which in our case will be 0.
+	block::read(8, buffer, 512, 1024);
 	let mut i = 0;
 	loop {
 		if i > 100_000_000 {
@@ -154,39 +158,44 @@ extern "C" fn kinit() {
 		}
 		i += 1;
 	}
-	print!("Test hdd.dsk: ");
+	println!("Test hdd.dsk:");
 	unsafe {
-		for i in 0..10 {
+		print!("  ");
+		for i in 0..16 {
 			print!("{:02x} ", buffer.add(i).read());
 		}
 		println!();
+		print!("  ");
+		for i in 0..16 {
+			print!("{:02x} ", buffer.add(16+i).read());
+		}
+		println!();
+		print!("  ");
+		for i in 0..16 {
+			print!("{:02x} ", buffer.add(32+i).read());
+		}
+		println!();
+		print!("  ");
+		for i in 0..16 {
+			print!("{:02x} ", buffer.add(48+i).read());
+		}
+		println!();
+		(*buffer.add(2)) = 0x7a;
+		buffer.add(0).write(0xaa);
+		buffer.add(1).write(0xbb);
 	}
+	block::write(8, buffer, 512, 0);
+	// Free the testing buffer.
 	kmem::kfree(buffer);
-	println!("Getting ready for first process.");
-	println!("Issuing the first context-switch timer.");
-	unsafe {
-		let mtimecmp = 0x0200_4000 as *mut u64;
-		let mtime = 0x0200_bff8 as *const u64;
-		mtimecmp.write_volatile(mtime.read_volatile().wrapping_add(cpu::CONTEXT_SWITCH_TIME));
-	}
+	// We schedule the next context switch using a multiplier of 1
+	trap::schedule_next_context_switch(1);
 	rust_switch_to_user(sched::schedule());
 	// switch_to_user will not return, so we should never get here
 }
 #[no_mangle]
-extern "C" fn kinit_hart(hartid: usize) {
+extern "C" fn kinit_hart(_hartid: usize) {
+	// We aren't going to do anything here until we get SMP going.
 	// All non-0 harts initialize here.
-	unsafe {
-		// We have to store the kernel's table. The tables will be moved
-		// back and forth between the kernel's table and user
-		// applicatons' tables.
-		// Copy the same mscratch over to the supervisor version of the
-		// same register.
-		// cpu::KERNEL_TRAP_FRAME[hartid].hartid = hartid;
-		// We can't do the following until zalloc() is locked, but we
-		// don't have locks, yet :( cpu::KERNEL_TRAP_FRAME[hartid].satp
-		// = cpu::KERNEL_TRAP_FRAME[0].satp;
-		// cpu::KERNEL_TRAP_FRAME[hartid].trap_stack = page::zalloc(1);
-	}
 }
 
 // ///////////////////////////////////
