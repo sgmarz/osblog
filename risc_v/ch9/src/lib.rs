@@ -144,13 +144,6 @@ extern "C" fn kinit() {
 		plic::enable(i);
 		plic::set_priority(i, 1);
 	}
-	// println!(
-	//          "UART interrupts have been enabled and are awaiting your \
-	//           command."
-	// );
-	// Ordering is quite important here. Virtio::probe() will call the block
-	// setup which requires a block queue.
-	block::init();
 	virtio::probe();
 	let buffer = kmem::kmalloc(512);
 	block::read(8, buffer, 512, 0);

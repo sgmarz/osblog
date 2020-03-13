@@ -117,10 +117,6 @@ pub const VIRTIO_BLK_F_WRITE_ZEROES: u32 = 14;
 // we initialize the block system.
 static mut BLOCK_DEVICES: [Option<BlockDevice>; 8] = [None, None, None, None, None, None, None, None];
 
-pub fn init() {
-
-}
-
 pub fn setup_block_device(ptr: *mut u32) -> bool {
 	unsafe {
 		// We can get the index of the device based on its address.
@@ -199,6 +195,10 @@ pub fn setup_block_device(ptr: *mut u32) -> bool {
 		// finished. We will look at that later, but we need
 		// what is called a memory "fence" or barrier.
 		ptr.add(MmioOffsets::QueueSel.scale32()).write_volatile(0);
+		// Alignment is very important here. This is the memory address
+		// alignment between the available and used rings. If this is wrong,
+		// then we and the device will refer to different memory addresses
+		// and hence get the wrong data in the used ring.
 		ptr.add(MmioOffsets::QueueAlign.scale32()).write_volatile(8);
 		let queue_ptr = zalloc(num_pages) as *mut Queue;
 		let queue_pfn = queue_ptr as u32;
