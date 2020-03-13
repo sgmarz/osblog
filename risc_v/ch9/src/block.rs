@@ -11,8 +11,8 @@ use crate::{kmem::{kfree, kmalloc},
                      Queue,
                      StatusField,
                      VIRTIO_RING_SIZE}};
-use alloc::collections::VecDeque;
 use core::mem::size_of;
+use crate::plic;
 
 #[repr(C)]
 pub struct Geometry {
@@ -193,6 +193,8 @@ pub fn setup_block_device(ptr: *mut u32) -> bool {
 		// issue a notify before all memory writes have
 		// finished. We will look at that later, but we need
 		// what is called a memory "fence" or barrier.
+		ptr.add(MmioOffsets::QueueSel.scale32()).write_volatile(0);
+		ptr.add(MmioOffsets::QueueAlign.scale32()).write_volatile(8);
 		let queue_ptr = zalloc(num_pages) as *mut Queue;
 		let queue_pfn = queue_ptr as u32;
 		// QueuePFN is a physical page number, however it
@@ -217,6 +219,7 @@ pub fn setup_block_device(ptr: *mut u32) -> bool {
 		status_bits |= StatusField::DriverOk.val32();
 		ptr.add(MmioOffsets::Status.scale32())
 			.write_volatile(status_bits);
+
 		true
 	}
 }
@@ -299,6 +302,7 @@ pub fn write(dev: usize, buffer: *mut u8, size: u32, offset: u64) {
 			(*blk_request).header.sector = sector;
 			(*blk_request).header.blktype = VIRTIO_BLK_T_OUT;
 			(*blk_request).data.data = buffer;
+			(*blk_request).status.status = 111;
 			let desc =
 				Descriptor { addr:  buffer as u64,
 				             len:   size,
@@ -321,6 +325,51 @@ pub fn write(dev: usize, buffer: *mut u8, size: u32, offset: u64) {
 			bdev.dev
 			    .add(MmioOffsets::QueueNotify.scale32())
 			    .write_volatile(0);
+		}
+	}
+}
+
+/// Here we handle block specific interrupts. Here, we need to check
+/// the used ring and wind it up until we've handled everything.
+/// This is how the device tells us that it's finished a request.
+pub fn pending(bd: &mut BlockDevice) {
+	// Here we need to check the used ring and then free the resources
+	// given by the descriptor id.
+	unsafe {
+		// println!("Size of Queue = {}, Descriptor = {}, Avail = {}, Used = {}",
+		// 	size_of::<virtio::Queue>(),
+		// 	size_of::<virtio::Descriptor>(),
+		// 	size_of::<virtio::Available>(),
+		// 	size_of::<virtio::Used>()
+		// );
+		// println!("AL Dev {:p}", &(*bd.queue).used);
+		let ref queue = &*bd.queue;
+		while bd.ack_used_idx != queue.used.idx {
+			// println!("ACK = {}, Used = {}", bd.ack_used_idx, queue.used.idx);
+			let ref elem = queue.used.ring[bd.ack_used_idx as usize];
+			let idx = elem.id as usize;
+			let len = elem.len as usize;
+			// println!("Elem id = {}, Len = {}", idx, len);
+			let ref desc = queue.desc[idx];
+			// Free the header.
+			let addr = desc.addr as *const Request;
+			// println!("Status returned as {}", (*addr).status.status);
+			// println!("Freeing {:p}", addr);
+			kfree(addr as *mut u8);
+			bd.ack_used_idx = (bd.ack_used_idx + 1) % VIRTIO_RING_SIZE as u16;
+		}
+	}
+}
+
+/// The trap code will route PLIC interrupts 1..=8 for virtio devices. When
+/// virtio determines that this is a block device, it sends it here.
+pub fn handle_interrupt(idx: usize) {
+	unsafe {
+		if let Some(mut bdev) = BLOCK_DEVICES[idx].as_mut() {
+			pending(bdev);
+		}
+		else {
+			println!("Invalid block device for interrupt {}", idx + 1);
 		}
 	}
 }

@@ -4,6 +4,7 @@
 // 10 March 2020
 
 use crate::block::setup_block_device;
+use crate::block;
 
 // Flags
 // Descriptor flags have VIRTIO_DESC_F as a prefix
@@ -17,10 +18,7 @@ pub const VIRTIO_AVAIL_F_NO_INTERRUPT: u16 = 1;
 
 pub const VIRTIO_USED_F_NO_NOTIFY: u16 = 1;
 
-// 157 is the maximum ring size so that the structure
-// takes up only 1 - 4KiB page. Kinda' an odd number,
-// but let's go with it.
-pub const VIRTIO_RING_SIZE: usize = 157;
+pub const VIRTIO_RING_SIZE: usize = 1024;
 
 // VirtIO structures
 #[repr(C)]
@@ -83,6 +81,18 @@ pub enum MmioOffsets {
 	Config = 0x100,
 }
 
+#[repr(usize)]
+pub enum DeviceTypes {
+    None = 0,
+    Network = 1,
+    Block = 2,
+    Console = 3,
+    Entropy = 4,
+    Gpu = 16,
+    Input = 18,
+    Memory = 24,
+}
+
 impl MmioOffsets {
 	pub fn val(self) -> usize {
 		self as usize
@@ -139,6 +149,32 @@ pub const MMIO_VIRTIO_END: usize = 0x1000_8000;
 pub const MMIO_VIRTIO_STRIDE: usize = 0x1000;
 pub const MMIO_VIRTIO_MAGIC: u32 = 0x74_72_69_76;
 
+pub struct VirtioDevice {
+    pub devtype: DeviceTypes,
+    pub valid: bool,
+}
+
+impl VirtioDevice {
+    pub const fn new() -> Self {
+        VirtioDevice {
+            devtype: DeviceTypes::None,
+            valid: false,
+        }
+    }
+}
+
+static mut VIRTIO_DEVICES: [VirtioDevice; 8] = [ 
+    VirtioDevice::new(),
+    VirtioDevice::new(),
+    VirtioDevice::new(),
+    VirtioDevice::new(),
+    VirtioDevice::new(),
+    VirtioDevice::new(),
+    VirtioDevice::new(),
+    VirtioDevice::new(),
+    ];
+
+
 /// Probe the VirtIO bus for devices that might be
 /// out there.
 pub fn probe() {
@@ -188,6 +224,11 @@ pub fn probe() {
                         println!("setup failed.");
                     }
                     else {
+                        let idx = (addr - MMIO_VIRTIO_START) >> 12;
+                        unsafe {
+                            VIRTIO_DEVICES[idx].devtype = DeviceTypes::Block;
+                            VIRTIO_DEVICES[idx].valid = true;
+                        }
                         println!("setup succeeded!");
                     }
                 },
@@ -243,4 +284,24 @@ pub fn setup_gpu_device(ptr: *mut u32) -> bool {
 
 pub fn setup_input_device(ptr: *mut u32) -> bool {
 	false
+}
+
+pub fn handle_interrupt(interrupt: u32) {
+    let idx = interrupt as usize - 1;
+    unsafe {
+        let ref vd = VIRTIO_DEVICES[idx];
+        if false == vd.valid {
+            println!("Spurious interrupt {}", interrupt);
+        }
+        else {
+            match vd.devtype {
+                DeviceTypes::Block => {
+                    block::handle_interrupt(idx);
+                },
+                _ => {
+                    println!("Invalid device generated interrupt!");
+                }
+            }
+        }
+    }
 }

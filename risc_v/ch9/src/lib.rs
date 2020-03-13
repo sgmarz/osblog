@@ -141,7 +141,16 @@ extern "C" fn kinit() {
 	// PCIE = [32..35]
 	// Enable the UART interrupt.
 	plic::enable(10);
+	plic::enable(1);
+	plic::enable(2);
+	plic::enable(3);
+	plic::enable(4);
+	plic::enable(5);
+	plic::enable(6);
+	plic::enable(7);
+	plic::enable(8);
 	plic::set_priority(10, 1);
+	plic::set_priority(8, 1);
 	println!(
 	         "UART interrupts have been enabled and are awaiting your \
 	          command."
@@ -166,6 +175,7 @@ extern "C" fn kinit() {
 		}
 		println!();
 	}
+	kmem::kfree(buffer);
 	println!("Getting ready for first process.");
 	println!("Issuing the first context-switch timer.");
 	unsafe {
