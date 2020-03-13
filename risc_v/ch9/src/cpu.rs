@@ -32,6 +32,7 @@ pub struct TrapFrame {
 	pub satp:       usize,       // 512 - 519
 	pub pc:         usize,       // 520
 	pub hartid:     usize,       // 528
+	pub qm:         usize,		 // 536
 }
 
 /// Rust requires that we initialize our structures
@@ -43,21 +44,16 @@ pub struct TrapFrame {
 /// data type of the structure. In the case below, this
 /// is TrapFrame.
 impl TrapFrame {
-	pub const fn zero() -> Self {
+	pub const fn new() -> Self {
 		TrapFrame { regs:       [0; 32],
 		            fregs:      [0; 32],
 		            satp:       0,
 		            pc:		    0,
-		            hartid:     0, }
+					hartid:     0, 
+					qm:         1,
+				}
 	}
 }
-
-/// The global kernel trap frame stores 8 separate
-/// frames -- one per CPU hart. We will switch these
-/// in and out and store a dormant trap frame with
-/// the process itself.
-pub static mut KERNEL_TRAP_FRAME: [TrapFrame; 8] =
-	[TrapFrame::zero(); 8];
 
 /// The SATP register contains three fields: mode, address space id, and
 /// the first level table address (level 2 for Sv39). This function
