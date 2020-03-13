@@ -354,7 +354,7 @@ pub fn pending(bd: &mut BlockDevice) {
 	// Here we need to check the used ring and then free the resources
 	// given by the descriptor id.
 	unsafe {
-		let ref queue = &*bd.queue;
+		let ref queue = *bd.queue;
 		while bd.ack_used_idx != queue.used.idx {
 			let ref elem = queue.used.ring[bd.ack_used_idx as usize];
 			bd.ack_used_idx = (bd.ack_used_idx + 1) % VIRTIO_RING_SIZE as u16;
