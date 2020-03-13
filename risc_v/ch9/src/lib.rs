@@ -151,7 +151,7 @@ extern "C" fn kinit() {
 	block::init();
 	virtio::probe();
 	let buffer = kmem::kmalloc(512);
-	block::read(0, buffer, 512, 0);
+	block::read(8, buffer, 512, 0);
 	let mut i = 0;
 	loop {
 		if i > 100_000_000 {
