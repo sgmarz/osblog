@@ -123,7 +123,13 @@ pub fn init() {
 
 pub fn setup_block_device(ptr: *mut u32) -> bool {
 	unsafe {
-		let idx = (ptr as usize - 0x1000_1000) >> 12;
+		// We can get the index of the device based on its address.
+		// 0x1000_1000 is index 0
+		// 0x1000_2000 is index 1
+		// ...
+		// 0x1000_8000 is index 7
+		// To get the number that changes over, we shift right 12 places (3 hex digits)
+		let idx = (ptr as usize - virtio::MMIO_VIRTIO_START) >> 12;
 		// [Driver] Device Initialization
 		// 1. Reset the device (write 0 into status)
 		ptr.add(MmioOffsets::Status.scale32())
