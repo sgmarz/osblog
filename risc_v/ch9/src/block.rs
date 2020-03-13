@@ -355,14 +355,14 @@ pub fn pending(bd: &mut BlockDevice) {
 			let ref elem = queue.used.ring[bd.ack_used_idx as usize];
 			bd.ack_used_idx = (bd.ack_used_idx + 1) % VIRTIO_RING_SIZE as u16;
 			let idx = elem.id as usize;
-			let len = elem.len as usize;
+			let _len = elem.len as usize;
 			// println!("Elem id = {}, Len = {}", idx, len);
-			let ref desc = queue.desc[idx];
+			// let ref desc = queue.desc[idx];
 			// Free the header.
-			let addr = desc.addr as *const Request;
+			// let addr = desc.addr as *const Request;
 			// println!("Status returned as {}", (*addr).status.status);
 			// println!("Freeing {:p}", addr);
-			kfree(addr as *mut u8);
+			kfree(queue.desc[idx].addr as *mut u8);
 		}
 	}
 }
