@@ -6,7 +6,7 @@
 use crate::{cpu::{build_satp, SatpMode},
             process::{ProcessState, PROCESS_LIST}};
 
-pub fn schedule() -> (usize, usize) {
+pub fn schedule() -> usize {
 	unsafe {
 		if let Some(mut pl) = PROCESS_LIST.take() {
 			pl.rotate_left(1);
@@ -34,19 +34,9 @@ pub fn schedule() -> (usize, usize) {
 				// identifier to hopefully help with (not?)
 				// flushing the TLB whenever we switch
 				// processes.
-				if satp != 0 {
-					return (frame_addr,
-					        build_satp(
-					                   SatpMode::Sv39,
-					                   pid,
-					                   satp,
-					));
-				}
-				else {
-					return (frame_addr, 0);
-				}
+				return frame_addr;
 			}
 		}
 	}
-	(0, 0)
+	0
 }

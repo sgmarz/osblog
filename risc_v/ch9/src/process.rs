@@ -3,7 +3,7 @@
 // Stephen Marz
 // 27 Nov 2019
 
-use crate::{cpu::{TrapFrame, satp_fence_asid},
+use crate::{cpu::{TrapFrame, satp_fence_asid, build_satp, SatpMode},
             page::{alloc,
                    dealloc,
                    map,
@@ -198,6 +198,7 @@ impl Process {
 		let pt;
 		unsafe {
 			pt = &mut *ret_proc.root;
+			(*ret_proc.frame).satp = build_satp(SatpMode::Sv39, ret_proc.pid as usize, ret_proc.root as usize);
 		}
 		// We need to map the stack onto the user process' virtual
 		// memory This gets a little hairy because we need to also map

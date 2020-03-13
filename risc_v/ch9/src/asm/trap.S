@@ -99,6 +99,11 @@ switch_to_user:
 	# a2 - SATP Register
     csrw    mscratch, a0
 
+	// Load program counter
+	ld	a1, 520(a0)
+	// Load satp
+	ld	a2, 512(a0)
+
 	# 1 << 7 is MPIE
 	# Since user mode is 00, we don't need to set anything
 	# in MPP (bits 12:11)

@@ -207,7 +207,6 @@ pub fn setup_block_device(ptr: *mut u32) -> bool {
 pub fn fill_next_descriptor(bd: &mut BlockDevice, desc: Descriptor) -> u16 {
 	unsafe {
 		bd.idx = (bd.idx + 1) % VIRTIO_RING_SIZE as u16;
-		println!("idx = {}", bd.idx);
 		 (*bd.queue).desc[bd.idx as usize] = desc;
 		if (*bd.queue).desc[bd.idx as usize].flags & virtio::VIRTIO_DESC_F_NEXT != 0 {
 			(*bd.queue).desc[bd.idx as usize].next = (bd.idx + 1) % VIRTIO_RING_SIZE as u16;
@@ -249,7 +248,6 @@ pub fn read(dev: usize, buffer: *mut u8, size: u32, offset: usize) {
 			};
 			let status_idx = fill_next_descriptor(bdev, desc);
 			(*bdev.queue).avail.ring[(*bdev.queue).avail.idx as usize] = head_idx;
-			println!("Avail at {}, set head to {}", (*bdev.queue).avail.idx, head_idx);
 			(*bdev.queue).avail.idx = ((*bdev.queue).avail.idx + 1) % virtio::VIRTIO_RING_SIZE as u16;
 			bdev.dev.add(MmioOffsets::QueueNotify.scale32()).write_volatile(0);
 		}

@@ -50,13 +50,13 @@ extern "C" fn m_trap(epc: usize,
 				// process to run.
 				// Machine timer
 				// println!("CTX");
-				let (frame, satp) = schedule();
+				let frame = schedule();
 				let mtimecmp = 0x0200_4000 as *mut u64;
 				let mtime = 0x0200_bff8 as *const u64;
 				// This is much too slow for normal operations, but it gives us
 				// a visual of what's happening behind the scenes.
 				mtimecmp.write_volatile(mtime.read_volatile().wrapping_add(CONTEXT_SWITCH_TIME));
-				rust_switch_to_user(frame, satp);
+				rust_switch_to_user(frame);
 			},
 			11 => {
 				// Machine external (interrupt from Platform Interrupt Controller (PLIC))

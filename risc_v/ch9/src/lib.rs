@@ -117,12 +117,11 @@ pub fn id_map_range(root: &mut page::Table,
 	}
 }
 extern "C" {
-	fn switch_to_user(frame: usize, mepc: usize, satp: usize) -> !;
+	fn switch_to_user(frame: usize) -> !;
 }
-fn rust_switch_to_user(frame: usize, satp: usize) -> ! {
+fn rust_switch_to_user(frame: usize) -> ! {
 	unsafe {
-		let frameptr = frame as *const cpu::TrapFrame;
-		switch_to_user(frame, (*frameptr).pc, satp);
+		switch_to_user(frame);
 	}
 }
 // ///////////////////////////////////
@@ -151,8 +150,8 @@ extern "C" fn kinit() {
 	// setup which requires a block queue.
 	block::init();
 	virtio::probe();
-	let buffer = kmem::kmalloc(512 * 10);
-	block::read(0, buffer, 512 * 10, 0);
+	let buffer = kmem::kmalloc(512);
+	block::read(0, buffer, 512, 0);
 	let mut i = 0;
 	loop {
 		if i > 100_000_000 {
@@ -160,8 +159,12 @@ extern "C" fn kinit() {
 		}
 		i += 1;
 	}
+	print!("Test hdd.dsk: ");
 	unsafe {
-		println!("{}{}{}", buffer.add(0).read(), buffer.add(1).read(), buffer.add(2).read());
+		for i in 0..10 {
+			print!("{:02x} ", buffer.add(i).read());
+		}
+		println!();
 	}
 	println!("Getting ready for first process.");
 	println!("Issuing the first context-switch timer.");
@@ -170,8 +173,7 @@ extern "C" fn kinit() {
 		let mtime = 0x0200_bff8 as *const u64;
 		mtimecmp.write_volatile(mtime.read_volatile().wrapping_add(cpu::CONTEXT_SWITCH_TIME));
 	}
-	let (frame, satp) = sched::schedule();
-	rust_switch_to_user(frame, satp);
+	rust_switch_to_user(sched::schedule());
 	// switch_to_user will not return, so we should never get here
 }
 #[no_mangle]
