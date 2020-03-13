@@ -262,6 +262,8 @@ pub fn read(dev: usize, buffer: *mut u8, size: u32, offset: u64) {
 			(*blk_request).header.sector = sector;
 			(*blk_request).header.blktype = VIRTIO_BLK_T_IN;
 			(*blk_request).data.data = buffer;
+			(*blk_request).header.reserved = 0;
+			(*blk_request).status.status = 111;
 			let desc = Descriptor {
 				addr: buffer as u64,
 				len: size,
@@ -292,8 +294,15 @@ pub fn read(dev: usize, buffer: *mut u8, size: u32, offset: u64) {
 pub fn write(dev: usize, buffer: *mut u8, size: u32, offset: u64) {
 	unsafe {
 		if let Some(bdev) = BLOCK_DEVICES[dev - 1].as_mut() {
+			// We need to give the sector to the block header, yet
+			// the offset comes from a byte offset. Each sector is
+			// 512 bytes, so that should be an easy conversion.
 			let sector = offset / 512;
 			let blk_request_size = size_of::<Request>();
+			// We need to allocate a block request on the heap so
+			// that it stays resident in memory until the device
+			// has responded to the request. We will actually run
+			// kfree() in the reponse code, not here.
 			let blk_request =
 				kmalloc(blk_request_size) as *mut Request;
 			let desc =
@@ -304,7 +313,10 @@ pub fn write(dev: usize, buffer: *mut u8, size: u32, offset: u64) {
 				             flags: virtio::VIRTIO_DESC_F_NEXT,
 				             next:  0, };
 			let head_idx = fill_next_descriptor(bdev, desc);
+			// We use kmalloc (not kzalloc) to make sure all of
+			// this information has been set appropriately.
 			(*blk_request).header.sector = sector;
+			// BLK_T_OUT means from memory to device.
 			(*blk_request).header.blktype = VIRTIO_BLK_T_OUT;
 			(*blk_request).header.reserved = 0;
 			(*blk_request).data.data = buffer;
