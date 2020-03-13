@@ -4,7 +4,7 @@
 // 10 October 2019
 
 use crate::cpu::{CONTEXT_SWITCH_TIME, TrapFrame};
-use crate::{plic, uart};
+use crate::plic;
 use crate::syscall::do_syscall;
 use crate::sched::schedule;
 use crate::rust_switch_to_user;
@@ -18,7 +18,7 @@ extern "C" fn m_trap(epc: usize,
                      tval: usize,
                      cause: usize,
                      hart: usize,
-                     status: usize,
+                     _status: usize,
                      frame: *mut TrapFrame)
                      -> usize
 {
@@ -44,18 +44,14 @@ extern "C" fn m_trap(epc: usize,
 				// Machine software
 				println!("Machine software interrupt CPU #{}", hart);
 			},
-			7 => unsafe {
+			7 => {
 				// This is the context-switch timer.
 				// We would typically invoke the scheduler here to pick another
 				// process to run.
 				// Machine timer
 				// println!("CTX");
 				let frame = schedule();
-				let mtimecmp = 0x0200_4000 as *mut u64;
-				let mtime = 0x0200_bff8 as *const u64;
-				// This is much too slow for normal operations, but it gives us
-				// a visual of what's happening behind the scenes.
-				mtimecmp.write_volatile(mtime.read_volatile().wrapping_add(CONTEXT_SWITCH_TIME));
+				schedule_next_context_switch(1);
 				rust_switch_to_user(frame);
 			},
 			11 => {
@@ -127,4 +123,15 @@ extern "C" fn m_trap(epc: usize,
 	};
 	// Finally, return the updated program counter
 	return_pc
+}
+
+pub const MMIO_MTIMECMP: *mut u64 = 0x0200_4000usize as *mut u64;
+pub const MMIO_MTIME: *const u64 = 0x0200_BFF8 as *const u64;
+
+pub fn schedule_next_context_switch(qm: u16) {
+	// This is much too slow for normal operations, but it gives us
+	// a visual of what's happening behind the scenes.
+	unsafe {
+		MMIO_MTIMECMP.write_volatile(MMIO_MTIME.read_volatile().wrapping_add(CONTEXT_SWITCH_TIME * qm as u64));
+	}
 }
