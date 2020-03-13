@@ -21,7 +21,8 @@ const STACK_PAGES: usize = 2;
 // regardless of where it is on the kernel heap.
 const STACK_ADDR: usize = 0x1_0000_0000;
 // All processes will have a defined starting point in virtual memory.
-const PROCESS_STARTING_ADDR: usize = 0x8000_0000;
+// We will use this later when we load processes from disk.
+// const PROCESS_STARTING_ADDR: usize = 0x2000_0000;
 
 // Here, we store a process list. It uses the global allocator
 // that we made before and its job is to store all processes.
@@ -102,7 +103,7 @@ pub fn init() -> usize {
 		// the address, and then move it right back in.
 		let pl = PROCESS_LIST.take().unwrap();
 		let p = pl.front().unwrap().frame;
-		let frame = p as *const TrapFrame as usize;
+		// let frame = p as *const TrapFrame as usize;
 		// println!("Init's frame is at 0x{:08x}", frame);
 		// Put the process list back in the global.
 		PROCESS_LIST.replace(pl);
@@ -255,6 +256,9 @@ impl Drop for Process {
 // The private data in a process contains information
 // that is relevant to where we are, including the path
 // and open file descriptors.
+// We will allow dead code for now until we have a need for the
+// private process data. This is essentially our resource control block (RCB).
+#[allow(dead_code)]
 pub struct ProcessData {
 	cwd_path: [u8; 128],
 }
