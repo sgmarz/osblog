@@ -233,7 +233,7 @@ pub fn block_op(dev: usize, buffer: *mut u8, size: u32, offset: u64, write: bool
 			let blk_request_size = size_of::<Request>();
 			let blk_request = kmalloc(blk_request_size) as *mut Request;
 			let desc = Descriptor { addr:  &(*blk_request).header as *const Header as u64,
-			                        len:   blk_request_size as u32,
+			                        len:   size_of::<Header>() as u32,
 			                        flags: virtio::VIRTIO_DESC_F_NEXT,
 			                        next:  0, };
 			let head_idx = fill_next_descriptor(bdev, desc);
