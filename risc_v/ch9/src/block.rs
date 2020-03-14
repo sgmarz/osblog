@@ -225,6 +225,7 @@ pub fn fill_next_descriptor(bd: &mut BlockDevice, desc: Descriptor) -> u16 {
 pub fn block_op(dev: usize, buffer: *mut u8, size: u32, offset: u64, write: bool) {
 	unsafe {
 		if let Some(bdev) = BLOCK_DEVICES[dev - 1].as_mut() {
+			// Check to see if we are trying to write to a read only device.
 			if true == bdev.read_only && true == write {
 				println!("Trying to write to read/only!");
 				return;
@@ -238,22 +239,29 @@ pub fn block_op(dev: usize, buffer: *mut u8, size: u32, offset: u64, write: bool
 			                        next:  0, };
 			let head_idx = fill_next_descriptor(bdev, desc);
 			(*blk_request).header.sector = sector;
-			if false == write {
-				(*blk_request).header.blktype = VIRTIO_BLK_T_IN;
+			// A write is an "out" direction, whereas a read is an "in" direction.
+			(*blk_request).header.blktype = if true == write {
+				VIRTIO_BLK_T_OUT
 			}
 			else {
-				(*blk_request).header.blktype = VIRTIO_BLK_T_OUT;
-			}
+				VIRTIO_BLK_T_IN
+			};
+			// We put 111 in the status. Whenever the device finishes, it will write into
+			// status. If we read status and it is 111, we know that it wasn't written to by
+			// the device.
 			(*blk_request).data.data = buffer;
 			(*blk_request).header.reserved = 0;
 			(*blk_request).status.status = 111;
-			let mut desc = Descriptor { addr:  buffer as u64,
-			                            len:   size,
-			                            flags: virtio::VIRTIO_DESC_F_NEXT,
-			                            next:  0, };
-			if false == write {
-				desc.flags |= virtio::VIRTIO_DESC_F_WRITE
-			}
+			let desc = Descriptor { addr:  buffer as u64,
+			                        len:   size,
+			                        flags: virtio::VIRTIO_DESC_F_NEXT
+			                               | if false == write {
+				                               virtio::VIRTIO_DESC_F_WRITE
+			                               }
+			                               else {
+				                               0
+			                               },
+			                        next:  0, };
 			let _data_idx = fill_next_descriptor(bdev, desc);
 			let desc = Descriptor { addr:  &(*blk_request).status as *const Status as u64,
 			                        len:   size_of::<Status>() as u32,
@@ -289,16 +297,6 @@ pub fn pending(bd: &mut BlockDevice) {
 			let ref elem = queue.used.ring[bd.ack_used_idx as usize];
 			bd.ack_used_idx = (bd.ack_used_idx + 1) % VIRTIO_RING_SIZE as u16;
 			let rq = queue.desc[elem.id as usize].addr as *const Request;
-			let stat = (*rq).status.status;
-			if 0 == stat {
-				println!("Success!");
-			}
-			else if 1 == stat {
-				println!("IO Error");
-			}
-			else if 2 == stat {
-				println!("Unsupported");
-			}
 			kfree(rq as *mut u8);
 			// TODO: Awaken the process that will need this I/O. This is
 			// the purpose of the waiting state.

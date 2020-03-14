@@ -180,9 +180,10 @@ extern "C" fn kinit() {
 			print!("{:02x} ", buffer.add(48+i).read());
 		}
 		println!();
-		(*buffer.add(2)) = 0x7a;
 		buffer.add(0).write(0xaa);
 		buffer.add(1).write(0xbb);
+		buffer.add(2).write(0x7a);
+
 	}
 	block::write(8, buffer, 512, 0);
 	// Free the testing buffer.
