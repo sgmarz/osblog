@@ -18,7 +18,10 @@ pub const VIRTIO_AVAIL_F_NO_INTERRUPT: u16 = 1;
 
 pub const VIRTIO_USED_F_NO_NOTIFY: u16 = 1;
 
-pub const VIRTIO_RING_SIZE: usize = 128;
+// According to the documentation, this must be a power
+// of 2 for the new style. So, I'm changing this to use
+// 1 << instead because that will enforce this standard.
+pub const VIRTIO_RING_SIZE: usize = 1 << 7;
 
 // VirtIO structures
 #[repr(C)]
