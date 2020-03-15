@@ -48,6 +48,14 @@ pub struct Config {
 	unused1:                  [u8; 3],
 }
 
+// The header/data/status is a block request
+// packet. We send the header to tell the direction
+// (blktype: IN/OUT) and then the starting sector
+// we want to read. Then, we put the data buffer
+// as the Data structure and finally an 8-bit
+// status. The device will write one of three values
+// in here: 0 = success, 1 = io error, 2 = unsupported
+// operation.
 #[repr(C)]
 pub struct Header {
 	blktype:  u32,
@@ -74,6 +82,10 @@ pub struct Request {
 }
 
 // Internal block device structure
+// We keep our own used_idx and idx for
+// descriptors. There is a shared index, but that
+// tells us or the device if we've kept up with where
+// we are for the available (us) or used (device) ring.
 pub struct BlockDevice {
 	queue:        *mut Queue,
 	dev:          *mut u32,
@@ -213,15 +225,28 @@ pub fn setup_block_device(ptr: *mut u32) -> bool {
 
 pub fn fill_next_descriptor(bd: &mut BlockDevice, desc: Descriptor) -> u16 {
 	unsafe {
+		// The ring structure increments here first. This allows us to skip
+		// index 0, which then in the used ring will show that .id > 0. This
+		// is one way to error check. We will eventually get back to 0 as
+		// this index is cyclical. However, it shows if the first read/write
+		// actually works.
 		bd.idx = (bd.idx + 1) % VIRTIO_RING_SIZE as u16;
 		(*bd.queue).desc[bd.idx as usize] = desc;
 		if (*bd.queue).desc[bd.idx as usize].flags & virtio::VIRTIO_DESC_F_NEXT != 0 {
+			// If the next flag is set, we need another descriptor.
 			(*bd.queue).desc[bd.idx as usize].next = (bd.idx + 1) % VIRTIO_RING_SIZE as u16;
 		}
 		bd.idx
 	}
 }
-
+/// This is now a common block operation for both reads and writes. Therefore,
+/// when one thing needs to change, we can change it for both reads and writes.
+/// There is a lot of error checking that I haven't done. The block device reads
+/// sectors at a time, which are 512 bytes. Therefore, our buffer must be capable
+/// of storing multiples of 512 bytes depending on the size. The size is also
+/// a multiple of 512, but we don't really check that.
+/// We DO however, check that we aren't writing to an R/O device. This would
+/// cause a I/O error if we tried to write to a R/O device.
 pub fn block_op(dev: usize, buffer: *mut u8, size: u32, offset: u64, write: bool) {
 	unsafe {
 		if let Some(bdev) = BLOCK_DEVICES[dev - 1].as_mut() {

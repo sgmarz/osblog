@@ -55,9 +55,8 @@ pub struct Used {
 pub struct Queue {
 	pub desc:  [Descriptor; VIRTIO_RING_SIZE],
 	pub avail: Available,
-	// Calculating padding, we need the used ring to start on a page
-	// boundary. We take the page size, subtract the amount the descriptor ring takes
-	// then subtract the available structure and ring.
+	// Calculating padding, we need the used ring to start on a page boundary. We take the page size, subtract the
+	// amount the descriptor ring takes then subtract the available structure and ring.
 	pub padding0: [u8; PAGE_SIZE - size_of::<Descriptor>() * VIRTIO_RING_SIZE - size_of::<Available>()],
 	pub used:     Used,
 }
@@ -97,6 +96,10 @@ pub enum DeviceTypes {
 	Memory = 24,
 }
 
+// Enumerations in Rust aren't easy to convert back
+// and forth. Furthermore, we're going to use a u32
+// pointer, so we need to "undo" the scaling that
+// Rust will do with the .add() function.
 impl MmioOffsets {
 	pub fn val(self) -> usize {
 		self as usize
@@ -120,6 +123,8 @@ pub enum StatusField {
 	DeviceNeedsReset = 64,
 }
 
+// The status field will be compared to the status register. So,
+// I've made some helper functions to checking that register easier.
 impl StatusField {
 	pub fn val(self) -> usize {
 		self as usize
@@ -158,6 +163,11 @@ pub const MMIO_VIRTIO_END: usize = 0x1000_8000;
 pub const MMIO_VIRTIO_STRIDE: usize = 0x1000;
 pub const MMIO_VIRTIO_MAGIC: u32 = 0x74_72_69_76;
 
+// The VirtioDevice is essentially a structure we can put into an array
+// to determine what virtio devices are attached to the system. Right now,
+// we're using the 1..=8  linearity of the VirtIO devices on QEMU to help
+// with reducing the data structure itself. Otherwise, we might be forced
+// to use an MMIO pointer.
 pub struct VirtioDevice {
 	pub devtype: DeviceTypes,
 }
@@ -283,6 +293,10 @@ pub fn setup_input_device(_ptr: *mut u32) -> bool {
 	false
 }
 
+// The External pin (PLIC) trap will lead us here if it is
+// determined that interrupts 1..=8 are what caused the interrupt.
+// In here, we try to figure out where to direct the interrupt
+// and then handle it.
 pub fn handle_interrupt(interrupt: u32) {
 	let idx = interrupt as usize - 1;
 	unsafe {
