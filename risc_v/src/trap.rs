@@ -3,11 +3,11 @@
 // Stephen Marz
 // 10 October 2019
 
-use crate::cpu::{CONTEXT_SWITCH_TIME, TrapFrame};
-use crate::plic;
-use crate::syscall::do_syscall;
-use crate::sched::schedule;
-use crate::rust_switch_to_user;
+use crate::{cpu::{TrapFrame, CONTEXT_SWITCH_TIME},
+            plic,
+            rust_switch_to_user,
+            sched::schedule,
+            syscall::do_syscall};
 
 #[no_mangle]
 /// The m_trap stands for "machine trap". Right now, we are handling
@@ -65,7 +65,7 @@ extern "C" fn m_trap(epc: usize,
 			},
 			_ => {
 				panic!("Unhandled async trap CPU#{} -> {}\n", hart, cause_num);
-			}
+			},
 		}
 	}
 	else {
@@ -118,7 +118,7 @@ extern "C" fn m_trap(epc: usize,
 			},
 			_ => {
 				panic!("Unhandled sync trap CPU#{} -> {}\n", hart, cause_num);
-			}
+			},
 		}
 	};
 	// Finally, return the updated program counter
@@ -129,8 +129,6 @@ pub const MMIO_MTIMECMP: *mut u64 = 0x0200_4000usize as *mut u64;
 pub const MMIO_MTIME: *const u64 = 0x0200_BFF8 as *const u64;
 
 pub fn schedule_next_context_switch(qm: u16) {
-	// This is much too slow for normal operations, but it gives us
-	// a visual of what's happening behind the scenes.
 	unsafe {
 		MMIO_MTIMECMP.write_volatile(MMIO_MTIME.read_volatile().wrapping_add(CONTEXT_SWITCH_TIME * qm as u64));
 	}

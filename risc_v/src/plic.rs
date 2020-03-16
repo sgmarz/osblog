@@ -151,9 +151,8 @@ pub fn handle_interrupt() {
                 }
         
             },
-            // Non-UART interrupts go here and do nothing.
             _ => {
-                println!("Non-UART external interrupt: {}", interrupt);
+                println!("Unknown external interrupt: {}", interrupt);
             }
         }
         // We've claimed it, so now say that we've handled it. This resets the interrupt pending
