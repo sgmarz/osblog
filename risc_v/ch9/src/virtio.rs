@@ -4,6 +4,7 @@
 // 10 March 2020
 
 use crate::{block, block::setup_block_device, page::PAGE_SIZE};
+use crate::rng::setup_entropy_device;
 use core::mem::size_of;
 
 // Flags
@@ -24,6 +25,12 @@ pub const VIRTIO_USED_F_NO_NOTIFY: u16 = 1;
 pub const VIRTIO_RING_SIZE: usize = 1 << 7;
 
 // VirtIO structures
+
+// The descriptor holds the data that we need to send to 
+// the device. The address is a physical address and NOT
+// a virtual address. The len is in bytes and the flags are
+// specified above. Any descriptor can be chained, hence the
+// next field, but only if the F_NEXT flag is specified.
 #[repr(C)]
 pub struct Descriptor {
 	pub addr:  u64,
@@ -64,6 +71,8 @@ pub struct Queue {
 	pub used:     Used,
 }
 
+// The MMIO transport is "legacy" in QEMU, so these registers represent
+// the legacy interface.
 #[repr(usize)]
 pub enum MmioOffsets {
 	MagicValue = 0x000,
@@ -278,10 +287,6 @@ pub fn probe() {
 			}
 		}
 	}
-}
-
-pub fn setup_entropy_device(_ptr: *mut u32) -> bool {
-	false
 }
 
 pub fn setup_network_device(_ptr: *mut u32) -> bool {

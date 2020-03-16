@@ -256,6 +256,9 @@ pub fn block_op(dev: usize, buffer: *mut u8, size: u32, offset: u64, write: bool
 				return;
 			}
 			let sector = offset / 512;
+			// TODO: Before we get here, we are NOT allowed to schedule a read or
+			// write OUTSIDE of the disk's size. So, we can read capacity from
+			// the configuration space to ensure we stay within bounds.
 			let blk_request_size = size_of::<Request>();
 			let blk_request = kmalloc(blk_request_size) as *mut Request;
 			let desc = Descriptor { addr:  &(*blk_request).header as *const Header as u64,

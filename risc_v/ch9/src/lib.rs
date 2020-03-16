@@ -209,6 +209,7 @@ pub mod kmem;
 pub mod page;
 pub mod plic;
 pub mod process;
+pub mod rng;
 pub mod sched;
 pub mod syscall;
 pub mod trap;
