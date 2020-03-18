@@ -231,7 +231,7 @@ SECTIONS
 	 When we go to allocate from the stack, we'll subtract the number of bytes we need.
   */
   PROVIDE(_stack_start = _bss_end);
-  PROVIDE(_stack_end = _stack_start + 0x8000);
+  PROVIDE(_stack_end = _stack_start + 0x80000);
   PROVIDE(_memory_end = ORIGIN(ram) + LENGTH(ram));
 
   /* 
