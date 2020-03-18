@@ -164,7 +164,9 @@ extern "C" fn kinit_hart(_hartid: usize) {
 
 pub mod block;
 pub mod cpu;
+pub mod fs;
 pub mod kmem;
+pub mod minixfs;
 pub mod page;
 pub mod plic;
 pub mod process;
