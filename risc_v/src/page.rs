@@ -219,7 +219,7 @@ pub fn dealloc(ptr: *mut u8) {
 			HEAP_START + (ptr as usize - ALLOC_START) / PAGE_SIZE;
 		// Make sure that the address makes sense. The address we
 		// calculate here is the page structure, not the HEAP address!
-		assert!(addr >= HEAP_START && addr < HEAP_START + HEAP_SIZE);
+		assert!(addr >= HEAP_START && addr < ALLOC_START);
 		let mut p = addr as *mut Page;
 		// Keep clearing pages until we hit the last page.
 		while (*p).is_taken() && !(*p).is_last() {
