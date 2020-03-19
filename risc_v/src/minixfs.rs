@@ -4,6 +4,7 @@
 // 16 March 2020
 
 use crate::fs::{Descriptor, FileSystem, Stat, FsError};
+use crate::block;
 use alloc::string::String;
 
 pub const MAGIC: u16 = 0x4d5a;

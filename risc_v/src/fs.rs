@@ -28,7 +28,7 @@ pub struct Stat {
 /// A file descriptor
 pub struct Descriptor {
     blockdev: usize,
-    inode: u32,
+    node: u32,
 }
 
 pub enum FsError {
