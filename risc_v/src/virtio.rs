@@ -96,6 +96,38 @@ pub enum MmioOffsets {
 	Config = 0x100,
 }
 
+// This currently isn't used, but if anyone wants to try their hand at putting a structure
+// to the MMIO address space, you can use the following. Remember that this is volatile!
+#[repr(C)]
+pub struct MmioDevice {
+	magic_value: u32,
+	version: u32,
+	device_id: u32,
+	vendor_id: u32,
+	host_features: u32,
+	host_features_sel: u32,
+	rsv1: [u8; 8],
+	guest_features: u32,
+	guest_features_sel: u32,
+	guest_page_size: u32,
+	rsv2: [u8; 4],
+	queue_sel: u32,
+	queue_num_max: u32,
+	queue_num: u32,
+	queue_align: u32,
+	queue_pfn: u64,
+	rsv3: [u8; 8],
+	queue_notify,
+	rsv4: [u8; 12],
+	interrupt_status: u32,
+	interrupt_ack: u32,
+	rsv5: [u8; 8],
+	uint32_t status: u32,
+	//rsv6: [u8; 140],
+	//uint32_t config[1];
+	// The config space starts at 0x100, but it is device dependent.
+}
+
 #[repr(usize)]
 pub enum DeviceTypes {
 	None = 0,
@@ -124,6 +156,7 @@ impl MmioOffsets {
 	pub fn scale32(self) -> usize {
 		self.scaled(4)
 	}
+
 }
 
 pub enum StatusField {
