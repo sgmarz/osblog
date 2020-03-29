@@ -117,12 +117,12 @@ pub struct MmioDevice {
 	queue_align: u32,
 	queue_pfn: u64,
 	rsv3: [u8; 8],
-	queue_notify,
+	queue_notify: u32,
 	rsv4: [u8; 12],
 	interrupt_status: u32,
 	interrupt_ack: u32,
 	rsv5: [u8; 8],
-	uint32_t status: u32,
+	status: u32,
 	//rsv6: [u8; 140],
 	//uint32_t config[1];
 	// The config space starts at 0x100, but it is device dependent.
