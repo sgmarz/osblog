@@ -146,6 +146,18 @@ extern "C" fn kinit() {
 	}
 	// Set up virtio. This requires a working heap and page-grained allocator.
 	virtio::probe();
+	// Let's test the block driver!
+	println!("Testing block driver.");
+	let buffer = kmem::kmalloc(512);
+	block::read(8, buffer, 512, 0);
+	for i in 0..48 {
+		print!(" {:02x}", unsafe { buffer.add(i).read() });
+		if 0 == ((i+1) % 24) {
+			println!();
+		}
+	}
+	kmem::kfree(buffer);
+	println!("Block driver done");
 	// We schedule the next context switch using a multiplier of 1
 	// Block testing code removed.
 	trap::schedule_next_context_switch(1);
