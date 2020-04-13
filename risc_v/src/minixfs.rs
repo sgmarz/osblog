@@ -5,7 +5,9 @@
 
 use crate::fs::{Descriptor, FileSystem, Stat, FsError};
 use crate::block;
+use crate::kmem::{kmalloc, kfree};
 use alloc::string::String;
+use core::mem::size_of;
 
 pub const MAGIC: u16 = 0x4d5a;
 

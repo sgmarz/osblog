@@ -296,8 +296,8 @@ pub fn block_op(dev: usize, buffer: *mut u8, size: u32, offset: u64, write: bool
 			                        flags: virtio::VIRTIO_DESC_F_WRITE,
 			                        next:  0, };
 			let _status_idx = fill_next_descriptor(bdev, desc);
-			(*bdev.queue).avail.ring[(*bdev.queue).avail.idx as usize] = head_idx;
-			(*bdev.queue).avail.idx = ((*bdev.queue).avail.idx + 1) % virtio::VIRTIO_RING_SIZE as u16;
+			(*bdev.queue).avail.ring[(*bdev.queue).avail.idx as usize % virtio::VIRTIO_RING_SIZE] = head_idx;
+			(*bdev.queue).avail.idx = (*bdev.queue).avail.idx.wrapping_add(1);
 			// The only queue a block device has is 0, which is the request
 			// queue.
 			bdev.dev.add(MmioOffsets::QueueNotify.scale32()).write_volatile(0);
@@ -322,8 +322,8 @@ pub fn pending(bd: &mut BlockDevice) {
 	unsafe {
 		let ref queue = *bd.queue;
 		while bd.ack_used_idx != queue.used.idx {
-			let ref elem = queue.used.ring[bd.ack_used_idx as usize];
-			bd.ack_used_idx = (bd.ack_used_idx + 1) % VIRTIO_RING_SIZE as u16;
+			let ref elem = queue.used.ring[bd.ack_used_idx as usize % VIRTIO_RING_SIZE];
+			bd.ack_used_idx = bd.ack_used_idx.wrapping_add(1);
 			let rq = queue.desc[elem.id as usize].addr as *const Request;
 			kfree(rq as *mut u8);
 			// TODO: Awaken the process that will need this I/O. This is
