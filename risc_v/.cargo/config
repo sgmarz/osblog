@@ -1,5 +1,6 @@
 [build]
 target = "riscv64gc-unknown-none-elf"
+rustflags = ['-Clink-arg=-Tsrc/lds/virt.lds']
 
 [target.riscv64gc-unknown-none-elf]
-linker = "riscv64-unknown-linux-gnu-gcc"
+runner = "qemu-system-riscv64 -machine virt -cpu rv64 -smp 4 -m 128M -drive if=none,format=raw,file=hdd.dsk,id=foo -device virtio-blk-device,scsi=off,drive=foo -nographic -serial mon:stdio -bios none -device virtio-rng-device -device virtio-gpu-device -device virtio-net-device -device virtio-tablet-device -device virtio-keyboard-device -kernel "
