@@ -51,7 +51,7 @@ telling the linker script here that we have one pool of RAM.
 */
 MEMORY
 {
-  ram   (wxa!ri) : ORIGIN = 0x80000000, LENGTH = 128M
+  ram  (wxa) : ORIGIN = 0x80000000, LENGTH = 128M
 }
 
 /*
@@ -128,7 +128,6 @@ SECTIONS
 	  things in "special" text sections, so we match any we might come across here.
 	*/
     *(.text.init) *(.text .text.*)
-
 	/*
 	  Again, with PROVIDE, we're providing a readable symbol called _text_end, which is
 	  set to the memory address AFTER .text.init, .text, and .text.*'s have been added.
@@ -202,6 +201,7 @@ SECTIONS
 	*/
     *(.sdata .sdata.*) *(.data .data.*)
     PROVIDE(_data_end = .);
+	*(.eh_frame)
   } >ram AT>ram :data
 
   .bss : {

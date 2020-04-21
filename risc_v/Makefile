@@ -31,7 +31,6 @@ OPTS+=-device virtio-net-device -device virtio-tablet-device -device virtio-keyb
 
 all:
 	cargo build
-	$(CC) $(CFLAGS) $(LINKER_SCRIPT) $(INCLUDES) -o $(OUT) $(SOURCES_ASM) $(LIBS) $(LIB)
 	
 run: all
 	$(QEMU) -machine $(MACH) -cpu $(CPU) -smp $(CPUS) -m $(MEM) $(DRIVE) $(OPTS) -kernel $(OUT)

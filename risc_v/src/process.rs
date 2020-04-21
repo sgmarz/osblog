@@ -231,6 +231,13 @@ impl Process {
 		// that is inside of the kernel. When we start loading from a block
 		// devices, we can load the instructions anywhere in memory. 
 		map(pt, 0x8000_0000, 0x8000_0000, EntryBits::UserReadExecute.val(), 0);
+		map(pt, 0x8000_1000, 0x8000_1000, EntryBits::UserReadExecute.val(), 0);
+		map(pt, 0x8000_2000, 0x8000_2000, EntryBits::UserReadExecute.val(), 0);
+		map(pt, 0x8000_3000, 0x8000_3000, EntryBits::UserReadExecute.val(), 0);
+		map(pt, 0x8000_4000, 0x8000_4000, EntryBits::UserReadExecute.val(), 0);
+		map(pt, 0x8000_5000, 0x8000_5000, EntryBits::UserReadExecute.val(), 0);
+		map(pt, 0x8000_6000, 0x8000_6000, EntryBits::UserReadExecute.val(), 0);
+		map(pt, 0x8000_7000, 0x8000_7000, EntryBits::UserReadExecute.val(), 0);
 		ret_proc
 	}
 }
