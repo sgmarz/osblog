@@ -133,13 +133,13 @@ pub fn setup_entropy_device(ptr: *mut u32) -> bool {
 pub fn get_random() -> u64 {
 	unsafe {
 		for i in ENTROPY_DEVICES.iter() {
-			if let Some(edev) = i {
+			if let Some(_edev) = i {
 				let ptr = kmalloc(8);
-				let desc = Descriptor { addr:  ptr as u64,
+				let _desc = Descriptor { addr:  ptr as u64,
 										len:   8,
 										flags: virtio::VIRTIO_DESC_F_WRITE,
 										next:  0, };
-				let val = unsafe { *ptr as u64 };
+				let _val = unsafe { *ptr as u64 };
 				kfree(ptr);
 				break;
 			}

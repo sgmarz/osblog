@@ -78,7 +78,7 @@ extern "C" fn m_trap(epc: usize,
 				// I use while true because Rust will warn us that it looks stupid.
 				// This is what I want so that I remember to remove this and replace
 				// them later.
-				while true {}
+				loop {}
 			},
 			8 => {
 				// Environment (system) call from User mode
@@ -99,21 +99,21 @@ extern "C" fn m_trap(epc: usize,
 				// Instruction page fault
 				println!("Instruction page fault CPU#{} -> 0x{:08x}: 0x{:08x}", hart, epc, tval);
 				// We need while trues here until we have a functioning "delete from scheduler"
-				while true {}
+				loop {}
 				return_pc += 4;
 			},
 			13 => {
 				// Load page fault
 				println!("Load page fault CPU#{} -> 0x{:08x}: 0x{:08x}", hart, epc, tval);
 				// We need while trues here until we have a functioning "delete from scheduler"
-				while true {}
+				loop {}
 				return_pc += 4;
 			},
 			15 => {
 				// Store page fault
 				println!("Store page fault CPU#{} -> 0x{:08x}: 0x{:08x}", hart, epc, tval);
 				// We need while trues here until we have a functioning "delete from scheduler"
-				while true {}
+				loop {}
 				return_pc += 4;
 			},
 			_ => {

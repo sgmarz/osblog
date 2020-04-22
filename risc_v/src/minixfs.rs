@@ -4,10 +4,10 @@
 // 16 March 2020
 
 use crate::fs::{Descriptor, FileSystem, Stat, FsError};
-use crate::block;
-use crate::kmem::{kmalloc, kfree};
+
+
 use alloc::string::String;
-use core::mem::size_of;
+
 
 pub const MAGIC: u16 = 0x4d5a;
 
@@ -52,22 +52,22 @@ pub struct MinixFileSystem {
 }
 
 impl FileSystem for MinixFileSystem {
-    fn init(bdev: usize) -> bool {
+    fn init(_bdev: usize) -> bool {
         false
     }
-    fn open(path: &String) -> Result<Descriptor, FsError> {
+    fn open(_path: &String) -> Result<Descriptor, FsError> {
         Err(FsError::FileNotFound)
     }
-    fn read(desc: &Descriptor, buffer: *mut u8, offset: u32, size: u32) -> u32 {
+    fn read(_desc: &Descriptor, _buffer: *mut u8, _offset: u32, _size: u32) -> u32 {
         0
     }
-    fn write(desc: &Descriptor, buffer: *const u8, offset: u32, size: u32) -> u32 {
+    fn write(_desc: &Descriptor, _buffer: *const u8, _offset: u32, _size: u32) -> u32 {
         0
     }
-    fn close(desc: &mut Descriptor) {
+    fn close(_desc: &mut Descriptor) {
 
     }
-    fn stat(desc: &Descriptor) -> Stat {
+    fn stat(_desc: &Descriptor) -> Stat {
         Stat {
             mode: 0,
             size: 0,
