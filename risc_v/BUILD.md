@@ -10,3 +10,10 @@ Edit .cargo/config to match your host's configuration. The runner will execute w
 Type `cargo build` to start the build process.
 Type `cargo run` to run using the runner provided in .cargo/config
 
+# RELEASE BUILDS
+
+Release builds turn on the optimizer and make it run much quicker. To run release builds, add `--release` as a parameter to cargo:
+
+* cargo build --release
+* cargo run --release
+
