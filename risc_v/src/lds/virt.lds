@@ -201,7 +201,6 @@ SECTIONS
 	*/
     *(.sdata .sdata.*) *(.data .data.*)
     PROVIDE(_data_end = .);
-	*(.eh_frame)
   } >ram AT>ram :data
 
   .bss : {
