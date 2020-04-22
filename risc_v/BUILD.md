@@ -1,8 +1,8 @@
 # PREREQS
 You will need to install the riscv64gc target using rustup as well as cargo-binutils using cargo.
 
-[] rustup target add riscv64gc-unknown-none-elf
-[] cargo install cargo-binutils
+* rustup target add riscv64gc-unknown-none-elf
+* cargo install cargo-binutils
 
 # BUILDING
 Edit .cargo/config to match your host's configuration. The runner will execute when you type `cargo run`.
