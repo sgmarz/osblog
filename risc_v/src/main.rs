@@ -192,5 +192,7 @@ pub mod syscall;
 pub mod trap;
 pub mod uart;
 pub mod virtio;
+#[cfg(test)]
+pub mod test;
 
 
