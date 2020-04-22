@@ -139,7 +139,7 @@ pub fn get_random() -> u64 {
 										len:   8,
 										flags: virtio::VIRTIO_DESC_F_WRITE,
 										next:  0, };
-				let _val = unsafe { *ptr as u64 };
+				let _val = *ptr as u64;
 				kfree(ptr);
 				break;
 			}
