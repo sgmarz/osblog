@@ -49,10 +49,11 @@ pub fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			// This needs to be put into a process and ran.
 			let _ = minixfs::process_read(
 			                     (*frame).pid as u16,
-			                     (*frame).regs[10] as usize,
-			                     (*frame).regs[11] as *mut u8,
-                                 (*frame).regs[12] as u32,
-                                 (*frame).regs[13] as u32
+								 (*frame).regs[10] as usize,
+								 (*frame).regs[11] as u32,
+			                     (*frame).regs[12] as *mut u8,
+                                 (*frame).regs[13] as u32,
+                                 (*frame).regs[14] as u32
                                 );
 			// If we return 0, the trap handler will schedule another process.
 			0
@@ -97,8 +98,8 @@ pub fn syscall_exit() {
     let _ = do_make_syscall(93, 0, 0, 0, 0, 0, 0);
 }
 
-pub fn syscall_fs_read(dev: usize, buffer: *mut u8, size: u32, offset: u32) -> usize {
-	do_make_syscall(63, dev, buffer as usize, size as usize, offset as usize, 0, 0)
+pub fn syscall_fs_read(dev: usize, inode: u32, buffer: *mut u8, size: u32, offset: u32) -> usize {
+	do_make_syscall(63, dev, inode as usize, buffer as usize, size as usize, offset as usize, 0)
 }
 
 pub fn syscall_block_read(dev: usize, buffer: *mut u8, size: u32, offset: u32) -> usize {

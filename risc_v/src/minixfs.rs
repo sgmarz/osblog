@@ -135,7 +135,7 @@ impl MinixFileSystem {
 
 			// Now, we read the inode itself.
 			syc_read(desc, buffer.get_mut(), 512, inode_offset as u32);
-			println!("Inode sizex = {} {:o}, DZ {} {} {} {} {} {} {}", inode.size, inode.mode, inode.zones[0], inode.zones[1], inode.zones[2], inode.zones[3], inode.zones[4], inode.zones[5], inode.zones[6]);
+			println!("Inode {} sizex = {} {:o}, DZ {} {} {} {} {} {} {}", inode_num, inode.size, inode.mode, inode.zones[0], inode.zones[1], inode.zones[2], inode.zones[3], inode.zones[4], inode.zones[5], inode.zones[6]);
 			return Some(*inode);
 		}
 		// If we get here, some result wasn't OK. Either the super block
@@ -154,7 +154,6 @@ impl FileSystem for MinixFileSystem {
 	}
 
 	fn read(desc: &Descriptor, buffer: *mut u8, size: u32, offset: u32) -> u32 {
-		println!("MinixFileSystem::read: {}, {:p}, off: {}, sz: {}", desc.blockdev, buffer, offset, size);
 		let mut blocks_seen = 0u32;
 		let offset_block = offset / BLOCK_SIZE;
 		let offset_byte = offset % BLOCK_SIZE;
@@ -233,6 +232,7 @@ struct ProcArgs {
 	pub buffer: *mut u8,
 	pub size:   u32,
 	pub offset: u32,
+	pub node: u32,
 }
 
 fn read_proc(args_addr: usize) {
@@ -240,7 +240,7 @@ fn read_proc(args_addr: usize) {
 	let args = unsafe { args_ptr.as_ref().unwrap() };
 
 	let desc = Descriptor { blockdev: args.dev,
-	                        node:     1,
+	                        node:     args.node,
 	                        loc:      0,
 	                        size:     500,
 	                        pid:      args.pid, };
@@ -249,7 +249,7 @@ fn read_proc(args_addr: usize) {
 	tfree(args_ptr);
 }
 
-pub fn process_read(pid: u16, dev: usize, buffer: *mut u8, size: u32, offset: u32) {
+pub fn process_read(pid: u16, dev: usize, node: u32, buffer: *mut u8, size: u32, offset: u32) {
 	// println!("FS read {}, {}, 0x{:x}, {}, {}", pid, dev, buffer as usize, size, offset);
 	let args = talloc::<ProcArgs>().unwrap();
 	args.pid = pid;
@@ -257,6 +257,7 @@ pub fn process_read(pid: u16, dev: usize, buffer: *mut u8, size: u32, offset: u3
 	args.buffer = buffer;
 	args.size = size;
 	args.offset = offset;
+	args.node = node;
 	set_waiting(pid);
 	let _ = add_kernel_process_args(read_proc, args as *mut ProcArgs as usize);
 }
