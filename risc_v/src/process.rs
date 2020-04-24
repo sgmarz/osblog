@@ -3,15 +3,8 @@
 // Stephen Marz
 // 27 Nov 2019
 
-use crate::{cpu::{TrapFrame, satp_fence_asid, build_satp, SatpMode},
-            page::{alloc,
-                   dealloc,
-                   map,
-                   unmap,
-                   zalloc,
-                   EntryBits,
-                   Table,
-                   PAGE_SIZE}};
+use crate::{cpu::{build_satp, satp_fence_asid, CpuMode, SatpMode, TrapFrame},
+            page::{alloc, dealloc, map, unmap, zalloc, EntryBits, Table, PAGE_SIZE}};
 use alloc::collections::vec_deque::VecDeque;
 
 // How many pages are we going to give a process for their
@@ -42,6 +35,56 @@ extern "C" {
 	fn make_syscall(a: usize) -> usize;
 }
 
+/// Set a process' state to running. This doesn't do any checks.
+/// If this PID is not found, this returns false. Otherwise, it
+/// returns true.
+pub fn set_running(pid: u16) -> bool {
+	// Yes, this is O(n). A better idea here would be a static list
+	// of process pointers.
+	let mut retval = false;
+	unsafe {
+		if let Some(mut pl) = PROCESS_LIST.take() {
+			for proc in pl.iter_mut() {
+				if proc.pid == pid {
+					proc.set_state(ProcessState::Running);
+					retval = true;
+					break;
+				}
+			}
+			// Now, we no longer need the owned Deque, so we hand it
+			// back by replacing the PROCESS_LIST's None with the
+			// Some(pl).
+			PROCESS_LIST.replace(pl);
+		}
+	}
+	retval
+}
+
+/// Set a process' state to waiting. This doesn't do any checks.
+/// If this PID is not found, this returns false. Otherwise, it
+/// returns true.
+pub fn set_waiting(pid: u16) -> bool {
+	// Yes, this is O(n). A better idea here would be a static list
+	// of process pointers.
+	let mut retval = false;
+	unsafe {
+		if let Some(mut pl) = PROCESS_LIST.take() {
+			for proc in pl.iter_mut() {
+				if proc.pid == pid {
+					proc.set_state(ProcessState::Waiting);
+					retval = true;
+					break;
+				}
+			}
+			// Now, we no longer need the owned Deque, so we hand it
+			// back by replacing the PROCESS_LIST's None with the
+			// Some(pl).
+			PROCESS_LIST.replace(pl);
+		}
+	}
+	retval
+}
+
 /// We will eventually move this function out of here, but its
 /// job is just to take a slot in the process list.
 fn init_process() {
@@ -50,6 +93,7 @@ fn init_process() {
 	let mut i: usize = 0;
 	loop {
 		i += 1;
+		// Eventually, this will be a sleep system call.
 		if i > 100_000_000 {
 			unsafe {
 				make_syscall(1);
@@ -87,6 +131,61 @@ pub fn add_process_default(pr: fn()) {
 		// atomic instruction. but right now, we're a single-processor
 		// computer.
 	}
+}
+
+/// Add a kernel process.
+pub fn add_kernel_process(func: fn()) {
+	// This is the Rust-ism that really trips up C++ programmers.
+	// PROCESS_LIST is wrapped in an Option<> enumeration, which
+	// means that the Option owns the Deque. We can only borrow from
+	// it or move ownership to us. In this case, we choose the
+	// latter, where we move ownership to us, add a process, and
+	// then move ownership back to the PROCESS_LIST.
+	// This allows mutual exclusion as anyone else trying to grab
+	// the process list will get None rather than the Deque.
+	if let Some(mut pl) = unsafe { PROCESS_LIST.take() } {
+		// .take() will replace PROCESS_LIST with None and give
+		// us the only copy of the Deque.
+		let func_addr = func as usize;
+		let func_vaddr = func_addr; //- 0x6000_0000;
+			    // println!("func_addr = {:x} -> {:x}", func_addr, func_vaddr);
+			    // We will convert NEXT_PID below into an atomic increment when
+			    // we start getting into multi-hart processing. For now, we want
+			    // a process. Get it to work, then improve it!
+		let mut ret_proc = Process { frame:       zalloc(1) as *mut TrapFrame,
+		                             stack:       alloc(STACK_PAGES),
+		                             pid:         unsafe { NEXT_PID },
+		                             root:        zalloc(1) as *mut Table,
+		                             state:       ProcessState::Running,
+		                             data:        ProcessData::zero(),
+		                             sleep_until: 0, };
+		unsafe {
+			NEXT_PID += 1;
+		}
+		// Now we move the stack pointer to the bottom of the
+		// allocation. The spec shows that register x2 (2) is the stack
+		// pointer.
+		// We could use ret_proc.stack.add, but that's an unsafe
+		// function which would require an unsafe block. So, convert it
+		// to usize first and then add PAGE_SIZE is better.
+		// We also need to set the stack adjustment so that it is at the
+		// bottom of the memory and far away from heap allocations.
+		unsafe {
+			(*ret_proc.frame).pc = func_vaddr;
+			(*ret_proc.frame).regs[2] = ret_proc.stack as usize + STACK_PAGES * 4096;
+			(*ret_proc.frame).mode = CpuMode::Machine as usize;
+			(*ret_proc.frame).pid = ret_proc.pid as usize;
+		}
+		pl.push_back(ret_proc);
+		// Now, we no longer need the owned Deque, so we hand it
+		// back by replacing the PROCESS_LIST's None with the
+		// Some(pl).
+		unsafe { PROCESS_LIST.replace(pl); }
+	}
+	// TODO: When we get to multi-hart processing, we need to keep
+	// trying to grab the process list. We can do this with an
+	// atomic instruction. but right now, we're a single-processor
+	// computer.
 }
 
 /// This should only be called once, and its job is to create
@@ -134,50 +233,58 @@ pub enum ProcessState {
 // C-style ABI.
 #[repr(C)]
 pub struct Process {
-	frame:           *mut TrapFrame,
-	stack:           *mut u8,
-	pid:             u16,
-	root:            *mut Table,
-	state:           ProcessState,
-	data:            ProcessData,
-	sleep_until:	 usize,
+	frame:       *mut TrapFrame,
+	stack:       *mut u8,
+	pid:         u16,
+	root:        *mut Table,
+	state:       ProcessState,
+	data:        ProcessData,
+	sleep_until: usize,
 }
 
 impl Process {
 	pub fn get_frame_address(&self) -> usize {
 		self.frame as usize
 	}
+
 	pub fn get_program_counter(&self) -> usize {
 		unsafe { (*self.frame).pc }
 	}
+
 	pub fn get_table_address(&self) -> usize {
 		self.root as usize
 	}
+
 	pub fn get_state(&self) -> &ProcessState {
 		&self.state
 	}
+
+	pub fn set_state(&mut self, ps: ProcessState) {
+		self.state = ps;
+	}
+
 	pub fn get_pid(&self) -> u16 {
 		self.pid
 	}
+
 	pub fn get_sleep_until(&self) -> usize {
 		self.sleep_until
 	}
+
 	pub fn new_default(func: fn()) -> Self {
 		let func_addr = func as usize;
 		let func_vaddr = func_addr; //- 0x6000_0000;
-		// println!("func_addr = {:x} -> {:x}", func_addr, func_vaddr);
-		// We will convert NEXT_PID below into an atomic increment when
-		// we start getting into multi-hart processing. For now, we want
-		// a process. Get it to work, then improve it!
-		let mut ret_proc =
-			Process { frame:           zalloc(1) as *mut TrapFrame,
-			          stack:           alloc(STACK_PAGES),
-			          pid:             unsafe { NEXT_PID },
-			          root:            zalloc(1) as *mut Table,
-			          state:           ProcessState::Running,
-					  data:            ProcessData::zero(), 
-					  sleep_until:     0
-					};
+			    // println!("func_addr = {:x} -> {:x}", func_addr, func_vaddr);
+			    // We will convert NEXT_PID below into an atomic increment when
+			    // we start getting into multi-hart processing. For now, we want
+			    // a process. Get it to work, then improve it!
+		let mut ret_proc = Process { frame:       zalloc(1) as *mut TrapFrame,
+		                             stack:       alloc(STACK_PAGES),
+		                             pid:         unsafe { NEXT_PID },
+		                             root:        zalloc(1) as *mut Table,
+		                             state:       ProcessState::Running,
+		                             data:        ProcessData::zero(),
+		                             sleep_until: 0, };
 		unsafe {
 			satp_fence_asid(NEXT_PID as usize);
 			NEXT_PID += 1;
@@ -194,50 +301,37 @@ impl Process {
 		unsafe {
 			(*ret_proc.frame).pc = func_vaddr;
 			(*ret_proc.frame).regs[2] = STACK_ADDR + PAGE_SIZE * STACK_PAGES;
+			(*ret_proc.frame).mode = CpuMode::User as usize;
+			(*ret_proc.frame).pid = ret_proc.pid as usize;
 		}
 		// Map the stack on the MMU
 		let pt;
 		unsafe {
 			pt = &mut *ret_proc.root;
-			(*ret_proc.frame).satp = build_satp(SatpMode::Sv39, ret_proc.pid as usize, ret_proc.root as usize);
+			(*ret_proc.frame).satp =
+				build_satp(SatpMode::Sv39, ret_proc.pid as usize, ret_proc.root as usize);
 		}
 		// We need to map the stack onto the user process' virtual
 		// memory This gets a little hairy because we need to also map
 		// the function code too.
 		for i in 0..STACK_PAGES {
 			let addr = i * PAGE_SIZE;
-			map(
-			    pt,
-			    STACK_ADDR + addr,
-			    saddr + addr,
-			    EntryBits::UserReadWrite.val(),
-			    0,
-			);
+			map(pt, STACK_ADDR + addr, saddr + addr, EntryBits::UserReadWrite.val(), 0);
 			// println!("Set stack from 0x{:016x} -> 0x{:016x}", STACK_ADDR + addr, saddr + addr);
 		}
 		// Map the program counter on the MMU and other bits
 		for i in 0..=100 {
 			let modifier = i * 0x1000;
-			map(
-				pt,
-				func_vaddr + modifier,
-				func_addr + modifier,
-				EntryBits::UserReadWriteExecute.val(),
-				0,
-			);
+			map(pt, func_vaddr + modifier, func_addr + modifier, EntryBits::UserReadWriteExecute.val(), 0);
 		}
 		// This is the make_syscall function
 		// The reason we need this is because we're running a process
 		// that is inside of the kernel. When we start loading from a block
-		// devices, we can load the instructions anywhere in memory. 
-		map(pt, 0x8000_0000, 0x8000_0000, EntryBits::UserReadExecute.val(), 0);
-		map(pt, 0x8000_1000, 0x8000_1000, EntryBits::UserReadExecute.val(), 0);
-		map(pt, 0x8000_2000, 0x8000_2000, EntryBits::UserReadExecute.val(), 0);
-		map(pt, 0x8000_3000, 0x8000_3000, EntryBits::UserReadExecute.val(), 0);
-		map(pt, 0x8000_4000, 0x8000_4000, EntryBits::UserReadExecute.val(), 0);
-		map(pt, 0x8000_5000, 0x8000_5000, EntryBits::UserReadExecute.val(), 0);
-		map(pt, 0x8000_6000, 0x8000_6000, EntryBits::UserReadExecute.val(), 0);
-		map(pt, 0x8000_7000, 0x8000_7000, EntryBits::UserReadExecute.val(), 0);
+		// devices, we can load the instructions anywhere in memory.
+		for i in 0..=7 {
+			let addr = 0x8000_0000 | i << 12;
+			map(pt, addr, addr, EntryBits::UserReadExecute.val(), 0);
+		}
 		ret_proc
 	}
 }

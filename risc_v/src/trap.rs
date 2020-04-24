@@ -37,11 +37,15 @@ extern "C" fn m_trap(epc: usize,
 	// number. So, here we narrow down just the cause number.
 	let cause_num = cause & 0xfff;
 	let mut return_pc = epc;
+	unsafe { 
+		(*frame).pc = return_pc;
+	}
 	if is_async {
 		// Asynchronous trap
 		match cause_num {
 			3 => {
-				// Machine software
+				// We will use this to awaken our other CPUs so they can process
+				// processes.
 				println!("Machine software interrupt CPU #{}", hart);
 			},
 			7 => {
@@ -80,19 +84,19 @@ extern "C" fn m_trap(epc: usize,
 				// them later.
 				loop {}
 			},
-			8 => {
-				// Environment (system) call from User mode
+			8 | 9 | 11 => unsafe {
+				// Environment (system) call from User, Supervisor, and Machine modes
 				// println!("E-call from User mode! CPU#{} -> 0x{:08x}", hart, epc);
 				return_pc = do_syscall(return_pc, frame);
-			},
-			9 => {
-				// Environment (system) call from Supervisor mode
-				println!("E-call from Supervisor mode! CPU#{} -> 0x{:08x}", hart, epc);
-				return_pc = do_syscall(return_pc, frame);
-			},
-			11 => {
-				// Environment (system) call from Machine mode
-				panic!("E-call from Machine mode! CPU#{} -> 0x{:08x}\n", hart, epc);
+				if return_pc == 0 {
+					// We are about to schedule something else here, so we need to store PAST
+					// the system call so that when we resume this process, we're after the ecall.
+					(*frame).pc += 4;
+					let frame = schedule();
+					// let p = frame as *const crate::process::Process;
+					schedule_next_context_switch(1);
+					rust_switch_to_user(frame);
+				}
 			},
 			// Page faults
 			12 => {

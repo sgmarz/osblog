@@ -20,10 +20,18 @@ pub enum SatpMode {
 	Sv48 = 9,
 }
 
+#[repr(usize)]
+pub enum CpuMode {
+	User = 0,
+	Supervisor = 1,
+	Machine = 3,
+}
+
 /// The trap frame is set into a structure
 /// and packed into each hart's mscratch register.
 /// This allows for quick reference and full
 /// context switch handling.
+/// To make offsets easier, everything will be a usize (8 bytes)
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct TrapFrame {
@@ -33,6 +41,8 @@ pub struct TrapFrame {
 	pub pc:         usize,       // 520
 	pub hartid:     usize,       // 528
 	pub qm:         usize,		 // 536
+	pub pid:        usize,		 // 544
+	pub mode:       usize,		 // 552
 }
 
 /// Rust requires that we initialize our structures
@@ -51,6 +61,8 @@ impl TrapFrame {
 		            pc:		    0,
 					hartid:     0, 
 					qm:         1,
+					pid:        0,
+					mode:		0,
 				}
 	}
 }
