@@ -4,7 +4,8 @@
 // 27 Nov 2019
 
 use crate::{cpu::{build_satp, get_mtime, satp_fence_asid, CpuMode, SatpMode, TrapFrame},
-            page::{alloc, dealloc, map, unmap, zalloc, EntryBits, Table, PAGE_SIZE}};
+			page::{alloc, dealloc, map, unmap, zalloc, EntryBits, Table, PAGE_SIZE}};
+use crate::syscall::syscall_exit;
 use alloc::collections::vec_deque::VecDeque;
 use core::ptr::null_mut;
 
@@ -234,6 +235,9 @@ pub fn add_kernel_process(func: fn()) -> u16 {
 		// bottom of the memory and far away from heap allocations.
 		unsafe {
 			(*ret_proc.frame).pc = func_vaddr;
+			// 1 is the return address register. This makes it so we don't have to do
+			// syscall_exit() when a kernel process finishes.
+			(*ret_proc.frame).regs[1] = ra_delete_proc as usize;
 			(*ret_proc.frame).regs[2] = ret_proc.stack as usize + STACK_PAGES * 4096;
 			(*ret_proc.frame).mode = CpuMode::Machine as usize;
 			(*ret_proc.frame).pid = ret_proc.pid as usize;
@@ -252,6 +256,10 @@ pub fn add_kernel_process(func: fn()) -> u16 {
 		// computer.
 		0
 	}
+}
+
+fn ra_delete_proc() {
+	syscall_exit();
 }
 
 /// This is the same as the add_kernel_process function, except you can pass
@@ -297,6 +305,9 @@ pub fn add_kernel_process_args(func: fn(args_ptr: usize), args: usize) -> u16 {
 		unsafe {
 			(*ret_proc.frame).pc = func_vaddr;
 			(*ret_proc.frame).regs[10] = args;
+			// 1 is the return address register. This makes it so we don't have to do
+			// syscall_exit() when a kernel process finishes.
+			(*ret_proc.frame).regs[1] = ra_delete_proc as usize;
 			(*ret_proc.frame).regs[2] = ret_proc.stack as usize + STACK_PAGES * 4096;
 			(*ret_proc.frame).mode = CpuMode::Machine as usize;
 			(*ret_proc.frame).pid = ret_proc.pid as usize;

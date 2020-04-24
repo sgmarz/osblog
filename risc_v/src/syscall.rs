@@ -58,14 +58,14 @@ pub fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			0
 		},
 		180 => unsafe {
-			println!(
-			         "Pid: {}, Dev: {}, Buffer: 0x{:x}, Size: {}, Offset: {}",
-			         (*frame).pid,
-			         (*frame).regs[10],
-			         (*frame).regs[11],
-			         (*frame).regs[12],
-			         (*frame).regs[13]
-			);
+			// println!(
+			//          "Pid: {}, Dev: {}, Buffer: 0x{:x}, Size: {}, Offset: {}",
+			//          (*frame).pid,
+			//          (*frame).regs[10],
+			//          (*frame).regs[11],
+			//          (*frame).regs[12],
+			//          (*frame).regs[13]
+			// );
             let _ = block_op((*frame).regs[10],
                             (*frame).regs[11] as *mut u8,
                             (*frame).regs[12] as u32,

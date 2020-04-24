@@ -8,8 +8,8 @@ use alloc::string::String;
 pub trait FileSystem {
     fn init(bdev: usize) -> bool;
     fn open(path: &String) -> Result<Descriptor, FsError>;
-    fn read(desc: &Descriptor, buffer: *mut u8, offset: u32, size: u32) -> u32;
-    fn write(desc: &Descriptor, buffer: *const u8, offset: u32, size: u32) -> u32;
+    fn read(desc: &Descriptor, buffer: *mut u8, size: u32, offset: u32) -> u32;
+    fn write(desc: &Descriptor, buffer: *const u8, size: u32, offset: u32) -> u32;
     fn close(desc: &mut Descriptor);
     fn stat(desc: &Descriptor) -> Stat;
 }

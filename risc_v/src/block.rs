@@ -402,7 +402,8 @@ fn read_proc(args_addr: usize) {
 	let args = unsafe { args_ptr.as_ref().unwrap() };
 	let _ = block_op(args.dev, args.buffer, args.size, args.offset, false, args.pid);
 	tfree(args_ptr);
-	syscall_exit();
+	// This should be handled by the RA now.
+	// syscall_exit();
 }
 
 pub fn process_read(pid: u16, dev: usize, buffer: *mut u8, size: u32, offset: u64) {
@@ -423,7 +424,7 @@ fn write_proc(args_addr: usize) {
 
 	let _ = block_op(args.dev, args.buffer, args.size, args.offset, true, args.pid);
 	tfree(args_ptr);
-	syscall_exit();
+	// syscall_exit();
 }
 
 pub fn process_write(pid: u16, dev: usize, buffer: *mut u8, size: u32, offset: u64) {
