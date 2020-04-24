@@ -89,6 +89,18 @@ pub fn init() {
 	}
 }
 
+/// talloc and tfree will allocate a reference to a given type
+/// This helps when creating structures. 
+pub fn talloc<T>() -> Option<&'static mut T> {
+	unsafe {
+		(kzmalloc(size_of::<T>()) as *mut T).as_mut()
+	}
+}
+
+pub fn tfree<T>(p: *mut T) {
+	kfree(p as *mut u8);
+}
+
 /// Allocate sub-page level allocation based on bytes and zero the memory
 pub fn kzmalloc(sz: usize) -> *mut u8 {
 	let size = align_val(sz, 3);

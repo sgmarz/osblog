@@ -6,7 +6,8 @@
 use crate::{kmem::{kfree, kmalloc},
             page::{zalloc, PAGE_SIZE},
             virtio,
-            virtio::{Descriptor, MmioOffsets, Queue, StatusField, VIRTIO_RING_SIZE}};
+			virtio::{Descriptor, MmioOffsets, Queue, StatusField, VIRTIO_RING_SIZE}};
+use crate::process::{set_running, set_waiting};
 use core::mem::size_of;
 
 #[repr(C)]
@@ -79,6 +80,13 @@ pub struct Request {
 	data:   Data,
 	status: Status,
 	head:   u16,
+
+	// Do not change anything above this line.
+	// This is the PID of watcher. We store the PID
+	// because it is possible that the process DIES
+	// before we get here. If we used a pointer, we
+	// may dereference invalid memory.
+	watcher: u16,
 }
 
 // Internal block device structure
@@ -117,6 +125,14 @@ pub const VIRTIO_BLK_F_TOPOLOGY: u32 = 10;
 pub const VIRTIO_BLK_F_CONFIG_WCE: u32 = 11;
 pub const VIRTIO_BLK_F_DISCARD: u32 = 13;
 pub const VIRTIO_BLK_F_WRITE_ZEROES: u32 = 14;
+
+// We might get several types of errors, but they can be enumerated here.
+pub enum BlockErrors {
+	Success = 0,
+	BlockDeviceNotFound,
+	InvalidArgument,
+	ReadOnly
+}
 
 // Much like with processes, Rust requires some initialization
 // when we declare a static. In this case, we use the Option
@@ -247,13 +263,16 @@ pub fn fill_next_descriptor(bd: &mut BlockDevice, desc: Descriptor) -> u16 {
 /// a multiple of 512, but we don't really check that.
 /// We DO however, check that we aren't writing to an R/O device. This would
 /// cause a I/O error if we tried to write to a R/O device.
-pub fn block_op(dev: usize, buffer: *mut u8, size: u32, offset: u64, write: bool) {
+pub fn block_op(dev: usize, buffer: *mut u8, size: u32, offset: u64, write: bool, watcher: u16) -> Result<u32, BlockErrors> {
 	unsafe {
 		if let Some(bdev) = BLOCK_DEVICES[dev - 1].as_mut() {
 			// Check to see if we are trying to write to a read only device.
-			if true == bdev.read_only && true == write {
+			if bdev.read_only && write {
 				println!("Trying to write to read/only!");
-				return;
+				return Err(BlockErrors::ReadOnly);
+			}
+			if size % 512 != 0 {
+				return Err(BlockErrors::InvalidArgument);
 			}
 			let sector = offset / 512;
 			// TODO: Before we get here, we are NOT allowed to schedule a read or
@@ -268,7 +287,7 @@ pub fn block_op(dev: usize, buffer: *mut u8, size: u32, offset: u64, write: bool
 			let head_idx = fill_next_descriptor(bdev, desc);
 			(*blk_request).header.sector = sector;
 			// A write is an "out" direction, whereas a read is an "in" direction.
-			(*blk_request).header.blktype = if true == write {
+			(*blk_request).header.blktype = if write {
 				VIRTIO_BLK_T_OUT
 			}
 			else {
@@ -280,10 +299,11 @@ pub fn block_op(dev: usize, buffer: *mut u8, size: u32, offset: u64, write: bool
 			(*blk_request).data.data = buffer;
 			(*blk_request).header.reserved = 0;
 			(*blk_request).status.status = 111;
+			(*blk_request).watcher = watcher;
 			let desc = Descriptor { addr:  buffer as u64,
 			                        len:   size,
 			                        flags: virtio::VIRTIO_DESC_F_NEXT
-			                               | if false == write {
+			                               | if !write {
 				                               virtio::VIRTIO_DESC_F_WRITE
 			                               }
 			                               else {
@@ -301,16 +321,20 @@ pub fn block_op(dev: usize, buffer: *mut u8, size: u32, offset: u64, write: bool
 			// The only queue a block device has is 0, which is the request
 			// queue.
 			bdev.dev.add(MmioOffsets::QueueNotify.scale32()).write_volatile(0);
+			Ok(size)
+		}
+		else {
+			Err(BlockErrors::BlockDeviceNotFound)
 		}
 	}
 }
 
-pub fn read(dev: usize, buffer: *mut u8, size: u32, offset: u64) {
-	block_op(dev, buffer, size, offset, false);
+pub fn read(dev: usize, buffer: *mut u8, size: u32, offset: u64) -> Result<u32, BlockErrors> {
+	block_op(dev, buffer, size, offset, false, 0)
 }
 
-pub fn write(dev: usize, buffer: *mut u8, size: u32, offset: u64) {
-	block_op(dev, buffer, size, offset, true);
+pub fn write(dev: usize, buffer: *mut u8, size: u32, offset: u64) -> Result<u32, BlockErrors> {
+	block_op(dev, buffer, size, offset, true, 0)
 }
 
 /// Here we handle block specific interrupts. Here, we need to check
@@ -324,10 +348,17 @@ pub fn pending(bd: &mut BlockDevice) {
 		while bd.ack_used_idx != queue.used.idx {
 			let ref elem = queue.used.ring[bd.ack_used_idx as usize % VIRTIO_RING_SIZE];
 			bd.ack_used_idx = bd.ack_used_idx.wrapping_add(1);
+			// Requests stay resident on the heap until this function, so we can recapture the address here
 			let rq = queue.desc[elem.id as usize].addr as *const Request;
+
+			// A process might be waiting for this interrupt. Awaken the process attached here.
+			let pid_of_watcher = (*rq).watcher;
+			// A PID of 0 means that we don't have a watcher.
+			if pid_of_watcher > 0 {
+				set_running(pid_of_watcher);
+				// TODO: Set GpA0 to the value of the return status.
+			}
 			kfree(rq as *mut u8);
-			// TODO: Awaken the process that will need this I/O. This is
-			// the purpose of the waiting state.
 		}
 	}
 }
@@ -343,4 +374,15 @@ pub fn handle_interrupt(idx: usize) {
 			println!("Invalid block device for interrupt {}", idx + 1);
 		}
 	}
+}
+
+pub fn process_read(pid: u16, dev: usize, buffer: *mut u8, size: u32, offset: u64) -> Result<u32, BlockErrors> {
+	println!("Process read {}, {}, 0x{:x}, {}, {}", pid, dev, buffer as usize, size, offset);
+	set_waiting(pid);
+	block_op(dev, buffer, size, offset, false, pid)
+}
+
+pub fn process_write(pid: u16, dev: usize, buffer: *mut u8, size: u32, offset: u64) -> Result<u32, BlockErrors> {
+	set_waiting(pid);
+	block_op(dev, buffer, size, offset, true, pid)
 }
