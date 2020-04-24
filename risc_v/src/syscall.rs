@@ -97,6 +97,14 @@ pub fn syscall_exit() {
     let _ = do_make_syscall(93, 0, 0, 0, 0, 0, 0);
 }
 
+pub fn syscall_fs_read(dev: usize, buffer: *mut u8, size: u32, offset: u32) -> usize {
+	do_make_syscall(63, dev, buffer as usize, size as usize, offset as usize, 0, 0)
+}
+
+pub fn syscall_block_read(dev: usize, buffer: *mut u8, size: u32, offset: u32) -> usize {
+	do_make_syscall(180, dev, buffer as usize, size as usize, offset as usize, 0, 0)
+}
+
 // These system call numbers come from libgloss so that we can use newlib
 // for our system calls.
 // Libgloss wants the system call number in A7 and arguments in A0..A6

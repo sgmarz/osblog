@@ -6,7 +6,7 @@
 use crate::{fs::{Descriptor, FileSystem, FsError, Stat},
             kmem::{kfree, kmalloc, talloc, tfree},
             process::{add_kernel_process_args, set_waiting},
-            syscall::syscall_exit};
+            syscall::{syscall_exit, syscall_block_read}};
 
 use alloc::string::String;
 use core::{mem::size_of, ptr::null_mut};
@@ -229,12 +229,7 @@ impl FileSystem for MinixFileSystem {
 }
 
 pub fn syc_read(desc: &Descriptor, buffer: *mut u8, size: u32, offset: u32) {
-	extern "C" {
-		fn make_syscall(sysno: usize, bdev: usize, buffer: usize, size: usize, offset: usize);
-	}
-	unsafe {
-		make_syscall(180, desc.blockdev as usize, buffer as usize, size as usize, offset as usize);
-	}
+	syscall_block_read(desc.blockdev, buffer, size, offset);
 }
 
 struct ProcArgs {
