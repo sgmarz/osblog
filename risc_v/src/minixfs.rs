@@ -5,7 +5,8 @@
 
 use crate::{block,
             fs::{Descriptor, FileSystem, FsError, Stat},
-            kmem::{kfree, kmalloc, talloc, tfree}};
+			kmem::{kfree, kmalloc, talloc, tfree}};
+use crate::process::{set_waiting, set_running, add_kernel_process_args};
 
 use alloc::string::String;
 use core::{mem::size_of, ptr::null_mut};
@@ -108,7 +109,7 @@ impl MinixFileSystem {
 	/// the file's size. They are stored above the data zones, but to figure out where we
 	/// need to go to get the inode, we first need the superblock, which is where we can
 	/// find all of the information about the filesystem itself.
-	pub fn get_inode(bdev: usize, inode_num: u32) -> Option<Inode> {
+	pub fn get_inode(desc: &Descriptor, inode_num: u32) -> Option<Inode> {
 		// When we read, everything needs to be a multiple of a sector (512 bytes)
 		// So, we need to have memory available that's at least 512 bytes, even if
 		// we only want 10 bytes or 32 bytes (size of an Inode).
@@ -119,14 +120,12 @@ impl MinixFileSystem {
 		// simultaneously, we can overlap the memory regions.
 		let super_block = unsafe { &*(buffer.get_mut() as *mut SuperBlock) };
 		let inode = unsafe { &*(buffer.get_mut() as *mut Inode) };
-
 		// Read from the block device. The size is 1 sector (512 bytes) and our offset is past
 		// the boot block (first 1024 bytes). This is where the superblock sits.
-		let result = block::read(bdev, buffer.get_mut(), 512, 1024);
-		for _ in 0..1000000 {
-				
-		}
-		if result.is_ok() && super_block.magic == MAGIC {
+		println!("DO READ, magic should be next, buffer is at {:p}, desc is at {:p}", buffer.get(), desc as *const Descriptor);
+		syc_read(desc, buffer.get_mut(), 512, 1024);
+		println!("Magic is {:x}", super_block.magic);
+		if super_block.magic == MAGIC {
 			// If we get here, we successfully read what we think is the super block.
 			// The math here is 2 - one for the boot block, one for the super block. Then we
 			// have to skip the bitmaps blocks. We have a certain number of inode map blocks (imap)
@@ -136,14 +135,9 @@ impl MinixFileSystem {
 			                   * BLOCK_SIZE as usize + (inode_num as usize - 1) * size_of::<Inode>();
 
 			// Now, we read the inode itself.
-			let result = block::read(bdev, buffer.get_mut(), 512, inode_offset as u64);
-			for _ in 0..1000000 {
-				
-			}
-			if result.is_ok() {
-				println!("Inode sizex = {} {:o}", inode.size, inode.mode);
-				return Some(inode.clone());
-			}
+			syc_read(desc, buffer.get_mut(), 512, inode_offset as u32);
+			println!("Inode sizex = {} {:o}", inode.size, inode.mode);
+			return Some(*inode);
 		}
 		// If we get here, some result wasn't OK. Either the super block
 		// or the inode itself.
@@ -161,13 +155,14 @@ impl FileSystem for MinixFileSystem {
 	}
 
 	fn read(desc: &Descriptor, buffer: *mut u8, offset: u32, size: u32) -> u32 {
+		println!("MinixFileSystem::read: {}, {:p}, off: {}, sz: {}", desc.blockdev, buffer, offset, size);
 		let mut blocks_seen = 0u32;
 		let offset_block = offset / BLOCK_SIZE;
 		let offset_byte = offset % BLOCK_SIZE;
 
+		// let stats = Self::stat(desc);
+		let inode_result = Self::get_inode(desc, desc.node);
 		let mut block_buffer = BlockBuffer::new(BLOCK_SIZE);
-		let stats = Self::stat(desc);
-		let inode_result = Self::get_inode(desc.blockdev, desc.node);
 		if inode_result.is_none() {
 			// The inode couldn't be read, for some reason.
 			return 0;
@@ -176,12 +171,12 @@ impl FileSystem for MinixFileSystem {
 		// First, the _size parameter (now in bytes_left) is the size of the buffer, not
 		// necessarily the size of the file. If our buffer is bigger than the file, we're OK.
 		// If our buffer is smaller than the file, then we can only read up to the buffer size.
-		let mut bytes_left = if size > stats.size {
-			stats.size
-		}
-		else {
-			size
-		};
+		// let mut bytes_left = if size > stats.size {
+		// stats.size
+		// }
+		// else {
+		// size
+		// };
 		let mut bytes_left = 0;
 		let mut bytes_read = 0u32;
 		// In Rust, our for loop automatically "declares" i from 0 to < 7. The syntax
@@ -205,14 +200,10 @@ impl FileSystem for MinixFileSystem {
 				}
 				let zone_offset = zone_num * BLOCK_SIZE;
 				println!("Zone #{} -> #{} -> {}", i, zone_num, zone_offset);
-				if let Ok(_) = block::read(desc.blockdev, block_buffer.get_mut(), BLOCK_SIZE, zone_offset as u64) {
-					for _ in 0..100000 {}
-					println!("Offset = {:x}", unsafe {block_buffer.get_mut().add(32).read()});
-				}
+				syc_read(desc, block_buffer.get_mut(), BLOCK_SIZE, zone_offset);
 			}
 			blocks_seen += 1;
 		}
-
 		bytes_read
 	}
 
@@ -223,7 +214,7 @@ impl FileSystem for MinixFileSystem {
 	fn close(_desc: &mut Descriptor) {}
 
 	fn stat(desc: &Descriptor) -> Stat {
-		let inode_result = Self::get_inode(desc.blockdev, desc.node);
+		let inode_result = Self::get_inode(desc, desc.node);
 		// This could be a little dangerous, but the descriptor should be checked in open().
 		let inode = inode_result.unwrap();
 		Stat { mode: inode.mode,
@@ -231,4 +222,55 @@ impl FileSystem for MinixFileSystem {
 		       uid:  inode.uid,
 		       gid:  inode.gid, }
 	}
+}
+
+pub fn syc_read(desc: &Descriptor, buffer: *mut u8, size: u32, offset: u32) {
+	extern "C" {
+		fn make_syscall(sysno: usize, bdev: usize, buffer: usize, size: usize, offset: usize);
+	}
+	unsafe {
+		make_syscall(180, desc.blockdev as usize, buffer as usize, size as usize, offset as usize);
+	}
+}
+
+struct ProcArgs {
+	pub pid: u16,
+	pub dev: usize,
+	pub buffer: *mut u8,
+	pub size: u32,
+	pub offset: u32
+}
+
+fn read_proc(args_addr: usize) {
+	let args_ptr = args_addr as *mut ProcArgs;
+	let args = unsafe { args_ptr.as_ref().unwrap() };
+
+	let desc = Descriptor {
+		blockdev: args.dev,
+		node: 1,
+		loc: 0,
+		size: 500,
+		pid: args.pid
+	};
+
+	MinixFileSystem::read(&desc, args.buffer, args.offset, args.size);
+	tfree(args_ptr);
+	unsafe {
+		extern "C" {
+			fn make_syscall(no: usize);
+		}
+		make_syscall(93);
+	}
+}
+
+pub fn process_read(pid: u16, dev: usize, buffer: *mut u8, size: u32, offset: u32) {
+	// println!("FS read {}, {}, 0x{:x}, {}, {}", pid, dev, buffer as usize, size, offset);
+	let args = talloc::<ProcArgs>().unwrap();
+	args.pid = pid;
+	args.dev = dev;
+	args.buffer = buffer;
+	args.size = size;
+	args.offset = offset;
+	set_waiting(pid);
+	let _ = add_kernel_process_args(read_proc, args as *mut ProcArgs as usize);
 }

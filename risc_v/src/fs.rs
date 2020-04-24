@@ -31,6 +31,7 @@ pub struct Descriptor {
     pub node: u32,
     pub loc: u32,
     pub size: u32,
+    pub pid: u16,
 }
 
 pub enum FsError {

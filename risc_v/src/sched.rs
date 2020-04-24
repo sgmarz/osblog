@@ -4,6 +4,7 @@
 // 27 Dec 2019
 
 use crate::process::{ProcessState, PROCESS_LIST};
+use crate::cpu::get_mtime;
 
 pub fn schedule() -> usize {
 	let mut frame_addr: usize = 0x1111;
@@ -15,7 +16,7 @@ pub fn schedule() -> usize {
 				// let mut mepc: usize = 0;
 				// let mut satp: usize = 0;
 				// let mut pid: usize = 0;
-				if let Some(prc) = pl.front() {
+				if let Some(prc) = pl.front_mut() {
 					match prc.get_state() {
 						ProcessState::Running => {
 							frame_addr =
@@ -25,7 +26,13 @@ pub fn schedule() -> usize {
 							// satp = prc.get_table_address();
 							// pid = prc.get_pid() as usize;
 						},
-						ProcessState::Sleeping => {},
+						ProcessState::Sleeping => {
+							// Awaken sleeping processes whose sleep until is in
+							// the past.
+							if prc.get_sleep_until() <= get_mtime() {
+								prc.set_state(ProcessState::Running);
+							}
+						},
 						_ => {},
 					}
 				}

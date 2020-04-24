@@ -3,11 +3,11 @@
 // Stephen Marz
 // 10 March 2020
 
-use crate::{kmem::{kfree, kmalloc},
+use crate::{kmem::{kfree, kmalloc, talloc, tfree},
             page::{zalloc, PAGE_SIZE},
             virtio,
 			virtio::{Descriptor, MmioOffsets, Queue, StatusField, VIRTIO_RING_SIZE}};
-use crate::process::{set_running, set_waiting};
+use crate::process::{set_running, set_waiting, get_by_pid, add_kernel_process_args};
 use core::mem::size_of;
 
 #[repr(C)]
@@ -376,13 +376,53 @@ pub fn handle_interrupt(idx: usize) {
 	}
 }
 
-pub fn process_read(pid: u16, dev: usize, buffer: *mut u8, size: u32, offset: u64) -> Result<u32, BlockErrors> {
-	println!("Process read {}, {}, 0x{:x}, {}, {}", pid, dev, buffer as usize, size, offset);
-	set_waiting(pid);
-	block_op(dev, buffer, size, offset, false, pid)
+
+// ///////////////////////////////////////////////
+// //  BLOCK PROCESSES (KERNEL PROCESSES)
+// ///////////////////////////////////////////////
+struct ProcArgs {
+	pub pid: u16,
+	pub dev: usize,
+	pub buffer: *mut u8,
+	pub size: u32,
+	pub offset: u64,
 }
 
-pub fn process_write(pid: u16, dev: usize, buffer: *mut u8, size: u32, offset: u64) -> Result<u32, BlockErrors> {
+fn read_proc(args_addr: usize) {
+	let args_ptr = args_addr as *mut ProcArgs;
+	let args = unsafe { args_ptr.as_ref().unwrap() };
+	let _ = block_op(args.dev, args.buffer, args.size, args.offset, false, args.pid);
+	tfree(args_ptr);
+}
+
+pub fn process_read(pid: u16, dev: usize, buffer: *mut u8, size: u32, offset: u64) {
+	// println!("Block read {}, {}, 0x{:x}, {}, {}", pid, dev, buffer as usize, size, offset);
+	let args = talloc::<ProcArgs>().unwrap();
+	args.pid = pid;
+	args.dev = dev;
+	args.buffer = buffer;
+	args.size = size;
+	args.offset = offset;
 	set_waiting(pid);
-	block_op(dev, buffer, size, offset, true, pid)
+	let _ = add_kernel_process_args(read_proc, args as *mut ProcArgs as usize);
+}
+
+fn write_proc(args_addr: usize) {
+	let args_ptr = args_addr as *mut ProcArgs;
+	let args = unsafe { args_ptr.as_ref().unwrap() };
+
+	let _ = block_op(args.dev, args.buffer, args.size, args.offset, true, args.pid);
+
+	tfree(args_ptr);
+}
+
+pub fn process_write(pid: u16, dev: usize, buffer: *mut u8, size: u32, offset: u64) {
+	let args = talloc::<ProcArgs>().unwrap();
+	args.pid = pid;
+	args.dev = dev;
+	args.buffer = buffer;
+	args.size = size;
+	args.offset = offset;
+	set_waiting(pid);
+	let _ = add_kernel_process_args(write_proc, args as *mut ProcArgs as usize);
 }

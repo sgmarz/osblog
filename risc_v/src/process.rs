@@ -3,13 +3,14 @@
 // Stephen Marz
 // 27 Nov 2019
 
-use crate::{cpu::{build_satp, satp_fence_asid, CpuMode, SatpMode, TrapFrame},
+use crate::{cpu::{build_satp, get_mtime, satp_fence_asid, CpuMode, SatpMode, TrapFrame},
             page::{alloc, dealloc, map, unmap, zalloc, EntryBits, Table, PAGE_SIZE}};
 use alloc::collections::vec_deque::VecDeque;
+use core::ptr::null_mut;
 
 // How many pages are we going to give a process for their
 // stack?
-const STACK_PAGES: usize = 2;
+const STACK_PAGES: usize = 5;
 // We want to adjust the stack to be at the bottom of the memory allocation
 // regardless of where it is on the kernel heap.
 const STACK_ADDR: usize = 0x1_0000_0000;
@@ -30,10 +31,6 @@ pub static mut PROCESS_LIST: Option<VecDeque<Process>> = None;
 // We can search through the process list to get a new PID, but
 // it's probably easier and faster just to increase the pid:
 static mut NEXT_PID: u16 = 1;
-
-extern "C" {
-	fn make_syscall(a: usize) -> usize;
-}
 
 /// Set a process' state to running. This doesn't do any checks.
 /// If this PID is not found, this returns false. Otherwise, it
@@ -85,6 +82,32 @@ pub fn set_waiting(pid: u16) -> bool {
 	retval
 }
 
+/// Sleep a process
+pub fn set_sleeping(pid: u16, duration: usize) -> bool {
+	// Yes, this is O(n). A better idea here would be a static list
+	// of process pointers.
+	let mut retval = false;
+	unsafe {
+		if let Some(mut pl) = PROCESS_LIST.take() {
+			for proc in pl.iter_mut() {
+				if proc.pid == pid {
+					proc.set_state(ProcessState::Sleeping);
+					proc.set_sleep_until(get_mtime() + duration);
+					retval = true;
+					break;
+				}
+			}
+			// Now, we no longer need the owned Deque, so we hand it
+			// back by replacing the PROCESS_LIST's None with the
+			// Some(pl).
+			PROCESS_LIST.replace(pl);
+		}
+	}
+	retval
+}
+
+/// Delete a process given by pid. If this process doesn't exist,
+/// this function does nothing.
 pub fn delete_process(pid: u16) {
 	unsafe {
 		if let Some(mut pl) = PROCESS_LIST.take() {
@@ -105,20 +128,36 @@ pub fn delete_process(pid: u16) {
 	}
 }
 
+/// Get a process by PID. Since we leak the process list, this is
+/// unsafe since the process can be deleted and we'll still have a pointer.
+pub unsafe fn get_by_pid(pid: u16) -> *mut Process {
+	let mut ret = null_mut();
+	if let Some(mut pl) = PROCESS_LIST.take() {
+		for i in pl.iter_mut() {
+			if i.get_pid() == pid {
+				ret = i as *mut Process;
+				break;
+			}
+		}
+		PROCESS_LIST.replace(pl);
+	}
+
+	ret
+}
+
 /// We will eventually move this function out of here, but its
 /// job is just to take a slot in the process list.
 fn init_process() {
 	// We can't do much here until we have system calls because
 	// we're running in User space.
-	let mut i: usize = 0;
 	loop {
-		i += 1;
 		// Eventually, this will be a sleep system call.
-		if i > 100_000_000 {
-			unsafe {
-				make_syscall(1);
+		unsafe {
+			extern "C" {
+				fn make_syscall(sysno: usize, duration: usize) -> usize;
 			}
-			i = 0;
+			println!("Init is still here :), alright, back to sleep.");
+			make_syscall(2, 60000000);
 		}
 	}
 }
@@ -154,7 +193,7 @@ pub fn add_process_default(pr: fn()) {
 }
 
 /// Add a kernel process.
-pub fn add_kernel_process(func: fn()) {
+pub fn add_kernel_process(func: fn()) -> u16 {
 	// This is the Rust-ism that really trips up C++ programmers.
 	// PROCESS_LIST is wrapped in an Option<> enumeration, which
 	// means that the Option owns the Deque. We can only borrow from
@@ -171,10 +210,11 @@ pub fn add_kernel_process(func: fn()) {
 			    // println!("func_addr = {:x} -> {:x}", func_addr, func_vaddr);
 			    // We will convert NEXT_PID below into an atomic increment when
 			    // we start getting into multi-hart processing. For now, we want
-			    // a process. Get it to work, then improve it!
+				// a process. Get it to work, then improve it!
+		let my_pid = unsafe {NEXT_PID};
 		let mut ret_proc = Process { frame:       zalloc(1) as *mut TrapFrame,
 		                             stack:       zalloc(STACK_PAGES),
-		                             pid:         unsafe { NEXT_PID },
+		                             pid:         my_pid,
 		                             root:        zalloc(1) as *mut Table,
 		                             state:       ProcessState::Running,
 		                             data:        ProcessData::zero(),
@@ -201,12 +241,80 @@ pub fn add_kernel_process(func: fn()) {
 		// back by replacing the PROCESS_LIST's None with the
 		// Some(pl).
 		unsafe { PROCESS_LIST.replace(pl); }
+		my_pid
 	}
-	// TODO: When we get to multi-hart processing, we need to keep
-	// trying to grab the process list. We can do this with an
-	// atomic instruction. but right now, we're a single-processor
-	// computer.
+	else {
+		// TODO: When we get to multi-hart processing, we need to keep
+		// trying to grab the process list. We can do this with an
+		// atomic instruction. but right now, we're a single-processor
+		// computer.
+		0
+	}
 }
+
+/// This is the same as the add_kernel_process function, except you can pass
+/// arguments. Typically, this will be a memory address on the heap where
+/// arguments can be found.
+pub fn add_kernel_process_args(func: fn(args_ptr: usize), args: usize) -> u16 {
+	// This is the Rust-ism that really trips up C++ programmers.
+	// PROCESS_LIST is wrapped in an Option<> enumeration, which
+	// means that the Option owns the Deque. We can only borrow from
+	// it or move ownership to us. In this case, we choose the
+	// latter, where we move ownership to us, add a process, and
+	// then move ownership back to the PROCESS_LIST.
+	// This allows mutual exclusion as anyone else trying to grab
+	// the process list will get None rather than the Deque.
+	if let Some(mut pl) = unsafe { PROCESS_LIST.take() } {
+		// .take() will replace PROCESS_LIST with None and give
+		// us the only copy of the Deque.
+		let func_addr = func as usize;
+		let func_vaddr = func_addr; //- 0x6000_0000;
+			    // println!("func_addr = {:x} -> {:x}", func_addr, func_vaddr);
+			    // We will convert NEXT_PID below into an atomic increment when
+			    // we start getting into multi-hart processing. For now, we want
+				// a process. Get it to work, then improve it!
+		let my_pid = unsafe {NEXT_PID};
+		let mut ret_proc = Process { frame:       zalloc(1) as *mut TrapFrame,
+		                             stack:       zalloc(STACK_PAGES),
+		                             pid:         my_pid,
+		                             root:        zalloc(1) as *mut Table,
+		                             state:       ProcessState::Running,
+		                             data:        ProcessData::zero(),
+		                             sleep_until: 0, };
+		unsafe {
+			NEXT_PID += 1;
+		}
+		// Now we move the stack pointer to the bottom of the
+		// allocation. The spec shows that register x2 (2) is the stack
+		// pointer.
+		// We could use ret_proc.stack.add, but that's an unsafe
+		// function which would require an unsafe block. So, convert it
+		// to usize first and then add PAGE_SIZE is better.
+		// We also need to set the stack adjustment so that it is at the
+		// bottom of the memory and far away from heap allocations.
+		unsafe {
+			(*ret_proc.frame).pc = func_vaddr;
+			(*ret_proc.frame).regs[10] = args;
+			(*ret_proc.frame).regs[2] = ret_proc.stack as usize + STACK_PAGES * 4096;
+			(*ret_proc.frame).mode = CpuMode::Machine as usize;
+			(*ret_proc.frame).pid = ret_proc.pid as usize;
+		}
+		pl.push_back(ret_proc);
+		// Now, we no longer need the owned Deque, so we hand it
+		// back by replacing the PROCESS_LIST's None with the
+		// Some(pl).
+		unsafe { PROCESS_LIST.replace(pl); }
+		my_pid
+	}
+	else {
+		// TODO: When we get to multi-hart processing, we need to keep
+		// trying to grab the process list. We can do this with an
+		// atomic instruction. but right now, we're a single-processor
+		// computer.
+		0
+	}
+}
+
 
 /// This should only be called once, and its job is to create
 /// the init process. Right now, this process is in the kernel,
@@ -214,7 +322,8 @@ pub fn add_kernel_process(func: fn()) {
 pub fn init() -> usize {
 	unsafe {
 		PROCESS_LIST = Some(VecDeque::with_capacity(15));
-		add_process_default(init_process);
+		// add_process_default(init_process);
+		add_kernel_process(init_process);
 		// Ugh....Rust is giving me fits over here!
 		// I just want a memory address to the trap frame, but
 		// due to the borrow rules of Rust, I'm fighting here. So,
@@ -267,6 +376,10 @@ impl Process {
 		self.frame as usize
 	}
 
+	pub fn get_frame(&mut self) -> *mut TrapFrame {
+		self.frame
+	}
+
 	pub fn get_program_counter(&self) -> usize {
 		unsafe { (*self.frame).pc }
 	}
@@ -289,6 +402,10 @@ impl Process {
 
 	pub fn get_sleep_until(&self) -> usize {
 		self.sleep_until
+	}
+
+	pub fn set_sleep_until(&mut self, until: usize) {
+		self.sleep_until = until;
 	}
 
 	pub fn new_default(func: fn()) -> Self {

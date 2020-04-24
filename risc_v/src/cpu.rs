@@ -233,3 +233,14 @@ pub fn satp_fence_asid(asid: usize) {
 		asm!("sfence.vma zero, $0" :: "r"(asid));
 	}
 }
+
+const MMIO_MTIME: *const u64 = 0x0200_BFF8 as *const u64;
+
+pub fn get_mtime() -> usize {
+	unsafe {
+		(*MMIO_MTIME) as usize
+	}
+}
+
+
+
