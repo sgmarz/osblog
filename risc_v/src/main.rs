@@ -4,6 +4,7 @@
 #![no_main]
 #![no_std]
 #![feature(panic_info_message,
+		   llvm_asm,
 		   asm,
 		   global_asm,
            allocator_api,
