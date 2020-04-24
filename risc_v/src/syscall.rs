@@ -83,6 +83,20 @@ pub fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 	}
 }
 
+extern "C" {
+    fn make_syscall(sysno: usize, arg0: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize, arg5: usize) -> usize;
+}
+
+fn do_make_syscall(sysno: usize, arg0: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize, arg5: usize) -> usize {
+    unsafe {
+        make_syscall(sysno, arg0, arg1, arg2, arg3, arg4, arg5)
+    }
+}
+
+pub fn syscall_exit() {
+    let _ = do_make_syscall(93, 0, 0, 0, 0, 0, 0);
+}
+
 // These system call numbers come from libgloss so that we can use newlib
 // for our system calls.
 // Libgloss wants the system call number in A7 and arguments in A0..A6

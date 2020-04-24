@@ -3,10 +3,10 @@
 // Stephen Marz
 // 16 March 2020
 
-use crate::{block,
-            fs::{Descriptor, FileSystem, FsError, Stat},
-			kmem::{kfree, kmalloc, talloc, tfree}};
-use crate::process::{set_waiting, set_running, add_kernel_process_args};
+use crate::{fs::{Descriptor, FileSystem, FsError, Stat},
+            kmem::{kfree, kmalloc, talloc, tfree},
+            process::{add_kernel_process_args, set_waiting},
+            syscall::syscall_exit};
 
 use alloc::string::String;
 use core::{mem::size_of, ptr::null_mut};
@@ -122,7 +122,11 @@ impl MinixFileSystem {
 		let inode = unsafe { &*(buffer.get_mut() as *mut Inode) };
 		// Read from the block device. The size is 1 sector (512 bytes) and our offset is past
 		// the boot block (first 1024 bytes). This is where the superblock sits.
-		println!("DO READ, magic should be next, buffer is at {:p}, desc is at {:p}", buffer.get(), desc as *const Descriptor);
+		println!(
+		         "DO READ, magic should be next, buffer is at {:p}, desc is at {:p}",
+		         buffer.get(),
+		         desc as *const Descriptor
+		);
 		syc_read(desc, buffer.get_mut(), 512, 1024);
 		println!("Magic is {:x}", super_block.magic);
 		if super_block.magic == MAGIC {
@@ -234,33 +238,26 @@ pub fn syc_read(desc: &Descriptor, buffer: *mut u8, size: u32, offset: u32) {
 }
 
 struct ProcArgs {
-	pub pid: u16,
-	pub dev: usize,
+	pub pid:    u16,
+	pub dev:    usize,
 	pub buffer: *mut u8,
-	pub size: u32,
-	pub offset: u32
+	pub size:   u32,
+	pub offset: u32,
 }
 
 fn read_proc(args_addr: usize) {
 	let args_ptr = args_addr as *mut ProcArgs;
 	let args = unsafe { args_ptr.as_ref().unwrap() };
 
-	let desc = Descriptor {
-		blockdev: args.dev,
-		node: 1,
-		loc: 0,
-		size: 500,
-		pid: args.pid
-	};
+	let desc = Descriptor { blockdev: args.dev,
+	                        node:     1,
+	                        loc:      0,
+	                        size:     500,
+	                        pid:      args.pid, };
 
 	MinixFileSystem::read(&desc, args.buffer, args.offset, args.size);
 	tfree(args_ptr);
-	unsafe {
-		extern "C" {
-			fn make_syscall(no: usize);
-		}
-		make_syscall(93);
-	}
+	syscall_exit();
 }
 
 pub fn process_read(pid: u16, dev: usize, buffer: *mut u8, size: u32, offset: u32) {

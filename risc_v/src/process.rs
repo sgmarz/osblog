@@ -157,7 +157,7 @@ fn init_process() {
 				fn make_syscall(sysno: usize, duration: usize) -> usize;
 			}
 			println!("Init is still here :), alright, back to sleep.");
-			make_syscall(2, 60000000);
+			for _ in 0..100000000 {}
 		}
 	}
 }

@@ -5,9 +5,10 @@
 
 use crate::{kmem::{kfree, kmalloc, talloc, tfree},
             page::{zalloc, PAGE_SIZE},
+            process::{add_kernel_process_args, set_running, set_waiting},
+            syscall::syscall_exit,
             virtio,
-			virtio::{Descriptor, MmioOffsets, Queue, StatusField, VIRTIO_RING_SIZE}};
-use crate::process::{set_running, set_waiting, get_by_pid, add_kernel_process_args};
+            virtio::{Descriptor, MmioOffsets, Queue, StatusField, VIRTIO_RING_SIZE}};
 use core::mem::size_of;
 
 #[repr(C)]
@@ -131,7 +132,7 @@ pub enum BlockErrors {
 	Success = 0,
 	BlockDeviceNotFound,
 	InvalidArgument,
-	ReadOnly
+	ReadOnly,
 }
 
 // Much like with processes, Rust requires some initialization
@@ -263,7 +264,14 @@ pub fn fill_next_descriptor(bd: &mut BlockDevice, desc: Descriptor) -> u16 {
 /// a multiple of 512, but we don't really check that.
 /// We DO however, check that we aren't writing to an R/O device. This would
 /// cause a I/O error if we tried to write to a R/O device.
-pub fn block_op(dev: usize, buffer: *mut u8, size: u32, offset: u64, write: bool, watcher: u16) -> Result<u32, BlockErrors> {
+pub fn block_op(dev: usize,
+                buffer: *mut u8,
+                size: u32,
+                offset: u64,
+                write: bool,
+                watcher: u16)
+                -> Result<u32, BlockErrors>
+{
 	unsafe {
 		if let Some(bdev) = BLOCK_DEVICES[dev - 1].as_mut() {
 			// Check to see if we are trying to write to a read only device.
@@ -316,7 +324,8 @@ pub fn block_op(dev: usize, buffer: *mut u8, size: u32, offset: u64, write: bool
 			                        flags: virtio::VIRTIO_DESC_F_WRITE,
 			                        next:  0, };
 			let _status_idx = fill_next_descriptor(bdev, desc);
-			(*bdev.queue).avail.ring[(*bdev.queue).avail.idx as usize % virtio::VIRTIO_RING_SIZE] = head_idx;
+			(*bdev.queue).avail.ring[(*bdev.queue).avail.idx as usize % virtio::VIRTIO_RING_SIZE] =
+				head_idx;
 			(*bdev.queue).avail.idx = (*bdev.queue).avail.idx.wrapping_add(1);
 			// The only queue a block device has is 0, which is the request
 			// queue.
@@ -376,23 +385,24 @@ pub fn handle_interrupt(idx: usize) {
 	}
 }
 
-
 // ///////////////////////////////////////////////
 // //  BLOCK PROCESSES (KERNEL PROCESSES)
 // ///////////////////////////////////////////////
 struct ProcArgs {
-	pub pid: u16,
-	pub dev: usize,
+	pub pid:    u16,
+	pub dev:    usize,
 	pub buffer: *mut u8,
-	pub size: u32,
+	pub size:   u32,
 	pub offset: u64,
 }
 
+/// This will be a
 fn read_proc(args_addr: usize) {
 	let args_ptr = args_addr as *mut ProcArgs;
 	let args = unsafe { args_ptr.as_ref().unwrap() };
 	let _ = block_op(args.dev, args.buffer, args.size, args.offset, false, args.pid);
 	tfree(args_ptr);
+	syscall_exit();
 }
 
 pub fn process_read(pid: u16, dev: usize, buffer: *mut u8, size: u32, offset: u64) {
@@ -412,8 +422,8 @@ fn write_proc(args_addr: usize) {
 	let args = unsafe { args_ptr.as_ref().unwrap() };
 
 	let _ = block_op(args.dev, args.buffer, args.size, args.offset, true, args.pid);
-
 	tfree(args_ptr);
+	syscall_exit();
 }
 
 pub fn process_write(pid: u16, dev: usize, buffer: *mut u8, size: u32, offset: u64) {
