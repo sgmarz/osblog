@@ -18,10 +18,15 @@ pub fn test_block() {
         make_syscall(63, 8, buffer as usize, 1024, 1024);
         for i in 0..32 {
             print!("{:02x}  ", buffer.add(i).read());
+            if (i+1) % 16 == 0 {
+                println!();
+            }
         }
     }
     println!();
     crate::kmem::kfree(buffer);
     println!("Test block finished");
-    loop {}
+    unsafe {
+        make_syscall(93, 0, 0, 0, 0);
+    }
 }

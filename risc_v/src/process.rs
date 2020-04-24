@@ -85,6 +85,26 @@ pub fn set_waiting(pid: u16) -> bool {
 	retval
 }
 
+pub fn delete_process(pid: u16) {
+	unsafe {
+		if let Some(mut pl) = PROCESS_LIST.take() {
+			for i in 0..pl.len() {
+				let p = pl.get_mut(i).unwrap();
+				if p.get_pid() == pid {
+					// When the structure gets dropped, all of the
+					// allocations get deallocated.
+					pl.remove(i);
+					break;
+				}
+			}
+			// Now, we no longer need the owned Deque, so we hand it
+			// back by replacing the PROCESS_LIST's None with the
+			// Some(pl).
+			PROCESS_LIST.replace(pl);
+		}
+	}
+}
+
 /// We will eventually move this function out of here, but its
 /// job is just to take a slot in the process list.
 fn init_process() {
@@ -153,7 +173,7 @@ pub fn add_kernel_process(func: fn()) {
 			    // we start getting into multi-hart processing. For now, we want
 			    // a process. Get it to work, then improve it!
 		let mut ret_proc = Process { frame:       zalloc(1) as *mut TrapFrame,
-		                             stack:       alloc(STACK_PAGES),
+		                             stack:       zalloc(STACK_PAGES),
 		                             pid:         unsafe { NEXT_PID },
 		                             root:        zalloc(1) as *mut Table,
 		                             state:       ProcessState::Running,
@@ -340,6 +360,7 @@ impl Drop for Process {
 	/// Since we're storing ownership of a Process in the linked list,
 	/// we can cause it to deallocate automatically when it is removed.
 	fn drop(&mut self) {
+		// println!("Dropping process {}", self.get_pid());
 		// We allocate the stack as a page.
 		dealloc(self.stack);
 		// This is unsafe, but it's at the drop stage, so we won't
@@ -351,6 +372,7 @@ impl Drop for Process {
 			unmap(&mut *self.root);
 		}
 		dealloc(self.root as *mut u8);
+		dealloc(self.frame as *mut u8);
 	}
 }
 

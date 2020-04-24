@@ -54,23 +54,13 @@ impl Page {
 	// If this page has been marked as the final allocation,
 	// this function returns true. Otherwise, it returns false.
 	pub fn is_last(&self) -> bool {
-		if self.flags & PageBits::Last.val() != 0 {
-			true
-		}
-		else {
-			false
-		}
+		self.flags & PageBits::Last.val() != 0
 	}
 
 	// If the page is marked as being taken (allocated), then
 	// this function returns true. Otherwise, it returns false.
 	pub fn is_taken(&self) -> bool {
-		if self.flags & PageBits::Taken.val() != 0 {
-			true
-		}
-		else {
-			false
-		}
+		self.flags & PageBits::Taken.val() != 0
 	}
 
 	// This is the opposite of is_taken().
@@ -221,6 +211,8 @@ pub fn dealloc(ptr: *mut u8) {
 		// calculate here is the page structure, not the HEAP address!
 		assert!(addr >= HEAP_START && addr < ALLOC_START);
 		let mut p = addr as *mut Page;
+		// println!("PTR in is {:p}, addr is 0x{:x}", ptr, addr);
+		assert!((*p).is_taken(), "Freeing a non-taken page?");
 		// Keep clearing pages until we hit the last page.
 		while (*p).is_taken() && !(*p).is_last() {
 			(*p).clear();

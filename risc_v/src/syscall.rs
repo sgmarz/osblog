@@ -4,6 +4,7 @@
 // 3 Jan 2020
 
 use crate::{block::process_read, cpu::TrapFrame};
+use crate::process::delete_process;
 
 pub fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 	let syscall_number;
@@ -62,12 +63,13 @@ pub fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 	// #define SYS_time 1062
 	// #define SYS_getmainvars 2011
 	match syscall_number {
-		0 | 93 => {
+		0 | 93 => unsafe {
 			// Exit
 			// Currently, we cannot kill a process, it runs forever. We will delete
 			// the process later and free the resources, but for now, we want to get
-			// used to how processes will be scheduled on the CPU.
-			mepc + 4
+            // used to how processes will be scheduled on the CPU.
+            delete_process((*frame).pid as u16);
+			0
 		},
 		1 => {
 			println!("Test syscall");
@@ -77,6 +79,8 @@ pub fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			// Read system call
 			// This is an asynchronous call. This will get the process going. We won't hear the answer until
             // we an interrupt back.
+            // TODO: The buffer is a virtual memory address that needs to be translated to a physical memory
+            // location.
 			let _ = process_read(
 			                     (*frame).pid as u16,
 			                     (*frame).regs[10],
