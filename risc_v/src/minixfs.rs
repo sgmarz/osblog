@@ -5,8 +5,8 @@
 
 use crate::{fs::{Descriptor, FileSystem, FsError, Stat},
             kmem::{kfree, kmalloc, talloc, tfree},
-            process::{add_kernel_process_args, set_waiting},
-            syscall::{syscall_block_read, syscall_exit}};
+            process::{add_kernel_process_args, set_waiting, set_running},
+            syscall::{syscall_block_read}};
 
 use alloc::string::String;
 use core::{mem::size_of, ptr::null_mut};
@@ -246,6 +246,7 @@ fn read_proc(args_addr: usize) {
 	                        pid:      args.pid, };
 
 	MinixFileSystem::read(&desc, args.buffer, args.offset, args.size);
+	set_running(args.pid);
 	tfree(args_ptr);
 }
 
