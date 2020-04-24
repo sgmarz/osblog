@@ -1,6 +1,6 @@
 // test.rs
 
-use crate::syscall::{syscall_fs_read, syscall_exit};
+use crate::syscall::syscall_fs_read;
 
 pub fn test_block() {
     // Let's test the block driver!
