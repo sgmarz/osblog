@@ -5,7 +5,6 @@
 
 use crate::{block::block_op,
             cpu::TrapFrame,
-            fs::FileSystem,
             minixfs,
             process::{delete_process, set_sleeping}};
 

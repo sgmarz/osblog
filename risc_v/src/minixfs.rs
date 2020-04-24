@@ -5,8 +5,8 @@
 
 use crate::{fs::{Descriptor, FileSystem, FsError, Stat},
             kmem::{kfree, kmalloc, talloc, tfree},
-            process::{add_kernel_process_args, set_waiting, set_running},
-            syscall::{syscall_block_read}};
+            process::{add_kernel_process_args, set_running, set_waiting},
+            syscall::syscall_block_read};
 
 use alloc::string::String;
 use core::{mem::size_of, ptr::null_mut};
@@ -92,6 +92,8 @@ impl Default for BlockBuffer {
 	}
 }
 
+// This is why we have the BlockBuffer. Instead of having to unwind
+// all other buffers, we drop here when the block buffer goes out of scope.
 impl Drop for BlockBuffer {
 	fn drop(&mut self) {
 		if !self.buffer.is_null() {
@@ -135,7 +137,19 @@ impl MinixFileSystem {
 
 			// Now, we read the inode itself.
 			syc_read(desc, buffer.get_mut(), 512, inode_offset as u32);
-			println!("Inode {} sizex = {} {:o}, DZ {} {} {} {} {} {} {}", inode_num, inode.size, inode.mode, inode.zones[0], inode.zones[1], inode.zones[2], inode.zones[3], inode.zones[4], inode.zones[5], inode.zones[6]);
+			println!(
+			         "Inode {} sizex = {} {:o}, DZ {} {} {} {} {} {} {}",
+			         inode_num,
+			         inode.size,
+			         inode.mode,
+			         inode.zones[0],
+			         inode.zones[1],
+			         inode.zones[2],
+			         inode.zones[3],
+			         inode.zones[4],
+			         inode.zones[5],
+			         inode.zones[6]
+			);
 			return Some(*inode);
 		}
 		// If we get here, some result wasn't OK. Either the super block
@@ -232,7 +246,7 @@ struct ProcArgs {
 	pub buffer: *mut u8,
 	pub size:   u32,
 	pub offset: u32,
-	pub node: u32,
+	pub node:   u32,
 }
 
 fn read_proc(args_addr: usize) {
