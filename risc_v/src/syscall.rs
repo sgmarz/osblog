@@ -6,7 +6,7 @@
 use crate::{block::block_op,
             cpu::TrapFrame,
             minixfs,
-            process::{delete_process, set_sleeping}};
+            process::{delete_process, set_sleeping, set_waiting}};
 
 pub fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 	let syscall_number;
@@ -62,6 +62,7 @@ pub fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			//          (*frame).regs[12],
 			//          (*frame).regs[13]
 			// );
+			set_waiting((*frame).pid as u16);
             let _ = block_op((*frame).regs[10],
                             (*frame).regs[11] as *mut u8,
                             (*frame).regs[12] as u32,

@@ -5,8 +5,7 @@
 
 use crate::{kmem::{kfree, kmalloc, talloc, tfree},
             page::{zalloc, PAGE_SIZE},
-            process::{add_kernel_process_args, set_running, set_waiting},
-            syscall::syscall_exit,
+            process::{add_kernel_process_args, set_running, set_waiting, get_by_pid},
             virtio,
             virtio::{Descriptor, MmioOffsets, Queue, StatusField, VIRTIO_RING_SIZE}};
 use core::mem::size_of;
@@ -365,6 +364,8 @@ pub fn pending(bd: &mut BlockDevice) {
 			// A PID of 0 means that we don't have a watcher.
 			if pid_of_watcher > 0 {
 				set_running(pid_of_watcher);
+				let proc = get_by_pid(pid_of_watcher);
+				(*(*proc).get_frame()).regs[10] = (*rq).status.status as usize;
 				// TODO: Set GpA0 to the value of the return status.
 			}
 			kfree(rq as *mut u8);
