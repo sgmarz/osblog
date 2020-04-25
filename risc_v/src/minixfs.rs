@@ -132,8 +132,7 @@ impl MinixFileSystem {
 			// have to skip the bitmaps blocks. We have a certain number of inode map blocks (imap)
 			// and zone map blocks (zmap).
 			// The inode comes to us as a NUMBER, not an index. So, we need to subtract 1.
-			let inode_offset =
-				(2 + super_block.imap_blocks + super_block.zmap_blocks) as usize * BLOCK_SIZE as usize;
+			let inode_offset = (2 + super_block.imap_blocks + super_block.zmap_blocks) as usize * BLOCK_SIZE as usize;
 
 			// Now, we read the inode itself.
 			// The block driver requires that our offset be a multiple of 512. We do that with the
@@ -219,11 +218,7 @@ impl FileSystem for MinixFileSystem {
 					BLOCK_SIZE - offset_byte
 				};
 				unsafe {
-					memcpy(
-					       buffer.add(bytes_read as usize,),
-					       block_buffer.get().add(offset_byte as usize,),
-					       read_this_many as usize,
-					);
+					memcpy(buffer.add(bytes_read as usize), block_buffer.get().add(offset_byte as usize), read_this_many as usize);
 				}
 				offset_byte = 0;
 				bytes_read += read_this_many;
@@ -249,23 +244,14 @@ impl FileSystem for MinixFileSystem {
 				unsafe {
 					if izones.add(i).read() != 0 {
 						if offset_block <= blocks_seen {
-							syc_read(
-							         desc,
-							         block_buffer.get_mut(),
-							         BLOCK_SIZE,
-							         BLOCK_SIZE * izones.add(i,).read(),
-							);
+							syc_read(desc, block_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * izones.add(i).read());
 							let read_this_many = if BLOCK_SIZE - offset_byte > bytes_left {
 								bytes_left
 							}
 							else {
 								BLOCK_SIZE - offset_byte
 							};
-							memcpy(
-							       buffer.add(bytes_read as usize,),
-							       block_buffer.get().add(offset_byte as usize,),
-							       read_this_many as usize,
-							);
+							memcpy(buffer.add(bytes_read as usize), block_buffer.get().add(offset_byte as usize), read_this_many as usize);
 							bytes_read += read_this_many;
 							bytes_left -= read_this_many;
 							offset_byte = 0;
@@ -281,9 +267,97 @@ impl FileSystem for MinixFileSystem {
 		// ////////////////////////////////////////////
 		// // DOUBLY INDIRECT ZONES
 		// ////////////////////////////////////////////
+		if inode.zones[8] != 0 {
+			let mut indirect_buffer = BlockBuffer::new(BLOCK_SIZE);
+			let mut iindirect_buffer = BlockBuffer::new(BLOCK_SIZE);
+			syc_read(desc, indirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * inode.zones[8]);
+			let num_indirect_pointers = BLOCK_SIZE as usize / 4;
+			let izones = indirect_buffer.get() as *const u32;
+			let iizones = iindirect_buffer.get() as *const u32;
+			unsafe {
+				for i in 0..num_indirect_pointers {
+					if izones.add(i).read() != 0 {
+						syc_read(desc, iindirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * izones.add(i).read());
+						for j in 0..num_indirect_pointers {
+							if iizones.add(j).read() != 0 {
+								if offset_block <= blocks_seen {
+									syc_read(desc, block_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * iizones.add(j).read());
+									let read_this_many = if BLOCK_SIZE - offset_byte > bytes_left {
+										bytes_left
+									}
+									else {
+										BLOCK_SIZE - offset_byte
+									};
+									memcpy(
+									       buffer.add(bytes_read as usize,),
+									       block_buffer.get().add(offset_byte as usize,),
+									       read_this_many as usize,
+									);
+									bytes_read += read_this_many;
+									bytes_left -= read_this_many;
+									offset_byte = 0;
+									if bytes_left == 0 {
+										return bytes_read;
+									}
+								}
+								blocks_seen += 1;
+							}
+						}
+					}
+				}
+			}
+		}
 		// ////////////////////////////////////////////
 		// // TRIPLY INDIRECT ZONES
 		// ////////////////////////////////////////////
+		if inode.zones[9] != 0 {
+			let mut indirect_buffer = BlockBuffer::new(BLOCK_SIZE);
+			let mut iindirect_buffer = BlockBuffer::new(BLOCK_SIZE);
+			let mut iiindirect_buffer = BlockBuffer::new(BLOCK_SIZE);
+			syc_read(desc, indirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * inode.zones[9]);
+			let num_indirect_pointers = BLOCK_SIZE as usize / 4;
+			let izones = indirect_buffer.get() as *const u32;
+			let iizones = iindirect_buffer.get() as *const u32;
+			let iiizones = iiindirect_buffer.get() as *const u32;
+			unsafe {
+				for i in 0..num_indirect_pointers {
+					if izones.add(i).read() != 0 {
+						syc_read(desc, iindirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * izones.add(i).read());
+						for j in 0..num_indirect_pointers {
+							if iizones.add(j).read() != 0 {
+								syc_read(desc, iiindirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * iizones.add(j).read());
+								for k in 0..num_indirect_pointers {
+									if iiizones.add(k).read() != 0 {
+										if offset_block <= blocks_seen {
+											syc_read(desc, block_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * iiizones.add(k).read());
+											let read_this_many = if BLOCK_SIZE - offset_byte > bytes_left {
+												bytes_left
+											}
+											else {
+												BLOCK_SIZE - offset_byte
+											};
+											memcpy(
+											       buffer.add(bytes_read as usize,),
+											       block_buffer.get().add(offset_byte as usize,),
+											       read_this_many as usize,
+											);
+											bytes_read += read_this_many;
+											bytes_left -= read_this_many;
+											offset_byte = 0;
+											if bytes_left == 0 {
+												return bytes_read;
+											}
+										}
+										blocks_seen += 1;
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
 		bytes_read
 	}
 
