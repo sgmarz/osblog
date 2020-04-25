@@ -155,15 +155,23 @@ impl MinixFileSystem {
 }
 
 impl FileSystem for MinixFileSystem {
+	/// Init is where we would cache the superblock and inode to avoid having to read
+	/// it over and over again, like we do for read right now.
 	fn init(_bdev: usize) -> bool {
 		false
 	}
 
+	/// The goal of open is to traverse the path given by path. If we cache the inodes
+	/// in RAM, it might make this much quicker. For now, this doesn't do anything since
+	/// we're just testing read based on if we know the Inode we're looking for.
 	fn open(_path: &String) -> Result<Descriptor, FsError> {
 		Err(FsError::FileNotFound)
 	}
 
 	fn read(desc: &Descriptor, buffer: *mut u8, size: u32, offset: u32) -> u32 {
+		// Our strategy here is to use blocks to see when we need to start reading
+		// based on the offset. That's offset_block. Then, the actual byte within
+		// that block that we need is offset_byte.
 		let mut blocks_seen = 0u32;
 		let offset_block = offset / BLOCK_SIZE;
 		let mut offset_byte = offset % BLOCK_SIZE;
@@ -173,6 +181,7 @@ impl FileSystem for MinixFileSystem {
 			// The inode couldn't be read, for some reason.
 			return 0;
 		}
+		// We've already checked is_none() above, so we can safely unwrap here.
 		let inode = inode_result.unwrap();
 		// First, the _size parameter (now in bytes_left) is the size of the buffer, not
 		// necessarily the size of the file. If our buffer is bigger than the file, we're OK.
@@ -189,6 +198,22 @@ impl FileSystem for MinixFileSystem {
 		// 10 bytes, we have to read the entire block (really only 512 bytes of the block) first.
 		// So, we use the block_buffer as the middle man, which is then copied into the buffer.
 		let mut block_buffer = BlockBuffer::new(BLOCK_SIZE);
+		// Triply indirect zones point to a block of pointers (BLOCK_SIZE / 4). Each one of those pointers
+		// points to another block of pointers (BLOCK_SIZE / 4). Each one of those pointers yet again points
+		// to another block of pointers (BLOCK_SIZE / 4). This is why we have indirect, iindirect (doubly),
+		// and iiindirect (triply).
+		let mut indirect_buffer = BlockBuffer::new(BLOCK_SIZE);
+		let mut iindirect_buffer = BlockBuffer::new(BLOCK_SIZE);
+		let mut iiindirect_buffer = BlockBuffer::new(BLOCK_SIZE);
+		// I put the pointers *const u32 here. That means we will allocate the indirect,
+		// doubly indirect, and triply indirect even for small files. I initially had these
+		// in their respective scopes, but that required us to recreate the indirect buffer for
+		// doubly indirect and both the indirect and doubly indirect buffers for the
+		// triply indirect. Not sure which is better, but I probably wasted brain cells
+		// on this.
+		let izones = indirect_buffer.get() as *const u32;
+		let iizones = iindirect_buffer.get() as *const u32;
+		let iiizones = iiindirect_buffer.get() as *const u32;
 
 		// ////////////////////////////////////////////
 		// // DIRECT ZONES
@@ -257,7 +282,6 @@ impl FileSystem for MinixFileSystem {
 		// point to zones where the data can be found. Just like with the direct zones,
 		// we need to make sure the zone isn't 0. A zone of 0 means skip it.
 		if inode.zones[7] != 0 {
-			let mut indirect_buffer = BlockBuffer::new(BLOCK_SIZE);
 			syc_read(desc, indirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * inode.zones[7]);
 			let izones = indirect_buffer.get() as *const u32;
 			for i in 0..num_indirect_pointers {
@@ -298,17 +322,16 @@ impl FileSystem for MinixFileSystem {
 		// // DOUBLY INDIRECT ZONES
 		// ////////////////////////////////////////////
 		if inode.zones[8] != 0 {
-			let mut indirect_buffer = BlockBuffer::new(BLOCK_SIZE);
-			let mut iindirect_buffer = BlockBuffer::new(BLOCK_SIZE);
 			syc_read(desc, indirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * inode.zones[8]);
-			let izones = indirect_buffer.get() as *const u32;
-			let iizones = iindirect_buffer.get() as *const u32;
 			unsafe {
 				for i in 0..num_indirect_pointers {
 					if izones.add(i).read() != 0 {
 						syc_read(desc, iindirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * izones.add(i).read());
 						for j in 0..num_indirect_pointers {
 							if iizones.add(j).read() != 0 {
+								// Notice that this inner code is the same for all end-zone pointers. I'm thinking about
+								// moving this out of here into a function of its own, but that might make it harder
+								// to follow.
 								if offset_block <= blocks_seen {
 									syc_read(
 									         desc,
@@ -345,13 +368,7 @@ impl FileSystem for MinixFileSystem {
 		// // TRIPLY INDIRECT ZONES
 		// ////////////////////////////////////////////
 		if inode.zones[9] != 0 {
-			let mut indirect_buffer = BlockBuffer::new(BLOCK_SIZE);
-			let mut iindirect_buffer = BlockBuffer::new(BLOCK_SIZE);
-			let mut iiindirect_buffer = BlockBuffer::new(BLOCK_SIZE);
 			syc_read(desc, indirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * inode.zones[9]);
-			let izones = indirect_buffer.get() as *const u32;
-			let iizones = iindirect_buffer.get() as *const u32;
-			let iiizones = iiindirect_buffer.get() as *const u32;
 			unsafe {
 				for i in 0..num_indirect_pointers {
 					if izones.add(i).read() != 0 {
@@ -366,6 +383,7 @@ impl FileSystem for MinixFileSystem {
 								);
 								for k in 0..num_indirect_pointers {
 									if iiizones.add(k).read() != 0 {
+										// Hey look! This again.
 										if offset_block <= blocks_seen {
 											syc_read(
 											         desc,

@@ -33,6 +33,10 @@ pub static mut PROCESS_LIST: Option<VecDeque<Process>> = None;
 // it's probably easier and faster just to increase the pid:
 static mut NEXT_PID: u16 = 1;
 
+// The following set_* and get_by_pid functions are C-style functions
+// They probably need to be re-written in a more Rusty style, but for
+// now they are how we control processes by PID.
+
 /// Set a process' state to running. This doesn't do any checks.
 /// If this PID is not found, this returns false. Otherwise, it
 /// returns true.
@@ -157,7 +161,12 @@ fn init_process() {
 		// the scheduler is called in an interrupt context, nothing else
 		// can happen until a process becomes available.
 		println!("Init is still here :), alright, back to sleep.");
+		// 500 wfi's should take 500 context switches before we print Init is still here.
+		// Depending on our context switch time, this might be around 3 seconds.
 		for _ in 0..500 {
+			// We can only write wfi here because init_process is being ran
+			// as a kernel process. If we ran this as a user process, it'd
+			// need a system call to execute a privileged instruction.
 			unsafe { asm!("wfi") };
 		}
 	}
@@ -383,6 +392,14 @@ pub struct Process {
 	sleep_until: usize,
 }
 
+// Most of this operating system runs more of a C-style, where
+// we have direct access to the structure members. By default, Rust
+// will make them private unless we add the keyword pub in front of
+// EVERY member. I wrote the process structure this way to show
+// both ways Rust allows us to access members. Just like Python,
+// the first parameter (the *this parameter in C++) is a reference
+// to ourself. We can write static functions as a member of this
+// structure by omitting a self.
 impl Process {
 	pub fn get_frame_address(&self) -> usize {
 		self.frame as usize
@@ -422,7 +439,7 @@ impl Process {
 
 	pub fn new_default(func: fn()) -> Self {
 		let func_addr = func as usize;
-		let func_vaddr = func_addr; //- 0x6000_0000;
+		let func_vaddr = func_addr;
 			    // println!("func_addr = {:x} -> {:x}", func_addr, func_vaddr);
 			    // We will convert NEXT_PID below into an atomic increment when
 			    // we start getting into multi-hart processing. For now, we want
@@ -472,14 +489,6 @@ impl Process {
 		for i in 0..=100 {
 			let modifier = i * 0x1000;
 			map(pt, func_vaddr + modifier, func_addr + modifier, EntryBits::UserReadWriteExecute.val(), 0);
-		}
-		// This is the make_syscall function
-		// The reason we need this is because we're running a process
-		// that is inside of the kernel. When we start loading from a block
-		// devices, we can load the instructions anywhere in memory.
-		for i in 0..=7 {
-			let addr = 0x8000_0000 | i << 12;
-			map(pt, addr, addr, EntryBits::UserReadExecute.val(), 0);
 		}
 		ret_proc
 	}
