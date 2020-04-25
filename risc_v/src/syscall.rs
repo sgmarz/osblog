@@ -24,9 +24,6 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 	match syscall_number {
 		0 | 93 => {
 			// Exit
-			// Currently, we cannot kill a process, it runs forever. We will delete
-			// the process later and free the resources, but for now, we want to get
-			// used to how processes will be scheduled on the CPU.
 			delete_process((*frame).pid as u16);
 			0
 		},
@@ -41,44 +38,58 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 		},
 		63 => {
 			// Read system call
-			// This is an asynchronous call. This will get the process going. We won't hear the answer until
+			// This is an asynchronous call. This will get the
+			// process going. We won't hear the answer until
 			// we an interrupt back.
-			// TODO: The buffer is a virtual memory address that needs to be translated to a physical memory
-			// location.
+			// TODO: The buffer is a virtual memory address that
+			// needs to be translated to a physical memory location.
 			// This needs to be put into a process and ran.
-			// The buffer (regs[12]) needs to be translated when ran from a user process using virt_to_phys.
-			// If this turns out to be a page fault, we need to NOT proceed with the read!
+			// The buffer (regs[12]) needs to be translated when ran
+			// from a user process using virt_to_phys. If this turns
+			// out to be a page fault, we need to NOT proceed with
+			// the read!
 			let mut physical_buffer = (*frame).regs[12];
-			// If the MMU is turned on, we have to translate the address. Eventually, I will put this
-			// code into a convenient function, but for now, it will show how translation will be done.
+			// If the MMU is turned on, we have to translate the
+			// address. Eventually, I will put this code into a
+			// convenient function, but for now, it will show how
+			// translation will be done.
 			if (*frame).satp != 0 {
 				let p = get_by_pid((*frame).pid as u16);
-				let table = ((*p).get_table_address() as *mut Table).as_ref().unwrap();
-				let paddr = virt_to_phys(table, (*frame).regs[12]);
+				let table = ((*p).get_table_address()
+				             as *mut Table)
+				            .as_ref()
+				            .unwrap();
+				let paddr =
+					virt_to_phys(table, (*frame).regs[12]);
 				if paddr.is_none() {
 					(*frame).regs[10] = -1isize as usize;
 					return mepc + 4;
 				}
 				physical_buffer = paddr.unwrap();
 			}
-			// TODO: Not only do we need to check the buffer, but it is possible that the buffer spans
-			// multiple pages. We need to check all pages that this might span. We can't just do paddr
-			// and paddr + size, since there could be a missing page somewhere in between.
+			// TODO: Not only do we need to check the buffer, but it
+			// is possible that the buffer spans multiple pages. We
+			// need to check all pages that this might span. We
+			// can't just do paddr and paddr + size, since there
+			// could be a missing page somewhere in between.
 			let _ = minixfs::process_read(
 			                              (*frame).pid as u16,
-			                              (*frame).regs[10] as usize,
+			                              (*frame).regs[10]
+			                              as usize,
 			                              (*frame).regs[11] as u32,
-			                              physical_buffer as *mut u8,
+			                              physical_buffer
+			                              as *mut u8,
 			                              (*frame).regs[13] as u32,
 			                              (*frame).regs[14] as u32,
 			);
-			// If we return 0, the trap handler will schedule another process.
+			// If we return 0, the trap handler will schedule
+			// another process.
 			0
 		},
 		180 => {
 			// println!(
-			//          "Pid: {}, Dev: {}, Buffer: 0x{:x}, Size: {}, Offset: {}",
-			//          (*frame).pid,
+			//          "Pid: {}, Dev: {}, Buffer: 0x{:x}, Size: {},
+			// Offset: {}",          (*frame).pid,
 			//          (*frame).regs[10],
 			//          (*frame).regs[11],
 			//          (*frame).regs[12],
@@ -103,10 +114,25 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 }
 
 extern "C" {
-	fn make_syscall(sysno: usize, arg0: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize, arg5: usize) -> usize;
+	fn make_syscall(sysno: usize,
+	                arg0: usize,
+	                arg1: usize,
+	                arg2: usize,
+	                arg3: usize,
+	                arg4: usize,
+	                arg5: usize)
+	                -> usize;
 }
 
-fn do_make_syscall(sysno: usize, arg0: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize, arg5: usize) -> usize {
+fn do_make_syscall(sysno: usize,
+                   arg0: usize,
+                   arg1: usize,
+                   arg2: usize,
+                   arg3: usize,
+                   arg4: usize,
+                   arg5: usize)
+                   -> usize
+{
 	unsafe { make_syscall(sysno, arg0, arg1, arg2, arg3, arg4, arg5) }
 }
 
@@ -114,12 +140,39 @@ pub fn syscall_exit() {
 	let _ = do_make_syscall(93, 0, 0, 0, 0, 0, 0);
 }
 
-pub fn syscall_fs_read(dev: usize, inode: u32, buffer: *mut u8, size: u32, offset: u32) -> usize {
-	do_make_syscall(63, dev, inode as usize, buffer as usize, size as usize, offset as usize, 0)
+pub fn syscall_fs_read(dev: usize,
+                       inode: u32,
+                       buffer: *mut u8,
+                       size: u32,
+                       offset: u32)
+                       -> usize
+{
+	do_make_syscall(
+	                63,
+	                dev,
+	                inode as usize,
+	                buffer as usize,
+	                size as usize,
+	                offset as usize,
+	                0,
+	)
 }
 
-pub fn syscall_block_read(dev: usize, buffer: *mut u8, size: u32, offset: u32) -> u8 {
-	do_make_syscall(180, dev, buffer as usize, size as usize, offset as usize, 0, 0) as u8
+pub fn syscall_block_read(dev: usize,
+                          buffer: *mut u8,
+                          size: u32,
+                          offset: u32)
+                          -> u8
+{
+	do_make_syscall(
+	                180,
+	                dev,
+	                buffer as usize,
+	                size as usize,
+	                offset as usize,
+	                0,
+	                0,
+	) as u8
 }
 
 // These system call numbers come from libgloss so that we can use newlib

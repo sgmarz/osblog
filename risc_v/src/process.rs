@@ -3,8 +3,20 @@
 // Stephen Marz
 // 27 Nov 2019
 
-use crate::{cpu::{build_satp, get_mtime, satp_fence_asid, CpuMode, SatpMode, TrapFrame},
-            page::{alloc, dealloc, map, unmap, zalloc, EntryBits, Table, PAGE_SIZE},
+use crate::{cpu::{build_satp,
+                  get_mtime,
+                  satp_fence_asid,
+                  CpuMode,
+                  SatpMode,
+                  TrapFrame},
+            page::{alloc,
+                   dealloc,
+                   map,
+                   unmap,
+                   zalloc,
+                   EntryBits,
+                   Table,
+                   PAGE_SIZE},
             syscall::syscall_exit};
 use alloc::collections::vec_deque::VecDeque;
 use core::ptr::null_mut;
@@ -97,7 +109,10 @@ pub fn set_sleeping(pid: u16, duration: usize) -> bool {
 			for proc in pl.iter_mut() {
 				if proc.pid == pid {
 					proc.set_state(ProcessState::Sleeping);
-					proc.set_sleep_until(get_mtime() + duration);
+					proc.set_sleep_until(
+					                     get_mtime()
+					                     + duration,
+					);
 					retval = true;
 					break;
 				}
@@ -119,8 +134,8 @@ pub fn delete_process(pid: u16) {
 			for i in 0..pl.len() {
 				let p = pl.get_mut(i).unwrap();
 				if p.get_pid() == pid {
-					// When the structure gets dropped, all of the
-					// allocations get deallocated.
+					// When the structure gets dropped, all
+					// of the allocations get deallocated.
 					pl.remove(i);
 					break;
 				}
@@ -161,12 +176,14 @@ fn init_process() {
 		// the scheduler is called in an interrupt context, nothing else
 		// can happen until a process becomes available.
 		println!("Init is still here :), alright, back to sleep.");
-		// 500 wfi's should take 500 context switches before we print Init is still here.
-		// Depending on our context switch time, this might be around 3 seconds.
+		// 500 wfi's should take 500 context switches before we print
+		// Init is still here. Depending on our context switch time,
+		// this might be around 3 seconds.
 		for _ in 0..500 {
-			// We can only write wfi here because init_process is being ran
-			// as a kernel process. If we ran this as a user process, it'd
-			// need a system call to execute a privileged instruction.
+			// We can only write wfi here because init_process is
+			// being ran as a kernel process. If we ran this as a
+			// user process, it'd need a system call to execute a
+			// privileged instruction.
 			unsafe { asm!("wfi") };
 		}
 	}
@@ -222,13 +239,14 @@ pub fn add_kernel_process(func: fn()) -> u16 {
 			    // we start getting into multi-hart processing. For now, we want
 			    // a process. Get it to work, then improve it!
 		let my_pid = unsafe { NEXT_PID };
-		let mut ret_proc = Process { frame:       zalloc(1) as *mut TrapFrame,
-		                             stack:       zalloc(STACK_PAGES),
-		                             pid:         my_pid,
-		                             root:        zalloc(1) as *mut Table,
-		                             state:       ProcessState::Running,
-		                             data:        ProcessData::zero(),
-		                             sleep_until: 0, };
+		let mut ret_proc =
+			Process { frame:       zalloc(1) as *mut TrapFrame,
+			          stack:       zalloc(STACK_PAGES),
+			          pid:         my_pid,
+			          root:        zalloc(1) as *mut Table,
+			          state:       ProcessState::Running,
+			          data:        ProcessData::zero(),
+			          sleep_until: 0, };
 		unsafe {
 			NEXT_PID += 1;
 		}
@@ -242,10 +260,12 @@ pub fn add_kernel_process(func: fn()) -> u16 {
 		// bottom of the memory and far away from heap allocations.
 		unsafe {
 			(*ret_proc.frame).pc = func_vaddr;
-			// 1 is the return address register. This makes it so we don't have to do
-			// syscall_exit() when a kernel process finishes.
+			// 1 is the return address register. This makes it so we
+			// don't have to do syscall_exit() when a kernel process
+			// finishes.
 			(*ret_proc.frame).regs[1] = ra_delete_proc as usize;
-			(*ret_proc.frame).regs[2] = ret_proc.stack as usize + STACK_PAGES * 4096;
+			(*ret_proc.frame).regs[2] =
+				ret_proc.stack as usize + STACK_PAGES * 4096;
 			(*ret_proc.frame).mode = CpuMode::Machine as usize;
 			(*ret_proc.frame).pid = ret_proc.pid as usize;
 		}
@@ -298,13 +318,14 @@ pub fn add_kernel_process_args(func: fn(args_ptr: usize), args: usize) -> u16 {
 			    // we start getting into multi-hart processing. For now, we want
 			    // a process. Get it to work, then improve it!
 		let my_pid = unsafe { NEXT_PID };
-		let mut ret_proc = Process { frame:       zalloc(1) as *mut TrapFrame,
-		                             stack:       zalloc(STACK_PAGES),
-		                             pid:         my_pid,
-		                             root:        zalloc(1) as *mut Table,
-		                             state:       ProcessState::Running,
-		                             data:        ProcessData::zero(),
-		                             sleep_until: 0, };
+		let mut ret_proc =
+			Process { frame:       zalloc(1) as *mut TrapFrame,
+			          stack:       zalloc(STACK_PAGES),
+			          pid:         my_pid,
+			          root:        zalloc(1) as *mut Table,
+			          state:       ProcessState::Running,
+			          data:        ProcessData::zero(),
+			          sleep_until: 0, };
 		unsafe {
 			NEXT_PID += 1;
 		}
@@ -319,10 +340,12 @@ pub fn add_kernel_process_args(func: fn(args_ptr: usize), args: usize) -> u16 {
 		unsafe {
 			(*ret_proc.frame).pc = func_vaddr;
 			(*ret_proc.frame).regs[10] = args;
-			// 1 is the return address register. This makes it so we don't have to do
-			// syscall_exit() when a kernel process finishes.
+			// 1 is the return address register. This makes it so we
+			// don't have to do syscall_exit() when a kernel process
+			// finishes.
 			(*ret_proc.frame).regs[1] = ra_delete_proc as usize;
-			(*ret_proc.frame).regs[2] = ret_proc.stack as usize + STACK_PAGES * 4096;
+			(*ret_proc.frame).regs[2] =
+				ret_proc.stack as usize + STACK_PAGES * 4096;
 			(*ret_proc.frame).mode = CpuMode::Machine as usize;
 			(*ret_proc.frame).pid = ret_proc.pid as usize;
 		}
@@ -448,13 +471,14 @@ impl Process {
 		// We will convert NEXT_PID below into an atomic increment when
 		// we start getting into multi-hart processing. For now, we want
 		// a process. Get it to work, then improve it!
-		let mut ret_proc = Process { frame:       zalloc(1) as *mut TrapFrame,
-		                             stack:       alloc(STACK_PAGES),
-		                             pid:         unsafe { NEXT_PID },
-		                             root:        zalloc(1) as *mut Table,
-		                             state:       ProcessState::Running,
-		                             data:        ProcessData::zero(),
-		                             sleep_until: 0, };
+		let mut ret_proc =
+			Process { frame:       zalloc(1) as *mut TrapFrame,
+			          stack:       alloc(STACK_PAGES),
+			          pid:         unsafe { NEXT_PID },
+			          root:        zalloc(1) as *mut Table,
+			          state:       ProcessState::Running,
+			          data:        ProcessData::zero(),
+			          sleep_until: 0, };
 		unsafe {
 			satp_fence_asid(NEXT_PID as usize);
 			NEXT_PID += 1;
@@ -470,7 +494,8 @@ impl Process {
 		let saddr = ret_proc.stack as usize;
 		unsafe {
 			(*ret_proc.frame).pc = func_vaddr;
-			(*ret_proc.frame).regs[2] = STACK_ADDR + PAGE_SIZE * STACK_PAGES;
+			(*ret_proc.frame).regs[2] =
+				STACK_ADDR + PAGE_SIZE * STACK_PAGES;
 			(*ret_proc.frame).mode = CpuMode::User as usize;
 			(*ret_proc.frame).pid = ret_proc.pid as usize;
 		}
@@ -478,20 +503,38 @@ impl Process {
 		let pt;
 		unsafe {
 			pt = &mut *ret_proc.root;
-			(*ret_proc.frame).satp = build_satp(SatpMode::Sv39, ret_proc.pid as usize, ret_proc.root as usize);
+			(*ret_proc.frame).satp =
+				build_satp(
+				           SatpMode::Sv39,
+				           ret_proc.pid as usize,
+				           ret_proc.root as usize,
+				);
 		}
 		// We need to map the stack onto the user process' virtual
 		// memory This gets a little hairy because we need to also map
 		// the function code too.
 		for i in 0..STACK_PAGES {
 			let addr = i * PAGE_SIZE;
-			map(pt, STACK_ADDR + addr, saddr + addr, EntryBits::UserReadWrite.val(), 0);
-			// println!("Set stack from 0x{:016x} -> 0x{:016x}", STACK_ADDR + addr, saddr + addr);
+			map(
+			    pt,
+			    STACK_ADDR + addr,
+			    saddr + addr,
+			    EntryBits::UserReadWrite.val(),
+			    0,
+			);
+			// println!("Set stack from 0x{:016x} -> 0x{:016x}",
+			// STACK_ADDR + addr, saddr + addr);
 		}
 		// Map the program counter on the MMU and other bits
 		for i in 0..=100 {
 			let modifier = i * 0x1000;
-			map(pt, func_vaddr + modifier, func_addr + modifier, EntryBits::UserReadWriteExecute.val(), 0);
+			map(
+			    pt,
+			    func_vaddr + modifier,
+			    func_addr + modifier,
+			    EntryBits::UserReadWriteExecute.val(),
+			    0,
+			);
 		}
 		ret_proc
 	}

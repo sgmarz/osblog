@@ -35,14 +35,14 @@ pub enum CpuMode {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct TrapFrame {
-	pub regs:       [usize; 32], // 0 - 255
-	pub fregs:      [usize; 32], // 256 - 511
-	pub satp:       usize,       // 512 - 519
-	pub pc:         usize,       // 520
-	pub hartid:     usize,       // 528
-	pub qm:         usize,		 // 536
-	pub pid:        usize,		 // 544
-	pub mode:       usize,		 // 552
+	pub regs:   [usize; 32], // 0 - 255
+	pub fregs:  [usize; 32], // 256 - 511
+	pub satp:   usize,       // 512 - 519
+	pub pc:     usize,       // 520
+	pub hartid: usize,       // 528
+	pub qm:     usize,       // 536
+	pub pid:    usize,       // 544
+	pub mode:   usize,       // 552
 }
 
 /// Rust requires that we initialize our structures
@@ -55,15 +55,14 @@ pub struct TrapFrame {
 /// is TrapFrame.
 impl TrapFrame {
 	pub const fn new() -> Self {
-		TrapFrame { regs:       [0; 32],
-		            fregs:      [0; 32],
-		            satp:       0,
-		            pc:		    0,
-					hartid:     0, 
-					qm:         1,
-					pid:        0,
-					mode:		0,
-				}
+		TrapFrame { regs:   [0; 32],
+		            fregs:  [0; 32],
+		            satp:   0,
+		            pc:     0,
+		            hartid: 0,
+		            qm:     1,
+		            pid:    0,
+		            mode:   0, }
 	}
 }
 
@@ -237,9 +236,7 @@ pub fn satp_fence_asid(asid: usize) {
 const MMIO_MTIME: *const u64 = 0x0200_BFF8 as *const u64;
 
 pub fn get_mtime() -> usize {
-	unsafe {
-		(*MMIO_MTIME) as usize
-	}
+	unsafe { (*MMIO_MTIME) as usize }
 }
 
 /// Copy one data from one memory location to another.
@@ -253,7 +250,7 @@ pub unsafe fn memcpy(dest: *mut u8, src: *const u8, bytes: usize) {
 		*(dest_as_8.add(i)) = *(src_as_8.add(i));
 	}
 	let bytes_remaining = bytes_as_8 * 8;
-	for i in bytes_remaining..bytes_remaining+bytes_as_1 {
+	for i in bytes_remaining..bytes_remaining + bytes_as_1 {
 		*(dest.add(i)) = *(src.add(i));
 	}
 }
@@ -269,4 +266,3 @@ pub fn dump_registers(frame: *const TrapFrame) {
 	}
 	println!();
 }
-

@@ -121,7 +121,12 @@ impl MinixFileSystem {
 		// Here is a little memory trick. We have a reference and it will refer to the
 		// top portion of our buffer. Since we won't be using the super block and inode
 		// simultaneously, we can overlap the memory regions.
+
+		// For Rust-ers, I'm showing two ways here. The first way is to get a reference
+		// from a pointer. You will see the &* a lot in Rust for references. Rust
+		// makes dereferencing a pointer cumbersome, which lends to not using them.
 		let super_block = unsafe { &*(buffer.get_mut() as *mut SuperBlock) };
+		// I opted for a pointer here instead of a reference because we will be offsetting the inode by a certain amount.
 		let inode = buffer.get_mut() as *mut Inode;
 		// Read from the block device. The size is 1 sector (512 bytes) and our offset is past
 		// the boot block (first 1024 bytes). This is where the superblock sits.
@@ -139,9 +144,7 @@ impl MinixFileSystem {
 			// inode_offset. However, we're going to be reading a group of inodes.
 			syc_read(desc, buffer.get_mut(), 512, inode_offset as u32);
 
-			// There are 512 / size_of<Inode>() inodes in each read that we can do. However, we
-			// need to figure out which inode in that group we need to read. We just take
-			// the % of this to find out.
+			// There are 512 / size_of<Inode>() inodes in each read that we can do. However, we need to figure out which inode in that group we need to read. We just take the % of this to find out.
 			let read_this_node = (inode_num as usize - 1) % (512 / size_of::<Inode>());
 
 			// We copy the inode over. This might not be the best thing since the Inode will
@@ -193,24 +196,13 @@ impl FileSystem for MinixFileSystem {
 			size
 		};
 		let mut bytes_read = 0u32;
-		// The block buffer automatically drops when we quit early due to an error or we've read enough.
-		// This will be the holding port when we go out and read a block. Recall that even if we want
-		// 10 bytes, we have to read the entire block (really only 512 bytes of the block) first.
-		// So, we use the block_buffer as the middle man, which is then copied into the buffer.
+		// The block buffer automatically drops when we quit early due to an error or we've read enough. This will be the holding port when we go out and read a block. Recall that even if we want 10 bytes, we have to read the entire block (really only 512 bytes of the block) first. So, we use the block_buffer as the middle man, which is then copied into the buffer.
 		let mut block_buffer = BlockBuffer::new(BLOCK_SIZE);
-		// Triply indirect zones point to a block of pointers (BLOCK_SIZE / 4). Each one of those pointers
-		// points to another block of pointers (BLOCK_SIZE / 4). Each one of those pointers yet again points
-		// to another block of pointers (BLOCK_SIZE / 4). This is why we have indirect, iindirect (doubly),
-		// and iiindirect (triply).
+		// Triply indirect zones point to a block of pointers (BLOCK_SIZE / 4). Each one of those pointers points to another block of pointers (BLOCK_SIZE / 4). Each one of those pointers yet again points to another block of pointers (BLOCK_SIZE / 4). This is why we have indirect, iindirect (doubly), and iiindirect (triply).
 		let mut indirect_buffer = BlockBuffer::new(BLOCK_SIZE);
 		let mut iindirect_buffer = BlockBuffer::new(BLOCK_SIZE);
 		let mut iiindirect_buffer = BlockBuffer::new(BLOCK_SIZE);
-		// I put the pointers *const u32 here. That means we will allocate the indirect,
-		// doubly indirect, and triply indirect even for small files. I initially had these
-		// in their respective scopes, but that required us to recreate the indirect buffer for
-		// doubly indirect and both the indirect and doubly indirect buffers for the
-		// triply indirect. Not sure which is better, but I probably wasted brain cells
-		// on this.
+		// I put the pointers *const u32 here. That means we will allocate the indirect, doubly indirect, and triply indirect even for small files. I initially had these in their respective scopes, but that required us to recreate the indirect buffer for doubly indirect and both the indirect and doubly indirect buffers for the triply indirect. Not sure which is better, but I probably wasted brain cells on this.
 		let izones = indirect_buffer.get() as *const u32;
 		let iizones = iindirect_buffer.get() as *const u32;
 		let iiizones = iiindirect_buffer.get() as *const u32;
@@ -222,9 +214,7 @@ impl FileSystem for MinixFileSystem {
 		// 0..7 means 0 through to 7 but not including 7. If we want to include 7, we
 		// would use the syntax 0..=7.
 		for i in 0..7 {
-			// There are 7 direct zones in the Minix 3 file system. So, we can just read them
-			// one by one. Any zone that has the value 0 is skipped and we check the next
-			// zones. This might happen as we start writing and truncating.
+			// There are 7 direct zones in the Minix 3 file system. So, we can just read them one by one. Any zone that has the value 0 is skipped and we check the next zones. This might happen as we start writing and truncating.
 			if inode.zones[i] == 0 {
 				continue;
 			}

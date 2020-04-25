@@ -5,9 +5,16 @@
 
 use crate::{kmem::{kfree, kmalloc, talloc, tfree},
             page::{zalloc, PAGE_SIZE},
-            process::{add_kernel_process_args, set_running, set_waiting, get_by_pid},
+            process::{add_kernel_process_args,
+                      get_by_pid,
+                      set_running,
+                      set_waiting},
             virtio,
-            virtio::{Descriptor, MmioOffsets, Queue, StatusField, VIRTIO_RING_SIZE}};
+            virtio::{Descriptor,
+                     MmioOffsets,
+                     Queue,
+                     StatusField,
+                     VIRTIO_RING_SIZE}};
 use core::mem::size_of;
 
 #[repr(C)]
@@ -139,7 +146,8 @@ pub enum BlockErrors {
 // value type to signal that the variable exists, but not the
 // queue itself. We will replace this with an actual queue when
 // we initialize the block system.
-static mut BLOCK_DEVICES: [Option<BlockDevice>; 8] = [None, None, None, None, None, None, None, None];
+static mut BLOCK_DEVICES: [Option<BlockDevice>; 8] =
+	[None, None, None, None, None, None, None, None];
 
 pub fn setup_block_device(ptr: *mut u32) -> bool {
 	unsafe {
@@ -148,44 +156,55 @@ pub fn setup_block_device(ptr: *mut u32) -> bool {
 		// 0x1000_2000 is index 1
 		// ...
 		// 0x1000_8000 is index 7
-		// To get the number that changes over, we shift right 12 places (3 hex digits)
+		// To get the number that changes over, we shift right 12 places
+		// (3 hex digits)
 		let idx = (ptr as usize - virtio::MMIO_VIRTIO_START) >> 12;
 		// [Driver] Device Initialization
 		// 1. Reset the device (write 0 into status)
 		ptr.add(MmioOffsets::Status.scale32()).write_volatile(0);
 		let mut status_bits = StatusField::Acknowledge.val32();
 		// 2. Set ACKNOWLEDGE status bit
-		ptr.add(MmioOffsets::Status.scale32()).write_volatile(status_bits);
+		ptr.add(MmioOffsets::Status.scale32())
+		   .write_volatile(status_bits);
 		// 3. Set the DRIVER status bit
 		status_bits |= StatusField::DriverOk.val32();
-		ptr.add(MmioOffsets::Status.scale32()).write_volatile(status_bits);
+		ptr.add(MmioOffsets::Status.scale32())
+		   .write_volatile(status_bits);
 		// 4. Read device feature bits, write subset of feature
 		// bits understood by OS and driver    to the device.
-		let host_features = ptr.add(MmioOffsets::HostFeatures.scale32()).read_volatile();
+		let host_features =
+			ptr.add(MmioOffsets::HostFeatures.scale32())
+			   .read_volatile();
 		let guest_features = host_features & !(1 << VIRTIO_BLK_F_RO);
 		let ro = host_features & (1 << VIRTIO_BLK_F_RO) != 0;
-		ptr.add(MmioOffsets::GuestFeatures.scale32()).write_volatile(guest_features);
+		ptr.add(MmioOffsets::GuestFeatures.scale32())
+		   .write_volatile(guest_features);
 		// 5. Set the FEATURES_OK status bit
 		status_bits |= StatusField::FeaturesOk.val32();
-		ptr.add(MmioOffsets::Status.scale32()).write_volatile(status_bits);
+		ptr.add(MmioOffsets::Status.scale32())
+		   .write_volatile(status_bits);
 		// 6. Re-read status to ensure FEATURES_OK is still set.
 		// Otherwise, it doesn't support our features.
-		let status_ok = ptr.add(MmioOffsets::Status.scale32()).read_volatile();
+		let status_ok =
+			ptr.add(MmioOffsets::Status.scale32()).read_volatile();
 		// If the status field no longer has features_ok set,
 		// that means that the device couldn't accept
 		// the features that we request. Therefore, this is
 		// considered a "failed" state.
 		if false == StatusField::features_ok(status_ok) {
 			print!("features fail...");
-			ptr.add(MmioOffsets::Status.scale32()).write_volatile(StatusField::Failed.val32());
+			ptr.add(MmioOffsets::Status.scale32())
+			   .write_volatile(StatusField::Failed.val32());
 			return false;
 		}
 		// 7. Perform device-specific setup.
 		// Set the queue num. We have to make sure that the
 		// queue size is valid because the device can only take
 		// a certain size.
-		let qnmax = ptr.add(MmioOffsets::QueueNumMax.scale32()).read_volatile();
-		ptr.add(MmioOffsets::QueueNum.scale32()).write_volatile(VIRTIO_RING_SIZE as u32);
+		let qnmax = ptr.add(MmioOffsets::QueueNumMax.scale32())
+		               .read_volatile();
+		ptr.add(MmioOffsets::QueueNum.scale32())
+		   .write_volatile(VIRTIO_RING_SIZE as u32);
 		if VIRTIO_RING_SIZE as u32 > qnmax {
 			print!("queue size fail...");
 			return false;
@@ -195,7 +214,8 @@ pub fn setup_block_device(ptr: *mut u32) -> bool {
 		// divide to truncate the decimal. We don't add 4096,
 		// because if it is exactly 4096 bytes, we would get two
 		// pages, not one.
-		let num_pages = (size_of::<Queue>() + PAGE_SIZE - 1) / PAGE_SIZE;
+		let num_pages =
+			(size_of::<Queue>() + PAGE_SIZE - 1) / PAGE_SIZE;
 		// println!("np = {}", num_pages);
 		// We allocate a page for each device. This will the the
 		// descriptor where we can communicate with the block
@@ -208,19 +228,21 @@ pub fn setup_block_device(ptr: *mut u32) -> bool {
 		// what is called a memory "fence" or barrier.
 		ptr.add(MmioOffsets::QueueSel.scale32()).write_volatile(0);
 		// Alignment is very important here. This is the memory address
-		// alignment between the available and used rings. If this is wrong,
-		// then we and the device will refer to different memory addresses
-		// and hence get the wrong data in the used ring.
+		// alignment between the available and used rings. If this is
+		// wrong, then we and the device will refer to different memory
+		// addresses and hence get the wrong data in the used ring.
 		// ptr.add(MmioOffsets::QueueAlign.scale32()).write_volatile(2);
 		let queue_ptr = zalloc(num_pages) as *mut Queue;
 		let queue_pfn = queue_ptr as u32;
-		ptr.add(MmioOffsets::GuestPageSize.scale32()).write_volatile(PAGE_SIZE as u32);
+		ptr.add(MmioOffsets::GuestPageSize.scale32())
+		   .write_volatile(PAGE_SIZE as u32);
 		// QueuePFN is a physical page number, however it
 		// appears for QEMU we have to write the entire memory
 		// address. This is a physical memory address where we
 		// (the OS) and the block device have in common for
 		// making and receiving requests.
-		ptr.add(MmioOffsets::QueuePfn.scale32()).write_volatile(queue_pfn / PAGE_SIZE as u32);
+		ptr.add(MmioOffsets::QueuePfn.scale32())
+		   .write_volatile(queue_pfn / PAGE_SIZE as u32);
 		// We need to store all of this data as a "BlockDevice"
 		// structure We will be referring to this structure when
 		// making block requests AND when handling responses.
@@ -233,7 +255,8 @@ pub fn setup_block_device(ptr: *mut u32) -> bool {
 
 		// 8. Set the DRIVER_OK status bit. Device is now "live"
 		status_bits |= StatusField::DriverOk.val32();
-		ptr.add(MmioOffsets::Status.scale32()).write_volatile(status_bits);
+		ptr.add(MmioOffsets::Status.scale32())
+		   .write_volatile(status_bits);
 
 		true
 	}
@@ -241,16 +264,20 @@ pub fn setup_block_device(ptr: *mut u32) -> bool {
 
 pub fn fill_next_descriptor(bd: &mut BlockDevice, desc: Descriptor) -> u16 {
 	unsafe {
-		// The ring structure increments here first. This allows us to skip
-		// index 0, which then in the used ring will show that .id > 0. This
-		// is one way to error check. We will eventually get back to 0 as
-		// this index is cyclical. However, it shows if the first read/write
-		// actually works.
+		// The ring structure increments here first. This allows us to
+		// skip index 0, which then in the used ring will show that .id
+		// > 0. This is one way to error check. We will eventually get
+		// back to 0 as this index is cyclical. However, it shows if the
+		// first read/write actually works.
 		bd.idx = (bd.idx + 1) % VIRTIO_RING_SIZE as u16;
 		(*bd.queue).desc[bd.idx as usize] = desc;
-		if (*bd.queue).desc[bd.idx as usize].flags & virtio::VIRTIO_DESC_F_NEXT != 0 {
+		if (*bd.queue).desc[bd.idx as usize].flags
+		   & virtio::VIRTIO_DESC_F_NEXT
+		   != 0
+		{
 			// If the next flag is set, we need another descriptor.
-			(*bd.queue).desc[bd.idx as usize].next = (bd.idx + 1) % VIRTIO_RING_SIZE as u16;
+			(*bd.queue).desc[bd.idx as usize].next =
+				(bd.idx + 1) % VIRTIO_RING_SIZE as u16;
 		}
 		bd.idx
 	}
@@ -258,9 +285,9 @@ pub fn fill_next_descriptor(bd: &mut BlockDevice, desc: Descriptor) -> u16 {
 /// This is now a common block operation for both reads and writes. Therefore,
 /// when one thing needs to change, we can change it for both reads and writes.
 /// There is a lot of error checking that I haven't done. The block device reads
-/// sectors at a time, which are 512 bytes. Therefore, our buffer must be capable
-/// of storing multiples of 512 bytes depending on the size. The size is also
-/// a multiple of 512, but we don't really check that.
+/// sectors at a time, which are 512 bytes. Therefore, our buffer must be
+/// capable of storing multiples of 512 bytes depending on the size. The size is
+/// also a multiple of 512, but we don't really check that.
 /// We DO however, check that we aren't writing to an R/O device. This would
 /// cause a I/O error if we tried to write to a R/O device.
 pub fn block_op(dev: usize,
@@ -273,7 +300,8 @@ pub fn block_op(dev: usize,
 {
 	unsafe {
 		if let Some(bdev) = BLOCK_DEVICES[dev - 1].as_mut() {
-			// Check to see if we are trying to write to a read only device.
+			// Check to see if we are trying to write to a read only
+			// device.
 			if bdev.read_only && write {
 				println!("Trying to write to read/only!");
 				return Err(BlockErrors::ReadOnly);
@@ -282,53 +310,68 @@ pub fn block_op(dev: usize,
 				return Err(BlockErrors::InvalidArgument);
 			}
 			let sector = offset / 512;
-			// TODO: Before we get here, we are NOT allowed to schedule a read or
-			// write OUTSIDE of the disk's size. So, we can read capacity from
-			// the configuration space to ensure we stay within bounds.
+			// TODO: Before we get here, we are NOT allowed to
+			// schedule a read or write OUTSIDE of the disk's size.
+			// So, we can read capacity from the configuration space
+			// to ensure we stay within bounds.
 			let blk_request_size = size_of::<Request>();
-			let blk_request = kmalloc(blk_request_size) as *mut Request;
-			let desc = Descriptor { addr:  &(*blk_request).header as *const Header as u64,
-			                        len:   size_of::<Header>() as u32,
-			                        flags: virtio::VIRTIO_DESC_F_NEXT,
-			                        next:  0, };
+			let blk_request =
+				kmalloc(blk_request_size) as *mut Request;
+			let desc =
+				Descriptor { addr:  &(*blk_request).header
+				                    as *const Header
+				                    as u64,
+				             len:   size_of::<Header>() as u32,
+				             flags: virtio::VIRTIO_DESC_F_NEXT,
+				             next:  0, };
 			let head_idx = fill_next_descriptor(bdev, desc);
 			(*blk_request).header.sector = sector;
-			// A write is an "out" direction, whereas a read is an "in" direction.
+			// A write is an "out" direction, whereas a read is an
+			// "in" direction.
 			(*blk_request).header.blktype = if write {
 				VIRTIO_BLK_T_OUT
 			}
 			else {
 				VIRTIO_BLK_T_IN
 			};
-			// We put 111 in the status. Whenever the device finishes, it will write into
-			// status. If we read status and it is 111, we know that it wasn't written to by
-			// the device.
+			// We put 111 in the status. Whenever the device
+			// finishes, it will write into status. If we read
+			// status and it is 111, we know that it wasn't written
+			// to by the device.
 			(*blk_request).data.data = buffer;
 			(*blk_request).header.reserved = 0;
 			(*blk_request).status.status = 111;
 			(*blk_request).watcher = watcher;
-			let desc = Descriptor { addr:  buffer as u64,
-			                        len:   size,
-			                        flags: virtio::VIRTIO_DESC_F_NEXT
-			                               | if !write {
-				                               virtio::VIRTIO_DESC_F_WRITE
-			                               }
-			                               else {
-				                               0
-			                               },
-			                        next:  0, };
+			let desc =
+				Descriptor { addr:  buffer as u64,
+				             len:   size,
+				             flags: virtio::VIRTIO_DESC_F_NEXT
+				                    | if !write {
+					                    virtio::VIRTIO_DESC_F_WRITE
+				                    }
+				                    else {
+					                    0
+				                    },
+				             next:  0, };
 			let _data_idx = fill_next_descriptor(bdev, desc);
-			let desc = Descriptor { addr:  &(*blk_request).status as *const Status as u64,
-			                        len:   size_of::<Status>() as u32,
-			                        flags: virtio::VIRTIO_DESC_F_WRITE,
-			                        next:  0, };
+			let desc =
+				Descriptor { addr:  &(*blk_request).status
+				                    as *const Status
+				                    as u64,
+				             len:   size_of::<Status>() as u32,
+				             flags: virtio::VIRTIO_DESC_F_WRITE,
+				             next:  0, };
 			let _status_idx = fill_next_descriptor(bdev, desc);
-			(*bdev.queue).avail.ring[(*bdev.queue).avail.idx as usize % virtio::VIRTIO_RING_SIZE] =
-				head_idx;
-			(*bdev.queue).avail.idx = (*bdev.queue).avail.idx.wrapping_add(1);
-			// The only queue a block device has is 0, which is the request
-			// queue.
-			bdev.dev.add(MmioOffsets::QueueNotify.scale32()).write_volatile(0);
+			(*bdev.queue).avail.ring[(*bdev.queue).avail.idx
+			                         as usize
+			                         % virtio::VIRTIO_RING_SIZE] = head_idx;
+			(*bdev.queue).avail.idx =
+				(*bdev.queue).avail.idx.wrapping_add(1);
+			// The only queue a block device has is 0, which is the
+			// request queue.
+			bdev.dev
+			    .add(MmioOffsets::QueueNotify.scale32())
+			    .write_volatile(0);
 			Ok(size)
 		}
 		else {
@@ -337,11 +380,21 @@ pub fn block_op(dev: usize,
 	}
 }
 
-pub fn read(dev: usize, buffer: *mut u8, size: u32, offset: u64) -> Result<u32, BlockErrors> {
+pub fn read(dev: usize,
+            buffer: *mut u8,
+            size: u32,
+            offset: u64)
+            -> Result<u32, BlockErrors>
+{
 	block_op(dev, buffer, size, offset, false, 0)
 }
 
-pub fn write(dev: usize, buffer: *mut u8, size: u32, offset: u64) -> Result<u32, BlockErrors> {
+pub fn write(dev: usize,
+             buffer: *mut u8,
+             size: u32,
+             offset: u64)
+             -> Result<u32, BlockErrors>
+{
 	block_op(dev, buffer, size, offset, true, 0)
 }
 
@@ -354,19 +407,25 @@ pub fn pending(bd: &mut BlockDevice) {
 	unsafe {
 		let ref queue = *bd.queue;
 		while bd.ack_used_idx != queue.used.idx {
-			let ref elem = queue.used.ring[bd.ack_used_idx as usize % VIRTIO_RING_SIZE];
+			let ref elem = queue.used.ring
+				[bd.ack_used_idx as usize % VIRTIO_RING_SIZE];
 			bd.ack_used_idx = bd.ack_used_idx.wrapping_add(1);
-			// Requests stay resident on the heap until this function, so we can recapture the address here
-			let rq = queue.desc[elem.id as usize].addr as *const Request;
+			// Requests stay resident on the heap until this
+			// function, so we can recapture the address here
+			let rq = queue.desc[elem.id as usize].addr
+			         as *const Request;
 
-			// A process might be waiting for this interrupt. Awaken the process attached here.
+			// A process might be waiting for this interrupt. Awaken
+			// the process attached here.
 			let pid_of_watcher = (*rq).watcher;
 			// A PID of 0 means that we don't have a watcher.
 			if pid_of_watcher > 0 {
 				set_running(pid_of_watcher);
 				let proc = get_by_pid(pid_of_watcher);
-				(*(*proc).get_frame_mut()).regs[10] = (*rq).status.status as usize;
-				// TODO: Set GpA0 to the value of the return status.
+				(*(*proc).get_frame_mut()).regs[10] =
+					(*rq).status.status as usize;
+				// TODO: Set GpA0 to the value of the return
+				// status.
 			}
 			kfree(rq as *mut u8);
 		}
@@ -381,7 +440,10 @@ pub fn handle_interrupt(idx: usize) {
 			pending(bdev);
 		}
 		else {
-			println!("Invalid block device for interrupt {}", idx + 1);
+			println!(
+			         "Invalid block device for interrupt {}",
+			         idx + 1
+			);
 		}
 	}
 }
@@ -401,14 +463,27 @@ struct ProcArgs {
 fn read_proc(args_addr: usize) {
 	let args_ptr = args_addr as *mut ProcArgs;
 	let args = unsafe { args_ptr.as_ref().unwrap() };
-	let _ = block_op(args.dev, args.buffer, args.size, args.offset, false, args.pid);
+	let _ = block_op(
+	                 args.dev,
+	                 args.buffer,
+	                 args.size,
+	                 args.offset,
+	                 false,
+	                 args.pid,
+	);
 	tfree(args_ptr);
 	// This should be handled by the RA now.
 	// syscall_exit();
 }
 
-pub fn process_read(pid: u16, dev: usize, buffer: *mut u8, size: u32, offset: u64) {
-	// println!("Block read {}, {}, 0x{:x}, {}, {}", pid, dev, buffer as usize, size, offset);
+pub fn process_read(pid: u16,
+                    dev: usize,
+                    buffer: *mut u8,
+                    size: u32,
+                    offset: u64)
+{
+	// println!("Block read {}, {}, 0x{:x}, {}, {}", pid, dev, buffer as
+	// usize, size, offset);
 	let args = talloc::<ProcArgs>().unwrap();
 	args.pid = pid;
 	args.dev = dev;
@@ -416,19 +491,34 @@ pub fn process_read(pid: u16, dev: usize, buffer: *mut u8, size: u32, offset: u6
 	args.size = size;
 	args.offset = offset;
 	set_waiting(pid);
-	let _ = add_kernel_process_args(read_proc, args as *mut ProcArgs as usize);
+	let _ = add_kernel_process_args(
+	                                read_proc,
+	                                args as *mut ProcArgs as usize,
+	);
 }
 
 fn write_proc(args_addr: usize) {
 	let args_ptr = args_addr as *mut ProcArgs;
 	let args = unsafe { args_ptr.as_ref().unwrap() };
 
-	let _ = block_op(args.dev, args.buffer, args.size, args.offset, true, args.pid);
+	let _ = block_op(
+	                 args.dev,
+	                 args.buffer,
+	                 args.size,
+	                 args.offset,
+	                 true,
+	                 args.pid,
+	);
 	tfree(args_ptr);
 	// syscall_exit();
 }
 
-pub fn process_write(pid: u16, dev: usize, buffer: *mut u8, size: u32, offset: u64) {
+pub fn process_write(pid: u16,
+                     dev: usize,
+                     buffer: *mut u8,
+                     size: u32,
+                     offset: u64)
+{
 	let args = talloc::<ProcArgs>().unwrap();
 	args.pid = pid;
 	args.dev = dev;
@@ -436,5 +526,8 @@ pub fn process_write(pid: u16, dev: usize, buffer: *mut u8, size: u32, offset: u
 	args.size = size;
 	args.offset = offset;
 	set_waiting(pid);
-	let _ = add_kernel_process_args(write_proc, args as *mut ProcArgs as usize);
+	let _ = add_kernel_process_args(
+	                                write_proc,
+	                                args as *mut ProcArgs as usize,
+	);
 }
