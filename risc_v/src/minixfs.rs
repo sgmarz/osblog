@@ -5,9 +5,10 @@
 
 use crate::{fs::{Descriptor, FileSystem, FsError, Stat},
             kmem::{kfree, kmalloc, talloc, tfree},
-            process::{add_kernel_process_args, set_running, set_waiting, get_by_pid},
+            process::{add_kernel_process_args, get_by_pid, set_running, set_waiting},
             syscall::syscall_block_read};
 
+use crate::cpu::memcpy;
 use alloc::string::String;
 use core::{mem::size_of, ptr::null_mut};
 
@@ -156,10 +157,9 @@ impl FileSystem for MinixFileSystem {
 	fn read(desc: &Descriptor, buffer: *mut u8, size: u32, offset: u32) -> u32 {
 		let mut blocks_seen = 0u32;
 		let offset_block = offset / BLOCK_SIZE;
-		let offset_byte = offset % BLOCK_SIZE;
+		let mut offset_byte = offset % BLOCK_SIZE;
 
 		let inode_result = Self::get_inode(desc, desc.node);
-		let mut block_buffer = BlockBuffer::new(BLOCK_SIZE);
 		if inode_result.is_none() {
 			// The inode couldn't be read, for some reason.
 			return 0;
@@ -174,8 +174,9 @@ impl FileSystem for MinixFileSystem {
 		else {
 			size
 		};
-		let mut bytes_left = 0;
+		println!("Bytes left = {}", bytes_left);
 		let mut bytes_read = 0u32;
+		let mut block_buffer = BlockBuffer::new(BLOCK_SIZE);
 		// In Rust, our for loop automatically "declares" i from 0 to < 7. The syntax
 		// 0..7 means 0 through to 7 but not including 7. If we want to include 7, we
 		// would use the syntax 0..=7.
@@ -198,6 +199,27 @@ impl FileSystem for MinixFileSystem {
 				let zone_offset = zone_num * BLOCK_SIZE;
 				println!("Zone #{} -> #{} -> {}", i, zone_num, zone_offset);
 				syc_read(desc, block_buffer.get_mut(), BLOCK_SIZE, zone_offset);
+
+				let read_this_many = if BLOCK_SIZE - offset_byte > bytes_left {
+					bytes_left
+				}
+				else {
+					BLOCK_SIZE - offset_byte
+				};
+				println!("Copy {} bytes", read_this_many);
+				unsafe {
+					memcpy(
+					       buffer.add(bytes_read as usize,),
+					       block_buffer.get().add(offset_byte as usize,),
+					       read_this_many as usize,
+					);
+				}
+				offset_byte = 0;
+				bytes_read += read_this_many;
+				bytes_left -= read_this_many;
+				if bytes_left == 0 {
+					return bytes_read;
+				}
 			}
 			blocks_seen += 1;
 		}
@@ -245,7 +267,7 @@ fn read_proc(args_addr: usize) {
 	                        size:     500,
 	                        pid:      args.pid, };
 
-	let bytes = MinixFileSystem::read(&desc, args.buffer, args.offset, args.size);
+	let bytes = MinixFileSystem::read(&desc, args.buffer, args.size, args.offset);
 
 	// Let's write the return result into regs[10], which is A0.
 	let ptr = unsafe { get_by_pid(args.pid) };
