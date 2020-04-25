@@ -5,7 +5,7 @@
 
 use crate::{fs::{Descriptor, FileSystem, FsError, Stat},
             kmem::{kfree, kmalloc, talloc, tfree},
-            process::{add_kernel_process_args, set_running, set_waiting},
+            process::{add_kernel_process_args, set_running, set_waiting, get_by_pid},
             syscall::syscall_block_read};
 
 use alloc::string::String;
@@ -125,7 +125,6 @@ impl MinixFileSystem {
 		// Read from the block device. The size is 1 sector (512 bytes) and our offset is past
 		// the boot block (first 1024 bytes). This is where the superblock sits.
 		syc_read(desc, buffer.get_mut(), 512, 1024);
-		println!("Magic is {:x}", super_block.magic);
 		if super_block.magic == MAGIC {
 			// If we get here, we successfully read what we think is the super block.
 			// The math here is 2 - one for the boot block, one for the super block. Then we
@@ -137,19 +136,6 @@ impl MinixFileSystem {
 
 			// Now, we read the inode itself.
 			syc_read(desc, buffer.get_mut(), 512, inode_offset as u32);
-			println!(
-			         "Inode {} sizex = {} {:o}, DZ {} {} {} {} {} {} {}",
-			         inode_num,
-			         inode.size,
-			         inode.mode,
-			         inode.zones[0],
-			         inode.zones[1],
-			         inode.zones[2],
-			         inode.zones[3],
-			         inode.zones[4],
-			         inode.zones[5],
-			         inode.zones[6]
-			);
 			return Some(*inode);
 		}
 		// If we get here, some result wasn't OK. Either the super block
@@ -172,7 +158,6 @@ impl FileSystem for MinixFileSystem {
 		let offset_block = offset / BLOCK_SIZE;
 		let offset_byte = offset % BLOCK_SIZE;
 
-		let stats = Self::stat(desc);
 		let inode_result = Self::get_inode(desc, desc.node);
 		let mut block_buffer = BlockBuffer::new(BLOCK_SIZE);
 		if inode_result.is_none() {
@@ -183,8 +168,8 @@ impl FileSystem for MinixFileSystem {
 		// First, the _size parameter (now in bytes_left) is the size of the buffer, not
 		// necessarily the size of the file. If our buffer is bigger than the file, we're OK.
 		// If our buffer is smaller than the file, then we can only read up to the buffer size.
-		let mut bytes_left = if size > stats.size {
-			stats.size
+		let mut bytes_left = if size > inode.size {
+			inode.size
 		}
 		else {
 			size
@@ -260,7 +245,15 @@ fn read_proc(args_addr: usize) {
 	                        size:     500,
 	                        pid:      args.pid, };
 
-	MinixFileSystem::read(&desc, args.buffer, args.offset, args.size);
+	let bytes = MinixFileSystem::read(&desc, args.buffer, args.offset, args.size);
+
+	// Let's write the return result into regs[10], which is A0.
+	let ptr = unsafe { get_by_pid(args.pid) };
+	if !ptr.is_null() {
+		unsafe {
+			(*(*ptr).get_frame()).regs[10] = bytes as usize;
+		}
+	}
 	set_running(args.pid);
 	tfree(args_ptr);
 }
