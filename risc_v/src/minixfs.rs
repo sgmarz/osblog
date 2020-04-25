@@ -167,7 +167,7 @@ impl FileSystem for MinixFileSystem {
 		let mut blocks_seen = 0u32;
 		let offset_block = offset / BLOCK_SIZE;
 		let mut offset_byte = offset % BLOCK_SIZE;
-
+		let num_indirect_pointers = BLOCK_SIZE as usize / 4;
 		let inode_result = Self::get_inode(desc, desc.node);
 		if inode_result.is_none() {
 			// The inode couldn't be read, for some reason.
@@ -238,7 +238,6 @@ impl FileSystem for MinixFileSystem {
 		if inode.zones[7] != 0 {
 			let mut indirect_buffer = BlockBuffer::new(BLOCK_SIZE);
 			syc_read(desc, indirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * inode.zones[7]);
-			let num_indirect_pointers = BLOCK_SIZE as usize / 4;
 			let izones = indirect_buffer.get() as *const u32;
 			for i in 0..num_indirect_pointers {
 				unsafe {
@@ -271,7 +270,6 @@ impl FileSystem for MinixFileSystem {
 			let mut indirect_buffer = BlockBuffer::new(BLOCK_SIZE);
 			let mut iindirect_buffer = BlockBuffer::new(BLOCK_SIZE);
 			syc_read(desc, indirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * inode.zones[8]);
-			let num_indirect_pointers = BLOCK_SIZE as usize / 4;
 			let izones = indirect_buffer.get() as *const u32;
 			let iizones = iindirect_buffer.get() as *const u32;
 			unsafe {
@@ -315,7 +313,6 @@ impl FileSystem for MinixFileSystem {
 			let mut iindirect_buffer = BlockBuffer::new(BLOCK_SIZE);
 			let mut iiindirect_buffer = BlockBuffer::new(BLOCK_SIZE);
 			syc_read(desc, indirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * inode.zones[9]);
-			let num_indirect_pointers = BLOCK_SIZE as usize / 4;
 			let izones = indirect_buffer.get() as *const u32;
 			let iizones = iindirect_buffer.get() as *const u32;
 			let iiizones = iiindirect_buffer.get() as *const u32;
