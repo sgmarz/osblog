@@ -122,7 +122,7 @@ impl MinixFileSystem {
 		// top portion of our buffer. Since we won't be using the super block and inode
 		// simultaneously, we can overlap the memory regions.
 		let super_block = unsafe { &*(buffer.get_mut() as *mut SuperBlock) };
-		let inode = unsafe { &*(buffer.get_mut() as *mut Inode) };
+		let inode = buffer.get_mut() as *mut Inode;
 		// Read from the block device. The size is 1 sector (512 bytes) and our offset is past
 		// the boot block (first 1024 bytes). This is where the superblock sits.
 		syc_read(desc, buffer.get_mut(), 512, 1024);
@@ -132,12 +132,22 @@ impl MinixFileSystem {
 			// have to skip the bitmaps blocks. We have a certain number of inode map blocks (imap)
 			// and zone map blocks (zmap).
 			// The inode comes to us as a NUMBER, not an index. So, we need to subtract 1.
-			let inode_offset = (2 + super_block.imap_blocks + super_block.zmap_blocks) as usize
-			                   * BLOCK_SIZE as usize + (inode_num as usize - 1) * size_of::<Inode>();
+			let inode_offset =
+				(2 + super_block.imap_blocks + super_block.zmap_blocks) as usize * BLOCK_SIZE as usize;
 
 			// Now, we read the inode itself.
+			// The block driver requires that our offset be a multiple of 512. We do that with the
+			// inode_offset. However, we're going to be reading a group of inodes.
 			syc_read(desc, buffer.get_mut(), 512, inode_offset as u32);
-			return Some(*inode);
+
+			// There are 512 / size_of<Inode>() inodes in each read that we can do. However, we
+			// need to figure out which inode in that group we need to read. We just take
+			// the % of this to find out.
+			let read_this_node = (inode_num as usize - 1) % (512 / size_of::<Inode>());
+
+			// We copy the inode over. This might not be the best thing since the Inode will
+			// eventually have to change after writing.
+			return unsafe { Some(*(inode.add(read_this_node))) };
 		}
 		// If we get here, some result wasn't OK. Either the super block
 		// or the inode itself.
@@ -174,9 +184,11 @@ impl FileSystem for MinixFileSystem {
 		else {
 			size
 		};
-		println!("Bytes left = {}", bytes_left);
 		let mut bytes_read = 0u32;
 		let mut block_buffer = BlockBuffer::new(BLOCK_SIZE);
+		// ////////////////////////////////////////////
+		// // DIRECT ZONES
+		// ////////////////////////////////////////////
 		// In Rust, our for loop automatically "declares" i from 0 to < 7. The syntax
 		// 0..7 means 0 through to 7 but not including 7. If we want to include 7, we
 		// would use the syntax 0..=7.
@@ -206,7 +218,6 @@ impl FileSystem for MinixFileSystem {
 				else {
 					BLOCK_SIZE - offset_byte
 				};
-				println!("Copy {} bytes", read_this_many);
 				unsafe {
 					memcpy(
 					       buffer.add(bytes_read as usize,),
@@ -220,9 +231,60 @@ impl FileSystem for MinixFileSystem {
 				if bytes_left == 0 {
 					return bytes_read;
 				}
+				println!("Bytes left = {}", bytes_left);
 			}
 			blocks_seen += 1;
 		}
+		// ////////////////////////////////////////////
+		// // SINGLY INDIRECT ZONES
+		// ////////////////////////////////////////////
+		// Each indirect zone is a list of pointers, each 4 bytes. These then
+		// point to zones where the data can be found.
+		if inode.zones[7] != 0 {
+			let mut indirect_buffer = BlockBuffer::new(BLOCK_SIZE);
+			syc_read(desc, indirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * inode.zones[7]);
+			let num_indirect_pointers = BLOCK_SIZE as usize / 4;
+			let izones = indirect_buffer.get() as *const u32;
+			for i in 0..num_indirect_pointers {
+				unsafe {
+					if izones.add(i).read() != 0 {
+						if offset_block <= blocks_seen {
+							syc_read(
+							         desc,
+							         block_buffer.get_mut(),
+							         BLOCK_SIZE,
+							         BLOCK_SIZE * izones.add(i,).read(),
+							);
+							let read_this_many = if BLOCK_SIZE - offset_byte > bytes_left {
+								bytes_left
+							}
+							else {
+								BLOCK_SIZE - offset_byte
+							};
+							memcpy(
+							       buffer.add(bytes_read as usize,),
+							       block_buffer.get().add(offset_byte as usize,),
+							       read_this_many as usize,
+							);
+							bytes_read += read_this_many;
+							bytes_left -= read_this_many;
+							println!("Bytes left = {}", bytes_left);
+							offset_byte = 0;
+							if bytes_left == 0 {
+								return bytes_read;
+							}
+						}
+						blocks_seen += 1;
+					}
+				}
+			}
+		}
+		// ////////////////////////////////////////////
+		// // DOUBLY INDIRECT ZONES
+		// ////////////////////////////////////////////
+		// ////////////////////////////////////////////
+		// // TRIPLY INDIRECT ZONES
+		// ////////////////////////////////////////////
 		bytes_read
 	}
 
