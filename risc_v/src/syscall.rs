@@ -98,8 +98,8 @@ pub fn syscall_fs_read(dev: usize, inode: u32, buffer: *mut u8, size: u32, offse
 	do_make_syscall(63, dev, inode as usize, buffer as usize, size as usize, offset as usize, 0)
 }
 
-pub fn syscall_block_read(dev: usize, buffer: *mut u8, size: u32, offset: u32) -> usize {
-	do_make_syscall(180, dev, buffer as usize, size as usize, offset as usize, 0, 0)
+pub fn syscall_block_read(dev: usize, buffer: *mut u8, size: u32, offset: u32) -> u8 {
+	do_make_syscall(180, dev, buffer as usize, size as usize, offset as usize, 0, 0) as u8
 }
 
 // These system call numbers come from libgloss so that we can use newlib

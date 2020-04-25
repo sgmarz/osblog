@@ -186,6 +186,7 @@ impl FileSystem for MinixFileSystem {
 		};
 		let mut bytes_read = 0u32;
 		let mut block_buffer = BlockBuffer::new(BLOCK_SIZE);
+
 		// ////////////////////////////////////////////
 		// // DIRECT ZONES
 		// ////////////////////////////////////////////
@@ -209,7 +210,6 @@ impl FileSystem for MinixFileSystem {
 					continue;
 				}
 				let zone_offset = zone_num * BLOCK_SIZE;
-				println!("Zone #{} -> #{} -> {}", i, zone_num, zone_offset);
 				syc_read(desc, block_buffer.get_mut(), BLOCK_SIZE, zone_offset);
 
 				let read_this_many = if BLOCK_SIZE - offset_byte > bytes_left {
@@ -231,7 +231,6 @@ impl FileSystem for MinixFileSystem {
 				if bytes_left == 0 {
 					return bytes_read;
 				}
-				println!("Bytes left = {}", bytes_left);
 			}
 			blocks_seen += 1;
 		}
@@ -239,7 +238,8 @@ impl FileSystem for MinixFileSystem {
 		// // SINGLY INDIRECT ZONES
 		// ////////////////////////////////////////////
 		// Each indirect zone is a list of pointers, each 4 bytes. These then
-		// point to zones where the data can be found.
+		// point to zones where the data can be found. Just like with the direct zones,
+		// we need to make sure the zone isn't 0. A zone of 0 means skip it.
 		if inode.zones[7] != 0 {
 			let mut indirect_buffer = BlockBuffer::new(BLOCK_SIZE);
 			syc_read(desc, indirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * inode.zones[7]);
@@ -268,7 +268,6 @@ impl FileSystem for MinixFileSystem {
 							);
 							bytes_read += read_this_many;
 							bytes_left -= read_this_many;
-							println!("Bytes left = {}", bytes_left);
 							offset_byte = 0;
 							if bytes_left == 0 {
 								return bytes_read;
@@ -305,8 +304,8 @@ impl FileSystem for MinixFileSystem {
 	}
 }
 
-pub fn syc_read(desc: &Descriptor, buffer: *mut u8, size: u32, offset: u32) {
-	syscall_block_read(desc.blockdev, buffer, size, offset);
+pub fn syc_read(desc: &Descriptor, buffer: *mut u8, size: u32, offset: u32) -> u8 {
+	syscall_block_read(desc.blockdev, buffer, size, offset)
 }
 
 struct ProcArgs {
