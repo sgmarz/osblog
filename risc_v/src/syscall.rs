@@ -4,7 +4,7 @@
 // 3 Jan 2020
 
 use crate::{block::block_op,
-            cpu::TrapFrame,
+            cpu::{TrapFrame, dump_registers},
             minixfs,
             page::{virt_to_phys, Table},
             process::{delete_process, get_by_pid, set_sleeping, set_waiting}};
@@ -30,7 +30,7 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			0
 		},
 		1 => {
-			println!("Test syscall");
+			dump_registers(frame);
 			mepc + 4
 		},
 		2 => {

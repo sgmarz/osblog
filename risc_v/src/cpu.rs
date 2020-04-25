@@ -258,3 +258,15 @@ pub unsafe fn memcpy(dest: *mut u8, src: *const u8, bytes: usize) {
 	}
 }
 
+pub fn dump_registers(frame: *const TrapFrame) {
+	print!("   ");
+	for i in 1..32 {
+		if i % 4 == 0 {
+			println!();
+			print!("   ");
+		}
+		print!("{:2}:{:08x}   ", i, unsafe { (*frame).regs[i] });
+	}
+	println!();
+}
+
