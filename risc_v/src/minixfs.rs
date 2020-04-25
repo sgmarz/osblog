@@ -196,7 +196,9 @@ impl FileSystem for MinixFileSystem {
 			// There are 7 direct zones in the Minix 3 file system. So, we can just read them
 			// one by one. Any zone that has the value 0 is skipped and we check the next
 			// zones. This might happen as we start writing and truncating.
-
+			if inode.zones[i] == 0 {
+				continue;
+			}
 			// We really use this to keep track of when we need to actually start reading
 			// But an if statement probably takes more time than just incrementing it.
 			if offset_block <= blocks_seen {
@@ -204,11 +206,7 @@ impl FileSystem for MinixFileSystem {
 				// We need to go to the direct pointer's index. That'll give us a block INDEX.
 				// That makes it easy since all we have to do is multiply the block size
 				// by whatever we get. If it's 0, we skip it and move on.
-				let zone_num = inode.zones[i];
-				if zone_num == 0 {
-					continue;
-				}
-				let zone_offset = zone_num * BLOCK_SIZE;
+				let zone_offset = inode.zones[i] * BLOCK_SIZE;
 				syc_read(desc, block_buffer.get_mut(), BLOCK_SIZE, zone_offset);
 
 				let read_this_many = if BLOCK_SIZE - offset_byte > bytes_left {
