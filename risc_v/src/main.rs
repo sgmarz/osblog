@@ -4,7 +4,6 @@
 #![no_main]
 #![no_std]
 #![feature(panic_info_message,
-		   llvm_asm,
 		   asm,
 		   global_asm,
            allocator_api,
@@ -124,6 +123,10 @@ extern "C" {
 	fn switch_to_user(frame: usize) -> !;
 }
 
+/// Switch to user is an assembly function that loads
+/// a frame. Since it will jump to another program counter,
+/// it will never return back here. We don't care if we leak
+/// the stack, since we will recapture the stack during m_trap.
 fn rust_switch_to_user(frame: usize) -> ! {
 	unsafe {
 		switch_to_user(frame);

@@ -6,19 +6,22 @@
 use crate::{block::block_op,
             cpu::TrapFrame,
             minixfs,
-            process::{delete_process, set_sleeping, set_waiting}};
+            page::{virt_to_phys, Table},
+            process::{delete_process, get_by_pid, set_sleeping, set_waiting}};
 
-pub fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
+/// do_syscall is called from trap.rs to invoke a system call. No discernment is
+/// made here whether this is a U-mode, S-mode, or M-mode system call.
+/// Since we can't do anything unless we dereference the passed pointer,
+/// I went ahead and made the entire function unsafe.
+pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 	let syscall_number;
-	unsafe {
-		// Libgloss expects the system call number in A7, so let's follow
-		// their lead.
-		// A7 is X17, so it's register number 17.
-		syscall_number = (*frame).regs[17];
-	}
+	// Libgloss expects the system call number in A7, so let's follow
+	// their lead.
+	// A7 is X17, so it's register number 17.
+	syscall_number = (*frame).regs[17];
 
 	match syscall_number {
-		0 | 93 => unsafe {
+		0 | 93 =>  {
 			// Exit
 			// Currently, we cannot kill a process, it runs forever. We will delete
 			// the process later and free the resources, but for now, we want to get
@@ -30,30 +33,48 @@ pub fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			println!("Test syscall");
 			mepc + 4
 		},
-		2 => unsafe {
+		2 => {
 			// Sleep
 			set_sleeping((*frame).pid as u16, (*frame).regs[10]);
 			0
 		},
-		63 => unsafe {
+		63 => {
 			// Read system call
 			// This is an asynchronous call. This will get the process going. We won't hear the answer until
 			// we an interrupt back.
 			// TODO: The buffer is a virtual memory address that needs to be translated to a physical memory
 			// location.
 			// This needs to be put into a process and ran.
+			// The buffer (regs[12]) needs to be translated when ran from a user process using virt_to_phys.
+			// If this turns out to be a page fault, we need to NOT proceed with the read!
+			let mut physical_buffer = (*frame).regs[12];
+			// If the MMU is turned on, we have to translate the address. Eventually, I will put this
+			// code into a convenient function, but for now, it will show how translation will be done.
+			if (*frame).satp != 0 {
+				let p = get_by_pid((*frame).pid as u16);
+				let table = ((*p).get_table_address() as *mut Table).as_ref().unwrap();
+				let paddr = virt_to_phys(table, (*frame).regs[12]);
+				if paddr.is_none() {
+					(*frame).regs[10] = -1isize as usize;
+					return mepc + 4;
+				}
+				physical_buffer = paddr.unwrap();
+			}
+			// TODO: Not only do we need to check the buffer, but it is possible that the buffer spans
+			// multiple pages. We need to check all pages that this might span. We can't just do paddr
+			// and paddr + size, since there could be a missing page somewhere in between.
 			let _ = minixfs::process_read(
-			                     (*frame).pid as u16,
-								 (*frame).regs[10] as usize,
-								 (*frame).regs[11] as u32,
-			                     (*frame).regs[12] as *mut u8,
-                                 (*frame).regs[13] as u32,
-                                 (*frame).regs[14] as u32
-                                );
+			                              (*frame).pid as u16,
+			                              (*frame).regs[10] as usize,
+			                              (*frame).regs[11] as u32,
+			                              physical_buffer as *mut u8,
+			                              (*frame).regs[13] as u32,
+			                              (*frame).regs[14] as u32,
+			);
 			// If we return 0, the trap handler will schedule another process.
 			0
 		},
-		180 => unsafe {
+		180 => {
 			// println!(
 			//          "Pid: {}, Dev: {}, Buffer: 0x{:x}, Size: {}, Offset: {}",
 			//          (*frame).pid,
@@ -63,14 +84,7 @@ pub fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			//          (*frame).regs[13]
 			// );
 			set_waiting((*frame).pid as u16);
-            let _ = block_op((*frame).regs[10],
-                            (*frame).regs[11] as *mut u8,
-                            (*frame).regs[12] as u32,
-                            (*frame).regs[13] as u64,
-                            false,
-                            (*frame).pid as u16
-
-                );
+			let _ = block_op((*frame).regs[10], (*frame).regs[11] as *mut u8, (*frame).regs[12] as u32, (*frame).regs[13] as u64, false, (*frame).pid as u16);
 			0
 		},
 		_ => {
@@ -81,17 +95,15 @@ pub fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 }
 
 extern "C" {
-    fn make_syscall(sysno: usize, arg0: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize, arg5: usize) -> usize;
+	fn make_syscall(sysno: usize, arg0: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize, arg5: usize) -> usize;
 }
 
 fn do_make_syscall(sysno: usize, arg0: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize, arg5: usize) -> usize {
-    unsafe {
-        make_syscall(sysno, arg0, arg1, arg2, arg3, arg4, arg5)
-    }
+	unsafe { make_syscall(sysno, arg0, arg1, arg2, arg3, arg4, arg5) }
 }
 
 pub fn syscall_exit() {
-    let _ = do_make_syscall(93, 0, 0, 0, 0, 0, 0);
+	let _ = do_make_syscall(93, 0, 0, 0, 0, 0, 0);
 }
 
 pub fn syscall_fs_read(dev: usize, inode: u32, buffer: *mut u8, size: u32, offset: u32) -> usize {

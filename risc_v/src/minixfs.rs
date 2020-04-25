@@ -184,6 +184,10 @@ impl FileSystem for MinixFileSystem {
 			size
 		};
 		let mut bytes_read = 0u32;
+		// The block buffer automatically drops when we quit early due to an error or we've read enough.
+		// This will be the holding port when we go out and read a block. Recall that even if we want
+		// 10 bytes, we have to read the entire block (really only 512 bytes of the block) first.
+		// So, we use the block_buffer as the middle man, which is then copied into the buffer.
 		let mut block_buffer = BlockBuffer::new(BLOCK_SIZE);
 
 		// ////////////////////////////////////////////
@@ -207,24 +211,39 @@ impl FileSystem for MinixFileSystem {
 				// That makes it easy since all we have to do is multiply the block size
 				// by whatever we get. If it's 0, we skip it and move on.
 				let zone_offset = inode.zones[i] * BLOCK_SIZE;
+				// We read the zone, which is where the data is located. The zone offset is simply the block
+				// size times the zone number. This makes it really easy to read!
 				syc_read(desc, block_buffer.get_mut(), BLOCK_SIZE, zone_offset);
 
+				// There's a little bit of math to see how much we need to read. We don't want to read
+				// more than the buffer passed in can handle, and we don't want to read if we haven't
+				// taken care of the offset. For example, an offset of 10000 with a size of 2 means we
+				// can only read bytes 10,000 and 10,001.
 				let read_this_many = if BLOCK_SIZE - offset_byte > bytes_left {
 					bytes_left
 				}
 				else {
 					BLOCK_SIZE - offset_byte
 				};
+				// Once again, here we actually copy the bytes into the final destination, the buffer. This memcpy
+				// is written in cpu.rs.
 				unsafe {
 					memcpy(buffer.add(bytes_read as usize), block_buffer.get().add(offset_byte as usize), read_this_many as usize);
 				}
+				// Regardless of whether we have an offset or not, we reset the offset byte back to 0. This
+				// probably will get set to 0 many times, but who cares?
 				offset_byte = 0;
+				// Reset the statistics to see how many bytes we've read versus how many are left.
 				bytes_read += read_this_many;
 				bytes_left -= read_this_many;
+				// If no more bytes are left, then we're done.
 				if bytes_left == 0 {
 					return bytes_read;
 				}
 			}
+			// The blocks_seen is for the offset. We need to skip a certain number of blocks FIRST before getting
+			// to the offset. The reason we need to read the zones is because we need to skip zones of 0, and they
+			// do not contribute as a "seen" block.
 			blocks_seen += 1;
 		}
 		// ////////////////////////////////////////////
@@ -238,6 +257,7 @@ impl FileSystem for MinixFileSystem {
 			syc_read(desc, indirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * inode.zones[7]);
 			let izones = indirect_buffer.get() as *const u32;
 			for i in 0..num_indirect_pointers {
+				// Where do I put unsafe? Dereferencing the pointers and memcpy are the unsafe functions.
 				unsafe {
 					if izones.add(i).read() != 0 {
 						if offset_block <= blocks_seen {
@@ -352,6 +372,8 @@ impl FileSystem for MinixFileSystem {
 				}
 			}
 		}
+		// Anyone else love this stairstep style? I probably should put the pointers in a function by themselves,
+		// but I think that'll make it more difficult to see what's actually happening.
 
 		bytes_read
 	}
@@ -373,10 +395,16 @@ impl FileSystem for MinixFileSystem {
 	}
 }
 
-pub fn syc_read(desc: &Descriptor, buffer: *mut u8, size: u32, offset: u32) -> u8 {
+/// This is a wrapper function around the syscall_block_read. This allows me to do
+/// other things before I call the system call (or after). However, all the things I
+/// wanted to do are no longer there, so this is a worthless function.
+fn syc_read(desc: &Descriptor, buffer: *mut u8, size: u32, offset: u32) -> u8 {
 	syscall_block_read(desc.blockdev, buffer, size, offset)
 }
 
+// We have to start a process when reading from a file since the block
+// device will block. We only want to block in a process context, not an
+// interrupt context.
 struct ProcArgs {
 	pub pid:    u16,
 	pub dev:    usize,
@@ -386,29 +414,42 @@ struct ProcArgs {
 	pub node:   u32,
 }
 
+// This is the actual code ran inside of the read process.
 fn read_proc(args_addr: usize) {
 	let args_ptr = args_addr as *mut ProcArgs;
 	let args = unsafe { args_ptr.as_ref().unwrap() };
 
+	// The descriptor will come from the user after an open() call. However,
+	// for now, all we really care about is args.dev, args.node, and args.pid.
 	let desc = Descriptor { blockdev: args.dev,
 	                        node:     args.node,
 	                        loc:      0,
 	                        size:     500,
 	                        pid:      args.pid, };
 
+	// Start the read! Since we're in a kernel process, we can block by putting this
+	// process into a waiting state and wait until the block driver returns.
 	let bytes = MinixFileSystem::read(&desc, args.buffer, args.size, args.offset);
 
 	// Let's write the return result into regs[10], which is A0.
-	let ptr = unsafe { get_by_pid(args.pid) };
-	if !ptr.is_null() {
-		unsafe {
+	unsafe {
+		let ptr = get_by_pid(args.pid);
+		if !ptr.is_null() {
 			(*(*ptr).get_frame()).regs[10] = bytes as usize;
 		}
 	}
+	// This is the process making the system call. The system itself spawns another process
+	// which goes out to the block device. Since we're passed the read call, we need to awaken
+	// the process and get it ready to go. The only thing this process needs to clean up is the
+	// tfree(), but the user process doesn't care about that.
 	set_running(args.pid);
+
+	// tfree() is used to free a pointer created by talloc.
 	tfree(args_ptr);
 }
 
+/// System calls will call process_read, which will spawn off a kernel process to read
+/// the requested data.
 pub fn process_read(pid: u16, dev: usize, node: u32, buffer: *mut u8, size: u32, offset: u32) {
 	// println!("FS read {}, {}, 0x{:x}, {}, {}", pid, dev, buffer as usize, size, offset);
 	let args = talloc::<ProcArgs>().unwrap();
