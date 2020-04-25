@@ -11,14 +11,10 @@ use crate::{block::block_op,
 pub fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 	let syscall_number;
 	unsafe {
+		// Libgloss expects the system call number in A7, so let's follow
+		// their lead.
 		// A7 is X17, so it's register number 17.
 		syscall_number = (*frame).regs[17];
-		// for i in 0..32 {
-		//     print!("regs[{:02}] = 0x{:08x}    ", i, (*frame).regs[i]);
-		//     if (i+1) % 4 == 0 {
-		//         println!();
-		//     }
-		// }
 	}
 
 	match syscall_number {

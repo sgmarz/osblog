@@ -5,6 +5,7 @@
 
 use crate::{cpu::{TrapFrame, CONTEXT_SWITCH_TIME},
             plic,
+            process::delete_process,
             rust_switch_to_user,
             sched::schedule,
             syscall::do_syscall};
@@ -86,14 +87,14 @@ extern "C" fn m_trap(epc: usize,
 	else {
 		// Synchronous trap
 		match cause_num {
-			2 => {
+			2 => unsafe {
 				// Illegal instruction
-				panic!("Illegal instruction CPU#{} -> 0x{:08x}: 0x{:08x}\n", hart, epc, tval);
+				// panic!("Illegal instruction CPU#{} -> 0x{:08x}: 0x{:08x}\n", hart, epc, tval);
 				// We need while trues here until we have a functioning "delete from scheduler"
 				// I use while true because Rust will warn us that it looks stupid.
 				// This is what I want so that I remember to remove this and replace
 				// them later.
-				loop {}
+				delete_process((*frame).pid as u16);
 			},
 			8 | 9 | 11 => unsafe {
 				// Environment (system) call from User, Supervisor, and Machine modes
@@ -124,29 +125,35 @@ extern "C" fn m_trap(epc: usize,
 				}
 			},
 			// Page faults
-			12 => {
+			12 => unsafe {
 				// Instruction page fault
 				println!("Instruction page fault CPU#{} -> 0x{:08x}: 0x{:08x}", hart, epc, tval);
-				// We need while trues here until we have a functioning "delete from scheduler"
-				loop {}
-				return_pc += 4;
+				delete_process((*frame).pid as u16);
+				let frame = schedule();
+				schedule_next_context_switch(1);
+				rust_switch_to_user(frame);
 			},
-			13 => {
+			13 => unsafe {
 				// Load page fault
 				println!("Load page fault CPU#{} -> 0x{:08x}: 0x{:08x}", hart, epc, tval);
-				// We need while trues here until we have a functioning "delete from scheduler"
-				loop {}
-				return_pc += 4;
+				delete_process((*frame).pid as u16);
+				let frame = schedule();
+				schedule_next_context_switch(1);
+				rust_switch_to_user(frame);
 			},
-			15 => {
+			15 => unsafe {
 				// Store page fault
 				println!("Store page fault CPU#{} -> 0x{:08x}: 0x{:08x}", hart, epc, tval);
-				// We need while trues here until we have a functioning "delete from scheduler"
-				loop {}
-				return_pc += 4;
+				delete_process((*frame).pid as u16);
+				let frame = schedule();
+				schedule_next_context_switch(1);
+				rust_switch_to_user(frame);
 			},
 			_ => {
-				panic!("Unhandled sync trap {}. CPU#{} -> 0x{:08x}: 0x{:08x}\n", cause_num, hart, epc, tval);
+				panic!(
+				       "Unhandled sync trap {}. CPU#{} -> 0x{:08x}: 0x{:08x}\n",
+				       cause_num, hart, epc, tval
+				);
 			},
 		}
 	};
