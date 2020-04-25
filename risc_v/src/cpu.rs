@@ -242,5 +242,19 @@ pub fn get_mtime() -> usize {
 	}
 }
 
+/// Copy one data from one memory location to another.
+pub unsafe fn memcpy(dest: *mut u8, src: *const u8, bytes: usize) {
+	let bytes_as_8 = bytes / 8;
+	let bytes_as_1 = bytes % 8;
+	let dest_as_8 = dest as *mut u64;
+	let src_as_8 = src as *const u64;
 
+	for i in 0..bytes_as_8 {
+		*(dest_as_8.add(i)) = *(src_as_8.add(i));
+	}
+	let bytes_remaining = bytes_as_8 * 8;
+	for i in bytes_remaining..bytes_remaining+bytes_as_1 {
+		*(dest.add(i)) = *(src.add(i));
+	}
+}
 

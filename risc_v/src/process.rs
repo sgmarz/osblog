@@ -4,8 +4,8 @@
 // 27 Nov 2019
 
 use crate::{cpu::{build_satp, get_mtime, satp_fence_asid, CpuMode, SatpMode, TrapFrame},
-			page::{alloc, dealloc, map, unmap, zalloc, EntryBits, Table, PAGE_SIZE}};
-use crate::syscall::syscall_exit;
+            page::{alloc, dealloc, map, unmap, zalloc, EntryBits, Table, PAGE_SIZE},
+            syscall::syscall_exit};
 use alloc::collections::vec_deque::VecDeque;
 use core::ptr::null_mut;
 
@@ -152,15 +152,13 @@ fn init_process() {
 	// We can't do much here until we have system calls because
 	// we're running in User space.
 	loop {
-		// Eventually, this will be a sleep system call.
-		unsafe {
-			extern "C" {
-				fn make_syscall(sysno: usize, duration: usize) -> usize;
-			}
-			println!("Init is still here :), alright, back to sleep.");
-			for _ in 0..500 {
-				llvm_asm!("wfi");
-			}
+		// Alright, I forgot. We cannot put init to sleep since the
+		// scheduler will loop until it finds a process to run. Since
+		// the scheduler is called in an interrupt context, nothing else
+		// can happen until a process becomes available.
+		println!("Init is still here :), alright, back to sleep.");
+		for _ in 0..500 {
+			unsafe { asm!("wfi") };
 		}
 	}
 }
@@ -213,8 +211,8 @@ pub fn add_kernel_process(func: fn()) -> u16 {
 			    // println!("func_addr = {:x} -> {:x}", func_addr, func_vaddr);
 			    // We will convert NEXT_PID below into an atomic increment when
 			    // we start getting into multi-hart processing. For now, we want
-				// a process. Get it to work, then improve it!
-		let my_pid = unsafe {NEXT_PID};
+			    // a process. Get it to work, then improve it!
+		let my_pid = unsafe { NEXT_PID };
 		let mut ret_proc = Process { frame:       zalloc(1) as *mut TrapFrame,
 		                             stack:       zalloc(STACK_PAGES),
 		                             pid:         my_pid,
@@ -246,7 +244,9 @@ pub fn add_kernel_process(func: fn()) -> u16 {
 		// Now, we no longer need the owned Deque, so we hand it
 		// back by replacing the PROCESS_LIST's None with the
 		// Some(pl).
-		unsafe { PROCESS_LIST.replace(pl); }
+		unsafe {
+			PROCESS_LIST.replace(pl);
+		}
 		my_pid
 	}
 	else {
@@ -258,6 +258,11 @@ pub fn add_kernel_process(func: fn()) -> u16 {
 	}
 }
 
+/// A kernel process is just a function inside of the kernel. Each
+/// function will perform a "ret" or return through the return address
+/// (ra) register. This function address is what it will return to, which
+/// in turn calls exit. If we don't exit, the process will most likely
+/// fault.
 fn ra_delete_proc() {
 	syscall_exit();
 }
@@ -282,8 +287,8 @@ pub fn add_kernel_process_args(func: fn(args_ptr: usize), args: usize) -> u16 {
 			    // println!("func_addr = {:x} -> {:x}", func_addr, func_vaddr);
 			    // We will convert NEXT_PID below into an atomic increment when
 			    // we start getting into multi-hart processing. For now, we want
-				// a process. Get it to work, then improve it!
-		let my_pid = unsafe {NEXT_PID};
+			    // a process. Get it to work, then improve it!
+		let my_pid = unsafe { NEXT_PID };
 		let mut ret_proc = Process { frame:       zalloc(1) as *mut TrapFrame,
 		                             stack:       zalloc(STACK_PAGES),
 		                             pid:         my_pid,
@@ -316,7 +321,9 @@ pub fn add_kernel_process_args(func: fn(args_ptr: usize), args: usize) -> u16 {
 		// Now, we no longer need the owned Deque, so we hand it
 		// back by replacing the PROCESS_LIST's None with the
 		// Some(pl).
-		unsafe { PROCESS_LIST.replace(pl); }
+		unsafe {
+			PROCESS_LIST.replace(pl);
+		}
 		my_pid
 	}
 	else {
@@ -327,7 +334,6 @@ pub fn add_kernel_process_args(func: fn(args_ptr: usize), args: usize) -> u16 {
 		0
 	}
 }
-
 
 /// This should only be called once, and its job is to create
 /// the init process. Right now, this process is in the kernel,
@@ -360,7 +366,6 @@ pub fn init() -> usize {
 // Waiting - means that the process is waiting on I/O
 // Dead - We should never get here, but we can flag a process as Dead and clean
 //        it out of the list later.
-#[repr(u8)]
 pub enum ProcessState {
 	Running,
 	Sleeping,
@@ -368,12 +373,6 @@ pub enum ProcessState {
 	Dead,
 }
 
-// Let's represent this in C ABI. We do this
-// because we need to access some of the fields
-// in assembly. Rust gets to choose how it orders
-// the fields unless we represent the structure in
-// C-style ABI.
-#[repr(C)]
 pub struct Process {
 	frame:       *mut TrapFrame,
 	stack:       *mut u8,
