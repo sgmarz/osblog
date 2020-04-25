@@ -228,7 +228,11 @@ impl FileSystem for MinixFileSystem {
 				// Once again, here we actually copy the bytes into the final destination, the buffer. This memcpy
 				// is written in cpu.rs.
 				unsafe {
-					memcpy(buffer.add(bytes_read as usize), block_buffer.get().add(offset_byte as usize), read_this_many as usize);
+					memcpy(
+					       buffer.add(bytes_read as usize,),
+					       block_buffer.get().add(offset_byte as usize,),
+					       read_this_many as usize,
+					);
 				}
 				// Regardless of whether we have an offset or not, we reset the offset byte back to 0. This
 				// probably will get set to 0 many times, but who cares?
@@ -261,14 +265,23 @@ impl FileSystem for MinixFileSystem {
 				unsafe {
 					if izones.add(i).read() != 0 {
 						if offset_block <= blocks_seen {
-							syc_read(desc, block_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * izones.add(i).read());
+							syc_read(
+							         desc,
+							         block_buffer.get_mut(),
+							         BLOCK_SIZE,
+							         BLOCK_SIZE * izones.add(i,).read(),
+							);
 							let read_this_many = if BLOCK_SIZE - offset_byte > bytes_left {
 								bytes_left
 							}
 							else {
 								BLOCK_SIZE - offset_byte
 							};
-							memcpy(buffer.add(bytes_read as usize), block_buffer.get().add(offset_byte as usize), read_this_many as usize);
+							memcpy(
+							       buffer.add(bytes_read as usize,),
+							       block_buffer.get().add(offset_byte as usize,),
+							       read_this_many as usize,
+							);
 							bytes_read += read_this_many;
 							bytes_left -= read_this_many;
 							offset_byte = 0;
@@ -297,7 +310,12 @@ impl FileSystem for MinixFileSystem {
 						for j in 0..num_indirect_pointers {
 							if iizones.add(j).read() != 0 {
 								if offset_block <= blocks_seen {
-									syc_read(desc, block_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * iizones.add(j).read());
+									syc_read(
+									         desc,
+									         block_buffer.get_mut(),
+									         BLOCK_SIZE,
+									         BLOCK_SIZE * iizones.add(j,).read(),
+									);
 									let read_this_many = if BLOCK_SIZE - offset_byte > bytes_left {
 										bytes_left
 									}
@@ -340,20 +358,32 @@ impl FileSystem for MinixFileSystem {
 						syc_read(desc, iindirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * izones.add(i).read());
 						for j in 0..num_indirect_pointers {
 							if iizones.add(j).read() != 0 {
-								syc_read(desc, iiindirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * iizones.add(j).read());
+								syc_read(
+								         desc,
+								         iiindirect_buffer.get_mut(),
+								         BLOCK_SIZE,
+								         BLOCK_SIZE * iizones.add(j,).read(),
+								);
 								for k in 0..num_indirect_pointers {
 									if iiizones.add(k).read() != 0 {
 										if offset_block <= blocks_seen {
-											syc_read(desc, block_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * iiizones.add(k).read());
-											let read_this_many = if BLOCK_SIZE - offset_byte > bytes_left {
-												bytes_left
-											}
-											else {
-												BLOCK_SIZE - offset_byte
-											};
+											syc_read(
+											         desc,
+											         block_buffer.get_mut(),
+											         BLOCK_SIZE,
+											         BLOCK_SIZE * iiizones.add(k,).read(),
+											);
+											let read_this_many =
+												if BLOCK_SIZE - offset_byte > bytes_left {
+													bytes_left
+												}
+												else {
+													BLOCK_SIZE - offset_byte
+												};
 											memcpy(
 											       buffer.add(bytes_read as usize,),
-											       block_buffer.get().add(offset_byte as usize,),
+											       block_buffer.get()
+											                   .add(offset_byte as usize,),
 											       read_this_many as usize,
 											);
 											bytes_read += read_this_many;

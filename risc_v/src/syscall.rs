@@ -4,7 +4,7 @@
 // 3 Jan 2020
 
 use crate::{block::block_op,
-            cpu::{TrapFrame, dump_registers},
+            cpu::{dump_registers, TrapFrame},
             minixfs,
             page::{virt_to_phys, Table},
             process::{delete_process, get_by_pid, set_sleeping, set_waiting}};
@@ -13,15 +13,16 @@ use crate::{block::block_op,
 /// made here whether this is a U-mode, S-mode, or M-mode system call.
 /// Since we can't do anything unless we dereference the passed pointer,
 /// I went ahead and made the entire function unsafe.
+/// If we return 0 from this function, the m_trap function will schedule
+/// the next process--consider this a yield. A non-0 is the program counter
+/// we want to go back to.
 pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
-	let syscall_number;
 	// Libgloss expects the system call number in A7, so let's follow
 	// their lead.
 	// A7 is X17, so it's register number 17.
-	syscall_number = (*frame).regs[17];
-
+	let syscall_number = (*frame).regs[17];
 	match syscall_number {
-		0 | 93 =>  {
+		0 | 93 => {
 			// Exit
 			// Currently, we cannot kill a process, it runs forever. We will delete
 			// the process later and free the resources, but for now, we want to get
@@ -84,7 +85,14 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			//          (*frame).regs[13]
 			// );
 			set_waiting((*frame).pid as u16);
-			let _ = block_op((*frame).regs[10], (*frame).regs[11] as *mut u8, (*frame).regs[12] as u32, (*frame).regs[13] as u64, false, (*frame).pid as u16);
+			let _ = block_op(
+			                 (*frame).regs[10],
+			                 (*frame).regs[11] as *mut u8,
+			                 (*frame).regs[12] as u32,
+			                 (*frame).regs[13] as u64,
+			                 false,
+			                 (*frame).pid as u16,
+			);
 			0
 		},
 		_ => {
