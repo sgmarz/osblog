@@ -236,7 +236,8 @@ impl FileSystem for MinixFileSystem {
 	}
 }
 
-pub fn syc_read(desc: &Descriptor, buffer: *mut u8, size: u32, offset: u32) {
+/// This is just a wrapper to pass the descriptor over.
+fn syc_read(desc: &Descriptor, buffer: *mut u8, size: u32, offset: u32) {
 	syscall_block_read(desc.blockdev, buffer, size, offset);
 }
 
