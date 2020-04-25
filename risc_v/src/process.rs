@@ -405,7 +405,11 @@ impl Process {
 		self.frame as usize
 	}
 
-	pub fn get_frame(&mut self) -> *mut TrapFrame {
+	pub fn get_frame_mut(&mut self) -> *mut TrapFrame {
+		self.frame
+	}
+
+	pub fn get_frame(&self) -> *const TrapFrame {
 		self.frame
 	}
 
@@ -440,10 +444,10 @@ impl Process {
 	pub fn new_default(func: fn()) -> Self {
 		let func_addr = func as usize;
 		let func_vaddr = func_addr;
-			    // println!("func_addr = {:x} -> {:x}", func_addr, func_vaddr);
-			    // We will convert NEXT_PID below into an atomic increment when
-			    // we start getting into multi-hart processing. For now, we want
-			    // a process. Get it to work, then improve it!
+		// println!("func_addr = {:x} -> {:x}", func_addr, func_vaddr);
+		// We will convert NEXT_PID below into an atomic increment when
+		// we start getting into multi-hart processing. For now, we want
+		// a process. Get it to work, then improve it!
 		let mut ret_proc = Process { frame:       zalloc(1) as *mut TrapFrame,
 		                             stack:       alloc(STACK_PAGES),
 		                             pid:         unsafe { NEXT_PID },
@@ -474,8 +478,7 @@ impl Process {
 		let pt;
 		unsafe {
 			pt = &mut *ret_proc.root;
-			(*ret_proc.frame).satp =
-				build_satp(SatpMode::Sv39, ret_proc.pid as usize, ret_proc.root as usize);
+			(*ret_proc.frame).satp = build_satp(SatpMode::Sv39, ret_proc.pid as usize, ret_proc.root as usize);
 		}
 		// We need to map the stack onto the user process' virtual
 		// memory This gets a little hairy because we need to also map
