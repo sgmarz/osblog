@@ -3,6 +3,7 @@
 // Stephen Marz
 // 16 March 2020
 
+#![allow(dead_code)]
 use crate::{kmem::{kfree, kmalloc},
             page::{zalloc, PAGE_SIZE},
             virtio,
