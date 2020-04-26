@@ -32,6 +32,8 @@ pub fn schedule() -> usize {
 							// the past.
 							if prc.get_sleep_until() <= get_mtime() {
 								prc.set_state(ProcessState::Running);
+								frame_addr = prc.get_frame_address();
+								break 'procfindloop;
 							}
 						},
 						_ => {},
