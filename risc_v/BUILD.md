@@ -17,3 +17,10 @@ Release builds turn on the optimizer and make it run much quicker. To run releas
 * cargo build --release
 * cargo run --release
 
+# HARD DRIVE FILE
+
+To run this as I have it configured, you'll need a hard drive file called hdd.dsk in this directory. You can create an empty
+one by typing the following.
+
+* fallocate -l 32M hdd.dsk
+

@@ -187,8 +187,8 @@ pub fn test_elf() {
 	// 65534 processes.
 	satp_fence_asid(my_pid as usize);
 	// I took a different tact here than in process.rs. In there I created
-	// the process while holding onto the process list. It doesn't really
-	// matter since this is synchronous, but it might get dicey
+	// the process while holding onto the process list. It might
+	// matter since this is asynchronous--it is being ran as a kernel process.
 	if let Some(mut pl) = unsafe { PROCESS_LIST.take() } {
 		// As soon as we push this process on the list, it'll be
 		// schedule-able.
@@ -205,7 +205,7 @@ pub fn test_elf() {
 		println!("Unable to spawn process.");
 		// Since my_proc couldn't enter the process list, it
 		// will be dropped and all of the associated allocations
-		// will be deallocated.
+		// will be deallocated through the process' Drop trait.
 	}
 	println!();
 }
