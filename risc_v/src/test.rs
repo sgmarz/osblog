@@ -76,6 +76,7 @@ pub fn test_block() {
 				);
 		}
 		if let Some(mut pl) = unsafe { PROCESS_LIST.take() } {
+			println!("Added user process to the scheduler...get ready for take-off!");
 			pl.push_back(my_proc);
 			unsafe {
 				PROCESS_LIST.replace(pl);
