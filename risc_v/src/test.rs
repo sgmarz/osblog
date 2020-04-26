@@ -25,7 +25,7 @@ pub fn test_elf() {
 	// interrupt context right now, so we cannot pause. Usually, this would
 	// be done by an exec system call.
 	let files_inode = 25u32;
-	let files_size = 14304;
+	let files_size = 14440;
 	let bytes_to_read = 1024 * 50;
 	let mut buffer = BlockBuffer::new(bytes_to_read);
 	// Read the file from the disk. I got the inode by mounting
@@ -137,10 +137,14 @@ pub fn test_elf() {
 			// is provided in the ELF program header.
 			let pages = (ph.memsz + PAGE_SIZE) / PAGE_SIZE;
 			for i in 0..pages {
+				// Align the offset to the nearest page for mapping.
+				// We might not need to do this, but not doing this could leak
+				// a different section into the virtual address space of another.
+				let off = (ph.off + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
 				let vaddr = ph.vaddr + i * PAGE_SIZE;
 				// The ELF specifies a paddr, but not when we
 				// use the vaddr!
-				let paddr = program_mem as usize + i * PAGE_SIZE;
+				let paddr = program_mem as usize + off + i * PAGE_SIZE;
 				map(table, vaddr, paddr, bits, 0);
 			}
 		}

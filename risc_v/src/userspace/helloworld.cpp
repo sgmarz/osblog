@@ -1,9 +1,10 @@
 #include <printf.h>
 #include <syscall.h>
 
+int myarray[1000];
+
 int main()
 {
-	int myarray[1000];
 	printf("I'm a C++ program, and I'm running in user space. How about a big, Hello World\n");
 	printf("My array is at 0x%p\n", myarray);
 	printf("I'm going to start crunching some numbers, so gimme a minute.\n");
