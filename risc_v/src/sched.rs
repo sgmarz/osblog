@@ -14,18 +14,12 @@ pub fn schedule() -> usize {
 			// targeted.
 			'procfindloop: loop {
 				pl.rotate_left(1);
-				// let mut mepc: usize = 0;
-				// let mut satp: usize = 0;
-				// let mut pid: usize = 0;
 				if let Some(prc) = pl.front_mut() {
 					match prc.get_state() {
 						ProcessState::Running => {
 							frame_addr =
 								prc.get_frame_address();
 							break 'procfindloop;
-							// println!("Process is running on frame 0x{:x}", frame_addr);
-							// satp = prc.get_table_address();
-							// pid = prc.get_pid() as usize;
 						},
 						ProcessState::Sleeping => {
 							// Awaken sleeping processes whose sleep until is in
