@@ -10,8 +10,9 @@ pub fn schedule() -> usize {
 	let mut frame_addr: usize = 0x1111;
 	unsafe {
 		if let Some(mut pl) = PROCESS_LIST.take() {
-			let mut done = false;
-			while !done {
+			// Rust allows us to label loops so that break statements can be
+			// targeted.
+			'procfindloop: loop {
 				pl.rotate_left(1);
 				// let mut mepc: usize = 0;
 				// let mut satp: usize = 0;
@@ -21,7 +22,7 @@ pub fn schedule() -> usize {
 						ProcessState::Running => {
 							frame_addr =
 								prc.get_frame_address();
-							done = true;
+							break 'procfindloop;
 							// println!("Process is running on frame 0x{:x}", frame_addr);
 							// satp = prc.get_table_address();
 							// pid = prc.get_pid() as usize;
