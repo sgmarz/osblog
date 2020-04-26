@@ -47,9 +47,9 @@ pub struct ProgramHeader {
 
 pub const TYPE_EXEC: u16 = 2;
 
-pub const PROG_READ: u8 = 4;
-pub const PROG_WRITE: u8 = 2;
-pub const PROG_EXECUTE: u8 = 1;
+pub const PROG_READ: u32 = 4;
+pub const PROG_WRITE: u32 = 2;
+pub const PROG_EXECUTE: u32 = 1;
 
 pub const MACHINE_RISCV: u16 = 0xf3;
 pub const PH_SEG_TYPE_NULL: u32 = 0;

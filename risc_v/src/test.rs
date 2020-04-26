@@ -222,6 +222,18 @@ pub fn test_elf() {
 			}
 			memcpy(ptr.add(ph.off), buffer.get().add(ph.off), ph.memsz);
 			let pages = ph.memsz / PAGE_SIZE + 1;
+			let mut bits = EntryBits::User.val();
+			// This sucks, but we check each bit in the flags to see if
+			// we need to add it to the PH permissions.
+			if ph.flags & elf::PROG_EXECUTE != 0 {
+				bits |= EntryBits::Execute.val();
+			}
+			if ph.flags & elf::PROG_READ != 0 {
+				bits |= EntryBits::Read.val();
+			}
+			if ph.flags & elf::PROG_WRITE != 0 {
+				bits |= EntryBits::Write.val();
+			}
 			for i in 0..pages {
 				let vaddr = ph.vaddr + i * PAGE_SIZE;
 				let paddr = ptr as usize + i * PAGE_SIZE;
@@ -229,7 +241,7 @@ pub fn test_elf() {
 					table,
 					vaddr,
 					paddr,
-					EntryBits::UserReadExecute.val(),
+					bits,
 					0,
 				);
 			}
