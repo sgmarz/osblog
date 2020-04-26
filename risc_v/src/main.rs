@@ -155,7 +155,7 @@ extern "C" fn kinit() {
 	// Set up virtio. This requires a working heap and page-grained allocator.
 	virtio::probe();
 	// Test the block driver!
-	process::add_kernel_process(test::test_block);
+	process::add_kernel_process(test::test_elf);
 	// We schedule the next context switch using a multiplier of 1
 	// Block testing code removed.
 	trap::schedule_next_context_switch(1);
@@ -175,6 +175,7 @@ extern "C" fn kinit_hart(_hartid: usize) {
 pub mod assembly;
 pub mod block;
 pub mod cpu;
+pub mod elf;
 pub mod fs;
 pub mod kmem;
 pub mod minixfs;
