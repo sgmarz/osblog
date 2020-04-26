@@ -12,8 +12,8 @@ PROGS=$(patsubst %.cpp,%,$(SOURCES))
 
 all: $(OUT)
 
-%.elf:%.cpp Makefile
-	$(CROSS)$(CXX) $(CXXFLAGS) $(LINKER_SCRIPT) $(INCLUDES) $(LIBS) -o $@ $< $(LIB)
+%.elf:%.cpp Makefile startlib/linker.lds startlib/*.h
+	$(CROSS)$(CXX) $(CXXFLAGS) $(INCLUDES) $(LIBS) -o $@ $< $(LIB)
 	$(CROSS)$(OBJCOPY) -O binary $@ $@.bin
 	mv $@.bin $(basename $@)
 
