@@ -185,7 +185,7 @@ fn init_process() {
 			// being ran as a kernel process. If we ran this as a
 			// user process, it'd need a system call to execute a
 			// privileged instruction.
-			unsafe { asm!("wfi") };
+			unsafe { llvm_asm!("wfi") };
 		}
 	}
 }
