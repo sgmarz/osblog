@@ -4,6 +4,8 @@
 // 16 March 2020
 
 use alloc::string::String;
+use crate::kmem::{kfree, kmalloc};
+use core::ptr::null_mut;
 
 pub trait FileSystem {
     fn init(bdev: usize) -> bool;
@@ -40,4 +42,43 @@ pub enum FsError {
     Permission,
     IsFile,
     IsDirectory,
+}
+
+// We need a BlockBuffer that can automatically be created and destroyed
+// in the lifetime of our read and write functions. In C, this would entail
+// goto statements that "unravel" all of the allocations that we made. Take
+// a look at the read() function to see why I thought this way would be better.
+pub struct BlockBuffer {
+	buffer: *mut u8,
+}
+
+impl BlockBuffer {
+	pub fn new(sz: u32) -> Self {
+		BlockBuffer { buffer: kmalloc(sz as usize), }
+	}
+
+	pub fn get_mut(&mut self) -> *mut u8 {
+		self.buffer
+	}
+
+	pub fn get(&self) -> *const u8 {
+		self.buffer
+	}
+}
+
+impl Default for BlockBuffer {
+	fn default() -> Self {
+		BlockBuffer { buffer: kmalloc(1024), }
+	}
+}
+
+// This is why we have the BlockBuffer. Instead of having to unwind
+// all other buffers, we drop here when the block buffer goes out of scope.
+impl Drop for BlockBuffer {
+	fn drop(&mut self) {
+		if !self.buffer.is_null() {
+			kfree(self.buffer);
+			self.buffer = null_mut();
+		}
+	}
 }
