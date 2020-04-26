@@ -27,11 +27,16 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			delete_process((*frame).pid as u16);
 			0
 		},
-		1 => {
+		2 => {
+			// Easy putchar
+			print!("{}", (*frame).regs[10] as u8 as char);
+			mepc + 4
+		},
+		8 => {
 			dump_registers(frame);
 			mepc + 4
 		},
-		2 => {
+		10 => {
 			// Sleep
 			set_sleeping((*frame).pid as u16, (*frame).regs[10]);
 			0

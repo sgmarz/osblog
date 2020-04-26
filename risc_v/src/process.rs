@@ -23,13 +23,13 @@ use core::ptr::null_mut;
 
 // How many pages are we going to give a process for their
 // stack?
-const STACK_PAGES: usize = 5;
+pub const STACK_PAGES: usize = 5;
 // We want to adjust the stack to be at the bottom of the memory allocation
 // regardless of where it is on the kernel heap.
-const STACK_ADDR: usize = 0x1_0000_0000;
+pub const STACK_ADDR: usize = 0x1_0000_0000;
 // All processes will have a defined starting point in virtual memory.
 // We will use this later when we load processes from disk.
-// const PROCESS_STARTING_ADDR: usize = 0x2000_0000;
+pub const PROCESS_STARTING_ADDR: usize = 0x2000_0000;
 
 // Here, we store a process list. It uses the global allocator
 // that we made before and its job is to store all processes.
@@ -43,7 +43,7 @@ const STACK_ADDR: usize = 0x1_0000_0000;
 pub static mut PROCESS_LIST: Option<VecDeque<Process>> = None;
 // We can search through the process list to get a new PID, but
 // it's probably easier and faster just to increase the pid:
-static mut NEXT_PID: u16 = 1;
+pub static mut NEXT_PID: u16 = 1;
 
 // The following set_* and get_by_pid functions are C-style functions
 // They probably need to be re-written in a more Rusty style, but for
@@ -170,12 +170,13 @@ pub unsafe fn get_by_pid(pid: u16) -> *mut Process {
 fn init_process() {
 	// We can't do much here until we have system calls because
 	// we're running in User space.
+	println!("Init process started...");
 	loop {
 		// Alright, I forgot. We cannot put init to sleep since the
 		// scheduler will loop until it finds a process to run. Since
 		// the scheduler is called in an interrupt context, nothing else
 		// can happen until a process becomes available.
-		println!("Init is still here :), alright, back to sleep.");
+		// println!("Init is still here :), alright, back to sleep.");
 		// 500 wfi's should take 500 context switches before we print
 		// Init is still here. Depending on our context switch time,
 		// this might be around 3 seconds.
@@ -246,7 +247,9 @@ pub fn add_kernel_process(func: fn()) -> u16 {
 			          root:        zalloc(1) as *mut Table,
 			          state:       ProcessState::Running,
 			          data:        ProcessData::zero(),
-			          sleep_until: 0, };
+					  sleep_until: 0,
+					  program:		null_mut()
+					 };
 		unsafe {
 			NEXT_PID += 1;
 		}
@@ -325,7 +328,9 @@ pub fn add_kernel_process_args(func: fn(args_ptr: usize), args: usize) -> u16 {
 			          root:        zalloc(1) as *mut Table,
 			          state:       ProcessState::Running,
 			          data:        ProcessData::zero(),
-			          sleep_until: 0, };
+					  sleep_until: 0, 
+					  program:		null_mut(),
+					};
 		unsafe {
 			NEXT_PID += 1;
 		}
@@ -406,13 +411,14 @@ pub enum ProcessState {
 }
 
 pub struct Process {
-	frame:       *mut TrapFrame,
-	stack:       *mut u8,
-	pid:         u16,
-	root:        *mut Table,
-	state:       ProcessState,
-	data:        ProcessData,
-	sleep_until: usize,
+	pub frame:       *mut TrapFrame,
+	pub stack:       *mut u8,
+	pub pid:         u16,
+	pub root:        *mut Table,
+	pub state:       ProcessState,
+	pub data:        ProcessData,
+	pub sleep_until: usize,
+	pub program:	 *mut u8,
 }
 
 // Most of this operating system runs more of a C-style, where
@@ -423,6 +429,7 @@ pub struct Process {
 // the first parameter (the *this parameter in C++) is a reference
 // to ourself. We can write static functions as a member of this
 // structure by omitting a self.
+// 25-Apr-2020: (SM) Alright, I made everything public......
 impl Process {
 	pub fn get_frame_address(&self) -> usize {
 		self.frame as usize
@@ -438,6 +445,10 @@ impl Process {
 
 	pub fn get_program_counter(&self) -> usize {
 		unsafe { (*self.frame).pc }
+	}
+
+	pub fn get_program_address_mut(&mut self) -> *mut u8 {
+		self.program
 	}
 
 	pub fn get_table_address(&self) -> usize {
@@ -478,7 +489,9 @@ impl Process {
 			          root:        zalloc(1) as *mut Table,
 			          state:       ProcessState::Running,
 			          data:        ProcessData::zero(),
-			          sleep_until: 0, };
+					  sleep_until: 0, 
+					  program:     null_mut()
+					};
 		unsafe {
 			satp_fence_asid(NEXT_PID as usize);
 			NEXT_PID += 1;
@@ -557,6 +570,9 @@ impl Drop for Process {
 		}
 		dealloc(self.root as *mut u8);
 		dealloc(self.frame as *mut u8);
+		if !self.program.is_null() {
+			dealloc(self.program);
+		}
 	}
 }
 
