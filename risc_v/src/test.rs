@@ -30,6 +30,7 @@ pub fn test_block() {
 		unsafe {
 			NEXT_PID += 1;
 		}
+		satp_fence_asid(my_pid as usize);
 		let mut my_proc=
 			Process { frame:       zalloc(1) as *mut TrapFrame,
 			          stack:       zalloc(STACK_PAGES),
