@@ -3,14 +3,14 @@
 // Stephen Marz
 // 16 March 2020
 
-use crate::{fs::{Descriptor, FileSystem, FsError, Stat},
-            kmem::{kfree, kmalloc, talloc, tfree},
+use crate::{fs::{Descriptor, FileSystem, FsError, Stat, BlockBuffer},
+            kmem::{talloc, tfree},
             process::{add_kernel_process_args, get_by_pid, set_running, set_waiting},
             syscall::syscall_block_read};
 
 use crate::cpu::memcpy;
 use alloc::string::String;
-use core::{mem::size_of, ptr::null_mut};
+use core::{mem::size_of};
 
 pub const MAGIC: u16 = 0x4d5a;
 pub const BLOCK_SIZE: u32 = 1024;
@@ -65,45 +65,6 @@ pub struct DirEntry {
 	pub name:  [u8; 60],
 }
 
-// We need a BlockBuffer that can automatically be created and destroyed
-// in the lifetime of our read and write functions. In C, this would entail
-// goto statements that "unravel" all of the allocations that we made. Take
-// a look at the read() function to see why I thought this way would be better.
-pub struct BlockBuffer {
-	buffer: *mut u8,
-}
-
-impl BlockBuffer {
-	pub fn new(sz: u32) -> Self {
-		BlockBuffer { buffer: kmalloc(sz as usize), }
-	}
-
-	pub fn get_mut(&mut self) -> *mut u8 {
-		self.buffer
-	}
-
-	pub fn get(&self) -> *const u8 {
-		self.buffer
-	}
-}
-
-impl Default for BlockBuffer {
-	fn default() -> Self {
-		BlockBuffer { buffer: kmalloc(1024), }
-	}
-}
-
-// This is why we have the BlockBuffer. Instead of having to unwind
-// all other buffers, we drop here when the block buffer goes out of scope.
-impl Drop for BlockBuffer {
-	fn drop(&mut self) {
-		if !self.buffer.is_null() {
-			kfree(self.buffer);
-			self.buffer = null_mut();
-		}
-	}
-}
-
 /// The MinixFileSystem implements the FileSystem trait for the VFS.
 pub struct MinixFileSystem;
 
@@ -116,7 +77,7 @@ impl MinixFileSystem {
 		// When we read, everything needs to be a multiple of a sector (512 bytes)
 		// So, we need to have memory available that's at least 512 bytes, even if
 		// we only want 10 bytes or 32 bytes (size of an Inode).
-		let mut buffer = BlockBuffer::new(512);
+		let mut buffer = BlockBuffer::new(1024);
 
 		// Here is a little memory trick. We have a reference and it will refer to the
 		// top portion of our buffer. Since we won't be using the super block and inode
@@ -137,15 +98,15 @@ impl MinixFileSystem {
 			// have to skip the bitmaps blocks. We have a certain number of inode map blocks (imap)
 			// and zone map blocks (zmap).
 			// The inode comes to us as a NUMBER, not an index. So, we need to subtract 1.
-			let inode_offset = (2 + super_block.imap_blocks + super_block.zmap_blocks) as usize * BLOCK_SIZE as usize;
+			let inode_offset = (2 + super_block.imap_blocks + super_block.zmap_blocks) as usize * BLOCK_SIZE as usize + ((inode_num as usize - 1) / (BLOCK_SIZE as usize / size_of::<Inode>())) * BLOCK_SIZE as usize;
 
 			// Now, we read the inode itself.
 			// The block driver requires that our offset be a multiple of 512. We do that with the
 			// inode_offset. However, we're going to be reading a group of inodes.
-			syc_read(desc, buffer.get_mut(), 512, inode_offset as u32);
+			syc_read(desc, buffer.get_mut(), 1024, inode_offset as u32);
 
-			// There are 512 / size_of<Inode>() inodes in each read that we can do. However, we need to figure out which inode in that group we need to read. We just take the % of this to find out.
-			let read_this_node = (inode_num as usize - 1) % (512 / size_of::<Inode>());
+			// There are 1024 / size_of<Inode>() inodes in each read that we can do. However, we need to figure out which inode in that group we need to read. We just take the % of this to find out.
+			let read_this_node = (inode_num as usize - 1) % (BLOCK_SIZE as usize / size_of::<Inode>());
 
 			// We copy the inode over. This might not be the best thing since the Inode will
 			// eventually have to change after writing.
