@@ -1,6 +1,4 @@
 #include <printf.h>
-#include <syscall.h>
-
 
 const int SIZE = 1000;
 int myarray[SIZE];
