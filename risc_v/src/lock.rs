@@ -8,18 +8,18 @@ use crate::syscall::syscall_sleep;
 pub const DEFAULT_LOCK_SLEEP: usize = 10000;
 #[repr(u32)]
 pub enum MutexState {
-    Unlocked = 0,
-	Locked = 1,
+	Unlocked = 0,
+	Locked = 1
 }
 
 #[repr(C)]
 pub struct Mutex {
-	state: MutexState,
+	state: MutexState
 }
 
 impl<'a> Mutex {
 	pub const fn new() -> Self {
-		Self { state: MutexState::Unlocked, }
+		Self { state: MutexState::Unlocked }
 	}
 
 	pub fn val(&'a self) -> &'a MutexState {
@@ -28,14 +28,12 @@ impl<'a> Mutex {
 
 	pub fn lock(&mut self) -> bool {
 		unsafe {
-			let ret: MutexState;
-			llvm_asm!("amoswap.w.aq $0, $1, ($2)\n" : "=r"(ret) : "r"(1), "r"(self) :: "volatile");
-			match ret {
-				// amoswap returns the OLD state of the lock.
-				// If it was already locked, we didn't acquire
-				// it.
+			let state: MutexState;
+			llvm_asm!("amoswap.w.aq $0, $1, ($2)\n" : "=r"(state) : "r"(1), "r"(self) :: "volatile");
+			match state {
+				// amoswap returns the OLD state of the lock.  If it was already locked, we didn't acquire it.
 				MutexState::Locked => false,
-				MutexState::Unlocked => true,
+				MutexState::Unlocked => true
 			}
 		}
 	}
