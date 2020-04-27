@@ -31,23 +31,28 @@ impl<'a> Mutex {
 			let ret: MutexState;
 			llvm_asm!("amoswap.w.aq $0, $1, ($2)\n" : "=r"(ret) : "r"(1), "r"(self) :: "volatile");
 			match ret {
-                MutexState::Locked => { false },
+				// amoswap returns the OLD state of the lock.
+				// If it was already locked, we didn't acquire
+				// it.
+				MutexState::Locked => false,
 				MutexState::Unlocked => true,
 			}
 		}
 	}
 
-    /// Do NOT sleep lock inside of an interrupt context!
+	/// Do NOT sleep lock inside of an interrupt context!
+	/// Never use a sleep lock for the process list. Sleeping requires
+	/// the process list to function, so you'll deadlock if you do.
 	pub fn sleep_lock(&mut self) {
-        while self.lock() == false {
-            syscall_sleep(DEFAULT_LOCK_SLEEP);
-        }
+		while self.lock() == false {
+			syscall_sleep(DEFAULT_LOCK_SLEEP);
+		}
 	}
 
-    /// Can safely be used inside of an interrupt context.
-    pub fn spin_lock(&mut self) {
-        while self.lock() == false {}
-    }
+	/// Can safely be used inside of an interrupt context.
+	pub fn spin_lock(&mut self) {
+		while self.lock() == false {}
+	}
 
 	pub fn unlock(&mut self) {
 		unsafe {
