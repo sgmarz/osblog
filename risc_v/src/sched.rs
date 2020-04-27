@@ -3,12 +3,13 @@
 // Stephen Marz
 // 27 Dec 2019
 
-use crate::process::{ProcessState, PROCESS_LIST};
+use crate::process::{ProcessState, PROCESS_LIST, PROCESS_LIST_MUTEX};
 use crate::cpu::get_mtime;
 
 pub fn schedule() -> usize {
 	let mut frame_addr: usize = 0x1111;
 	unsafe {
+		PROCESS_LIST_MUTEX.spin_lock();
 		if let Some(mut pl) = PROCESS_LIST.take() {
 			// Rust allows us to label loops so that break statements can be
 			// targeted.
@@ -39,6 +40,7 @@ pub fn schedule() -> usize {
 		else {
 			println!("could not take process list");
 		}
+		PROCESS_LIST_MUTEX.unlock();
 	}
 	frame_addr
 }

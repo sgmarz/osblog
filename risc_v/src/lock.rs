@@ -8,8 +8,8 @@ use crate::syscall::syscall_sleep;
 pub const DEFAULT_LOCK_SLEEP: usize = 10000;
 #[repr(u32)]
 pub enum MutexState {
-	Locked = 0,
-	Unlocked = 1,
+    Unlocked = 0,
+	Locked = 1,
 }
 
 #[repr(C)]
@@ -44,14 +44,14 @@ impl<'a> Mutex {
 	/// Never use a sleep lock for the process list. Sleeping requires
 	/// the process list to function, so you'll deadlock if you do.
 	pub fn sleep_lock(&mut self) {
-		while self.lock() == false {
+		while !self.lock() {
 			syscall_sleep(DEFAULT_LOCK_SLEEP);
 		}
 	}
 
 	/// Can safely be used inside of an interrupt context.
 	pub fn spin_lock(&mut self) {
-		while self.lock() == false {}
+		while !self.lock() {}
 	}
 
 	pub fn unlock(&mut self) {

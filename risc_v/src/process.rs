@@ -59,7 +59,6 @@ pub fn set_running(pid: u16) -> bool {
 	// of process pointers.
 	let mut retval = false;
 	unsafe {
-		PROCESS_LIST_MUTEX.spin_lock();
 		if let Some(mut pl) = PROCESS_LIST.take() {
 			for proc in pl.iter_mut() {
 				if proc.pid == pid {
@@ -73,7 +72,6 @@ pub fn set_running(pid: u16) -> bool {
 			// Some(pl).
 			PROCESS_LIST.replace(pl);
 		}
-		PROCESS_LIST_MUTEX.unlock();
 	}
 	retval
 }
@@ -86,7 +84,6 @@ pub fn set_waiting(pid: u16) -> bool {
 	// of process pointers.
 	let mut retval = false;
 	unsafe {
-		PROCESS_LIST_MUTEX.spin_lock();
 		if let Some(mut pl) = PROCESS_LIST.take() {
 			for proc in pl.iter_mut() {
 				if proc.pid == pid {
@@ -100,7 +97,6 @@ pub fn set_waiting(pid: u16) -> bool {
 			// Some(pl).
 			PROCESS_LIST.replace(pl);
 		}
-		PROCESS_LIST_MUTEX.unlock();
 	}
 	retval
 }
@@ -111,7 +107,6 @@ pub fn set_sleeping(pid: u16, duration: usize) -> bool {
 	// of process pointers.
 	let mut retval = false;
 	unsafe {
-		PROCESS_LIST_MUTEX.spin_lock();
 		if let Some(mut pl) = PROCESS_LIST.take() {
 			for proc in pl.iter_mut() {
 				if proc.pid == pid {
@@ -129,7 +124,6 @@ pub fn set_sleeping(pid: u16, duration: usize) -> bool {
 			// Some(pl).
 			PROCESS_LIST.replace(pl);
 		}
-		PROCESS_LIST_MUTEX.unlock();
 	}
 	retval
 }
@@ -138,7 +132,6 @@ pub fn set_sleeping(pid: u16, duration: usize) -> bool {
 /// this function does nothing.
 pub fn delete_process(pid: u16) {
 	unsafe {
-		PROCESS_LIST_MUTEX.spin_lock();
 		if let Some(mut pl) = PROCESS_LIST.take() {
 			for i in 0..pl.len() {
 				let p = pl.get_mut(i).unwrap();
@@ -154,7 +147,6 @@ pub fn delete_process(pid: u16) {
 			// Some(pl).
 			PROCESS_LIST.replace(pl);
 		}
-		PROCESS_LIST_MUTEX.unlock();
 	}
 }
 
@@ -162,7 +154,6 @@ pub fn delete_process(pid: u16) {
 /// unsafe since the process can be deleted and we'll still have a pointer.
 pub unsafe fn get_by_pid(pid: u16) -> *mut Process {
 	let mut ret = null_mut();
-	PROCESS_LIST_MUTEX.spin_lock();
 	if let Some(mut pl) = PROCESS_LIST.take() {
 		for i in pl.iter_mut() {
 			if i.get_pid() == pid {
@@ -172,7 +163,6 @@ pub unsafe fn get_by_pid(pid: u16) -> *mut Process {
 		}
 		PROCESS_LIST.replace(pl);
 	}
-	PROCESS_LIST_MUTEX.unlock();
 	ret
 }
 
@@ -243,58 +233,57 @@ pub fn add_kernel_process(func: fn()) -> u16 {
 	// then move ownership back to the PROCESS_LIST.
 	// This allows mutual exclusion as anyone else trying to grab
 	// the process list will get None rather than the Deque.
-	unsafe { PROCESS_LIST_MUTEX.spin_lock(); } 
+	// .take() will replace PROCESS_LIST with None and give
+	// us the only copy of the Deque.
+	let func_addr = func as usize;
+	let func_vaddr = func_addr; //- 0x6000_0000;
+			// println!("func_addr = {:x} -> {:x}", func_addr, func_vaddr);
+			// We will convert NEXT_PID below into an atomic increment when
+			// we start getting into multi-hart processing. For now, we want
+			// a process. Get it to work, then improve it!
+	let my_pid = unsafe { NEXT_PID };
+	let mut ret_proc =
+		Process { frame:       zalloc(1) as *mut TrapFrame,
+					stack:       zalloc(STACK_PAGES),
+					pid:         my_pid,
+					root:        zalloc(1) as *mut Table,
+					state:       ProcessState::Running,
+					data:        ProcessData::zero(),
+					sleep_until: 0,
+					program:		null_mut()
+					};
+	unsafe {
+		NEXT_PID += 1;
+	}
+	// Now we move the stack pointer to the bottom of the
+	// allocation. The spec shows that register x2 (2) is the stack
+	// pointer.
+	// We could use ret_proc.stack.add, but that's an unsafe
+	// function which would require an unsafe block. So, convert it
+	// to usize first and then add PAGE_SIZE is better.
+	// We also need to set the stack adjustment so that it is at the
+	// bottom of the memory and far away from heap allocations.
+	unsafe {
+		(*ret_proc.frame).pc = func_vaddr;
+		// 1 is the return address register. This makes it so we
+		// don't have to do syscall_exit() when a kernel process
+		// finishes.
+		(*ret_proc.frame).regs[1] = ra_delete_proc as usize;
+		(*ret_proc.frame).regs[2] =
+			ret_proc.stack as usize + STACK_PAGES * 4096;
+		(*ret_proc.frame).mode = CpuMode::Machine as usize;
+		(*ret_proc.frame).pid = ret_proc.pid as usize;
+	}
+
 	if let Some(mut pl) = unsafe { PROCESS_LIST.take() } {
-		// .take() will replace PROCESS_LIST with None and give
-		// us the only copy of the Deque.
-		let func_addr = func as usize;
-		let func_vaddr = func_addr; //- 0x6000_0000;
-			    // println!("func_addr = {:x} -> {:x}", func_addr, func_vaddr);
-			    // We will convert NEXT_PID below into an atomic increment when
-			    // we start getting into multi-hart processing. For now, we want
-			    // a process. Get it to work, then improve it!
-		let my_pid = unsafe { NEXT_PID };
-		let mut ret_proc =
-			Process { frame:       zalloc(1) as *mut TrapFrame,
-			          stack:       zalloc(STACK_PAGES),
-			          pid:         my_pid,
-			          root:        zalloc(1) as *mut Table,
-			          state:       ProcessState::Running,
-			          data:        ProcessData::zero(),
-					  sleep_until: 0,
-					  program:		null_mut()
-					 };
-		unsafe {
-			NEXT_PID += 1;
-		}
-		// Now we move the stack pointer to the bottom of the
-		// allocation. The spec shows that register x2 (2) is the stack
-		// pointer.
-		// We could use ret_proc.stack.add, but that's an unsafe
-		// function which would require an unsafe block. So, convert it
-		// to usize first and then add PAGE_SIZE is better.
-		// We also need to set the stack adjustment so that it is at the
-		// bottom of the memory and far away from heap allocations.
-		unsafe {
-			(*ret_proc.frame).pc = func_vaddr;
-			// 1 is the return address register. This makes it so we
-			// don't have to do syscall_exit() when a kernel process
-			// finishes.
-			(*ret_proc.frame).regs[1] = ra_delete_proc as usize;
-			(*ret_proc.frame).regs[2] =
-				ret_proc.stack as usize + STACK_PAGES * 4096;
-			(*ret_proc.frame).mode = CpuMode::Machine as usize;
-			(*ret_proc.frame).pid = ret_proc.pid as usize;
-		}
 		pl.push_back(ret_proc);
 		// Now, we no longer need the owned Deque, so we hand it
 		// back by replacing the PROCESS_LIST's None with the
 		// Some(pl).
 		unsafe {
 			PROCESS_LIST.replace(pl);
-			PROCESS_LIST_MUTEX.unlock();
 		}
-		return my_pid;
+		my_pid
 	}
 	else {
 		unsafe { PROCESS_LIST_MUTEX.unlock(); }
@@ -398,6 +387,7 @@ pub fn add_kernel_process_args(func: fn(args_ptr: usize), args: usize) -> u16 {
 /// but later, it should call the shell.
 pub fn init() -> usize {
 	unsafe {
+		PROCESS_LIST_MUTEX.spin_lock();
 		PROCESS_LIST = Some(VecDeque::with_capacity(15));
 		// add_process_default(init_process);
 		add_kernel_process(init_process);
@@ -412,6 +402,7 @@ pub fn init() -> usize {
 		// println!("Init's frame is at 0x{:08x}", frame);
 		// Put the process list back in the global.
 		PROCESS_LIST.replace(pl);
+		PROCESS_LIST_MUTEX.unlock();
 		// Return the first instruction's address to execute.
 		// Since we use the MMU, all start here.
 		(*p).pc
