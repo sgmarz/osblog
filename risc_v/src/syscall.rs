@@ -180,6 +180,10 @@ pub fn syscall_block_read(dev: usize,
 	) as u8
 }
 
+pub fn syscall_sleep(duration: usize)
+{
+	let _ = do_make_syscall(10, duration, 0, 0, 0, 0, 0);
+}
 // These system call numbers come from libgloss so that we can use newlib
 // for our system calls.
 // Libgloss wants the system call number in A7 and arguments in A0..A6

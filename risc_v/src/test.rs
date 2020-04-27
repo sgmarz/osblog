@@ -13,7 +13,8 @@ use crate::{cpu::{build_satp,
                       ProcessData,
                       ProcessState,
                       NEXT_PID,
-                      PROCESS_LIST,
+					  PROCESS_LIST,
+					  PROCESS_LIST_MUTEX,
                       STACK_ADDR,
                       STACK_PAGES},
             syscall::syscall_fs_read};
@@ -189,6 +190,9 @@ pub fn test_elf() {
 	// I took a different tact here than in process.rs. In there I created
 	// the process while holding onto the process list. It might
 	// matter since this is asynchronous--it is being ran as a kernel process.
+	unsafe {
+		PROCESS_LIST_MUTEX.spin_lock();
+	}
 	if let Some(mut pl) = unsafe { PROCESS_LIST.take() } {
 		// As soon as we push this process on the list, it'll be
 		// schedule-able.
@@ -206,6 +210,9 @@ pub fn test_elf() {
 		// Since my_proc couldn't enter the process list, it
 		// will be dropped and all of the associated allocations
 		// will be deallocated through the process' Drop trait.
+	}
+	unsafe {
+		PROCESS_LIST_MUTEX.unlock();
 	}
 	println!();
 }

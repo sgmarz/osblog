@@ -1,0 +1,57 @@
+// lock.rs
+// Locking routines
+// Stephen Marz
+// 26 Apr 2020
+
+use crate::syscall::syscall_sleep;
+
+pub const DEFAULT_LOCK_SLEEP: usize = 10000;
+#[repr(u32)]
+pub enum MutexState {
+	Locked = 0,
+	Unlocked = 1,
+}
+
+#[repr(C)]
+pub struct Mutex {
+	state: MutexState,
+}
+
+impl<'a> Mutex {
+	pub const fn new() -> Self {
+		Self { state: MutexState::Unlocked, }
+	}
+
+	pub fn val(&'a self) -> &'a MutexState {
+		&self.state
+	}
+
+	pub fn lock(&mut self) -> bool {
+		unsafe {
+			let ret: MutexState;
+			llvm_asm!("amoswap.w.aq $0, $1, ($2)\n" : "=r"(ret) : "r"(1), "r"(self) :: "volatile");
+			match ret {
+                MutexState::Locked => { false },
+				MutexState::Unlocked => true,
+			}
+		}
+	}
+
+    /// Do NOT sleep lock inside of an interrupt context!
+	pub fn sleep_lock(&mut self) {
+        while self.lock() == false {
+            syscall_sleep(DEFAULT_LOCK_SLEEP);
+        }
+	}
+
+    /// Can safely be used inside of an interrupt context.
+    pub fn spin_lock(&mut self) {
+        while self.lock() == false {}
+    }
+
+	pub fn unlock(&mut self) {
+		unsafe {
+			llvm_asm!("amoswap.w.rl zero, zero, ($0)" :: "r"(self) :: "volatile");
+		}
+	}
+}

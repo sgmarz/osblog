@@ -20,6 +20,7 @@ use crate::{cpu::{build_satp,
             syscall::syscall_exit};
 use alloc::collections::vec_deque::VecDeque;
 use core::ptr::null_mut;
+use crate::lock::Mutex;
 
 // How many pages are we going to give a process for their
 // stack?
@@ -41,6 +42,7 @@ pub const PROCESS_STARTING_ADDR: usize = 0x2000_0000;
 // a VecDeque at compile time, so we are somewhat forced to
 // do this.
 pub static mut PROCESS_LIST: Option<VecDeque<Process>> = None;
+pub static mut PROCESS_LIST_MUTEX: Mutex = Mutex::new();
 // We can search through the process list to get a new PID, but
 // it's probably easier and faster just to increase the pid:
 pub static mut NEXT_PID: u16 = 1;
@@ -57,6 +59,7 @@ pub fn set_running(pid: u16) -> bool {
 	// of process pointers.
 	let mut retval = false;
 	unsafe {
+		PROCESS_LIST_MUTEX.spin_lock();
 		if let Some(mut pl) = PROCESS_LIST.take() {
 			for proc in pl.iter_mut() {
 				if proc.pid == pid {
@@ -70,6 +73,7 @@ pub fn set_running(pid: u16) -> bool {
 			// Some(pl).
 			PROCESS_LIST.replace(pl);
 		}
+		PROCESS_LIST_MUTEX.unlock();
 	}
 	retval
 }
@@ -82,6 +86,7 @@ pub fn set_waiting(pid: u16) -> bool {
 	// of process pointers.
 	let mut retval = false;
 	unsafe {
+		PROCESS_LIST_MUTEX.spin_lock();
 		if let Some(mut pl) = PROCESS_LIST.take() {
 			for proc in pl.iter_mut() {
 				if proc.pid == pid {
@@ -95,6 +100,7 @@ pub fn set_waiting(pid: u16) -> bool {
 			// Some(pl).
 			PROCESS_LIST.replace(pl);
 		}
+		PROCESS_LIST_MUTEX.unlock();
 	}
 	retval
 }
@@ -105,6 +111,7 @@ pub fn set_sleeping(pid: u16, duration: usize) -> bool {
 	// of process pointers.
 	let mut retval = false;
 	unsafe {
+		PROCESS_LIST_MUTEX.spin_lock();
 		if let Some(mut pl) = PROCESS_LIST.take() {
 			for proc in pl.iter_mut() {
 				if proc.pid == pid {
@@ -122,6 +129,7 @@ pub fn set_sleeping(pid: u16, duration: usize) -> bool {
 			// Some(pl).
 			PROCESS_LIST.replace(pl);
 		}
+		PROCESS_LIST_MUTEX.unlock();
 	}
 	retval
 }
@@ -130,6 +138,7 @@ pub fn set_sleeping(pid: u16, duration: usize) -> bool {
 /// this function does nothing.
 pub fn delete_process(pid: u16) {
 	unsafe {
+		PROCESS_LIST_MUTEX.spin_lock();
 		if let Some(mut pl) = PROCESS_LIST.take() {
 			for i in 0..pl.len() {
 				let p = pl.get_mut(i).unwrap();
@@ -145,6 +154,7 @@ pub fn delete_process(pid: u16) {
 			// Some(pl).
 			PROCESS_LIST.replace(pl);
 		}
+		PROCESS_LIST_MUTEX.unlock();
 	}
 }
 
@@ -152,6 +162,7 @@ pub fn delete_process(pid: u16) {
 /// unsafe since the process can be deleted and we'll still have a pointer.
 pub unsafe fn get_by_pid(pid: u16) -> *mut Process {
 	let mut ret = null_mut();
+	PROCESS_LIST_MUTEX.spin_lock();
 	if let Some(mut pl) = PROCESS_LIST.take() {
 		for i in pl.iter_mut() {
 			if i.get_pid() == pid {
@@ -161,7 +172,7 @@ pub unsafe fn get_by_pid(pid: u16) -> *mut Process {
 		}
 		PROCESS_LIST.replace(pl);
 	}
-
+	PROCESS_LIST_MUTEX.unlock();
 	ret
 }
 
@@ -203,6 +214,7 @@ pub fn add_process_default(pr: fn()) {
 		// then move ownership back to the PROCESS_LIST.
 		// This allows mutual exclusion as anyone else trying to grab
 		// the process list will get None rather than the Deque.
+		PROCESS_LIST_MUTEX.spin_lock();
 		if let Some(mut pl) = PROCESS_LIST.take() {
 			// .take() will replace PROCESS_LIST with None and give
 			// us the only copy of the Deque.
@@ -213,6 +225,7 @@ pub fn add_process_default(pr: fn()) {
 			// Some(pl).
 			PROCESS_LIST.replace(pl);
 		}
+		PROCESS_LIST_MUTEX.unlock();
 		// TODO: When we get to multi-hart processing, we need to keep
 		// trying to grab the process list. We can do this with an
 		// atomic instruction. but right now, we're a single-processor
@@ -230,6 +243,7 @@ pub fn add_kernel_process(func: fn()) -> u16 {
 	// then move ownership back to the PROCESS_LIST.
 	// This allows mutual exclusion as anyone else trying to grab
 	// the process list will get None rather than the Deque.
+	unsafe { PROCESS_LIST_MUTEX.spin_lock(); } 
 	if let Some(mut pl) = unsafe { PROCESS_LIST.take() } {
 		// .take() will replace PROCESS_LIST with None and give
 		// us the only copy of the Deque.
@@ -278,10 +292,12 @@ pub fn add_kernel_process(func: fn()) -> u16 {
 		// Some(pl).
 		unsafe {
 			PROCESS_LIST.replace(pl);
+			PROCESS_LIST_MUTEX.unlock();
 		}
-		my_pid
+		return my_pid;
 	}
 	else {
+		unsafe { PROCESS_LIST_MUTEX.unlock(); }
 		// TODO: When we get to multi-hart processing, we need to keep
 		// trying to grab the process list. We can do this with an
 		// atomic instruction. but right now, we're a single-processor
@@ -311,6 +327,7 @@ pub fn add_kernel_process_args(func: fn(args_ptr: usize), args: usize) -> u16 {
 	// then move ownership back to the PROCESS_LIST.
 	// This allows mutual exclusion as anyone else trying to grab
 	// the process list will get None rather than the Deque.
+	unsafe {PROCESS_LIST_MUTEX.spin_lock(); }
 	if let Some(mut pl) = unsafe { PROCESS_LIST.take() } {
 		// .take() will replace PROCESS_LIST with None and give
 		// us the only copy of the Deque.
@@ -360,10 +377,14 @@ pub fn add_kernel_process_args(func: fn(args_ptr: usize), args: usize) -> u16 {
 		// Some(pl).
 		unsafe {
 			PROCESS_LIST.replace(pl);
+			PROCESS_LIST_MUTEX.unlock();
 		}
 		my_pid
 	}
 	else {
+		unsafe {
+			PROCESS_LIST_MUTEX.unlock();
+		}
 		// TODO: When we get to multi-hart processing, we need to keep
 		// trying to grab the process list. We can do this with an
 		// atomic instruction. but right now, we're a single-processor

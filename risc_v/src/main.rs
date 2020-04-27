@@ -179,6 +179,7 @@ pub mod cpu;
 pub mod elf;
 pub mod fs;
 pub mod kmem;
+pub mod lock;
 pub mod minixfs;
 pub mod page;
 pub mod plic;
