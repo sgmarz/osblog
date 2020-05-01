@@ -7,7 +7,7 @@ use crate::{block::block_op,
             cpu::{dump_registers, TrapFrame},
             minixfs,
             page::{virt_to_phys, Table},
-            process::{delete_process, get_by_pid, set_sleeping, set_waiting}};
+            process::{Process, PROCESS_LIST, PROCESS_LIST_MUTEX, delete_process, get_by_pid, set_sleeping, set_waiting}};
 
 /// do_syscall is called from trap.rs to invoke a system call. No discernment is
 /// made here whether this is a U-mode, S-mode, or M-mode system call.
@@ -41,7 +41,6 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			set_sleeping((*frame).pid as u16, (*frame).regs[10]);
 			0
 		},
-<<<<<<< HEAD
 		11 => {
 			// Add process to the scheduler. This is obviously insecure and
 			// we wouldn't do this realistically.
@@ -61,8 +60,6 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			}
 			mepc + 4
 		},
-=======
->>>>>>> parent of fe5a909... Create a system call to add a process to prevent data race with the process list.
 		63 => {
 			// Read system call
 			// This is an asynchronous call. This will get the
