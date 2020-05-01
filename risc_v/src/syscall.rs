@@ -47,14 +47,19 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			// Add process to the scheduler. This is obviously insecure and
 			// we wouldn't do this realistically.
 			let my_proc = (*frame).regs[10] as *const Process;
-			PROCESS_LIST_MUTEX.spin_lock();
-			if let Some(mut pl) = PROCESS_LIST.take() {
-				// As soon as we push this process on the list, it'll be
-				// schedule-able.
-				pl.push_back(my_proc.read());
-				PROCESS_LIST.replace(pl);
+			if PROCESS_LIST_MUTEX.try_lock() {
+				if let Some(mut pl) = PROCESS_LIST.take() {
+					// As soon as we push this process on the list, it'll be
+					// schedule-able.
+					pl.push_back(my_proc.read());
+					PROCESS_LIST.replace(pl);
+				}
+				PROCESS_LIST_MUTEX.unlock();
+				(*frame).regs[10] = 1;
 			}
-			PROCESS_LIST_MUTEX.unlock();
+			else {
+				(*frame).regs[10] = 0;
+			}
 			mepc + 4
 		},
 		63 => {
@@ -201,8 +206,8 @@ pub fn syscall_sleep(duration: usize)
 	let _ = do_make_syscall(10, duration, 0, 0, 0, 0, 0);
 }
 
-pub fn syscall_add_process(process: Process) {
-	let _ = do_make_syscall(11, &process as *const Process as usize, 0, 0, 0, 0, 0);
+pub fn syscall_add_process(process: Process) -> bool {
+	1 == do_make_syscall(11, &process as *const Process as usize, 0, 0, 0, 0, 0)
 }
 // These system call numbers come from libgloss so that we can use newlib
 // for our system calls.

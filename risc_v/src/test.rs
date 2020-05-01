@@ -191,7 +191,9 @@ pub fn test_elf() {
 	// the scheduler due to the context switch timer. When we use a system call,
 	// it goes into an interrupt context so that the scheduler can safely
 	// receive our new process without preemption.
-	syscall_add_process(my_proc);
+	if !syscall_add_process(my_proc) {
+		println!("Could not add process to the process list.");
+	}
 	println!();
 }
 
