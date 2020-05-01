@@ -13,11 +13,9 @@ use crate::{cpu::{build_satp,
                       ProcessData,
                       ProcessState,
                       NEXT_PID,
-					  PROCESS_LIST,
-					  PROCESS_LIST_MUTEX,
                       STACK_ADDR,
                       STACK_PAGES},
-            syscall::syscall_fs_read};
+            syscall::{syscall_add_process, syscall_fs_read}};
 
 /// Test block will load raw binaries into memory to execute them. This function
 /// will load ELF files and try to execute them.
@@ -187,33 +185,13 @@ pub fn test_elf() {
 	// now. Since we don't reuse PIDs, this means that we can only spawn
 	// 65534 processes.
 	satp_fence_asid(my_pid as usize);
-	// I took a different tact here than in process.rs. In there I created
-	// the process while holding onto the process list. It might
-	// matter since this is asynchronous--it is being ran as a kernel process.
-	unsafe {
-		PROCESS_LIST_MUTEX.spin_lock();
-	}
-	if let Some(mut pl) = unsafe { PROCESS_LIST.take() } {
-		// As soon as we push this process on the list, it'll be
-		// schedule-able.
-		println!(
-		         "Added user process to the scheduler...get ready \
-		          for take-off!"
-		);
-		pl.push_back(my_proc);
-		unsafe {
-			PROCESS_LIST.replace(pl);
-		}
-	}
-	else {
-		println!("Unable to spawn process.");
-		// Since my_proc couldn't enter the process list, it
-		// will be dropped and all of the associated allocations
-		// will be deallocated through the process' Drop trait.
-	}
-	unsafe {
-		PROCESS_LIST_MUTEX.unlock();
-	}
+
+	// We will get a data race if we don't use the add process system call. This
+	// test process is being ran as a kernel process, which then competes with
+	// the scheduler due to the context switch timer. When we use a system call,
+	// it goes into an interrupt context so that the scheduler can safely
+	// receive our new process without preemption.
+	syscall_add_process(my_proc);
 	println!();
 }
 
