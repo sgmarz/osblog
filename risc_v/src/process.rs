@@ -24,7 +24,7 @@ use crate::lock::Mutex;
 
 // How many pages are we going to give a process for their
 // stack?
-pub const STACK_PAGES: usize = 5;
+pub const STACK_PAGES: usize = 15;
 // We want to adjust the stack to be at the bottom of the memory allocation
 // regardless of where it is on the kernel heap.
 pub const STACK_ADDR: usize = 0x1_0000_0000;

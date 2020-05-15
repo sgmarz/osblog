@@ -7,7 +7,7 @@ use crate::{cpu::{build_satp,
                   SatpMode,
                   TrapFrame},
             elf,
-            fs::BlockBuffer,
+			fs::{MinixFileSystem, BlockBuffer},
             page::{map, zalloc, EntryBits, Table, PAGE_SIZE},
             process::{Process,
                       ProcessData,
@@ -17,35 +17,37 @@ use crate::{cpu::{build_satp,
 					  PROCESS_LIST_MUTEX,
                       STACK_ADDR,
                       STACK_PAGES},
-            syscall::syscall_fs_read};
+			syscall::{syscall_get_pid, syscall_fs_read, syscall_exit}};
+use alloc::string::String;
 
 /// Test block will load raw binaries into memory to execute them. This function
 /// will load ELF files and try to execute them.
 pub fn test_elf() {
+	// This won't be necessary after we connect this to the VFS, but for now, we need it.
+	const bdev: usize = 8;
+	let mfs = MinixFileSystem::init(bdev);
+	let desc = mfs.open(&String::from("/helloworld.elf")).ok();
+	if desc.is_none() {
+		println!("Error reading /helloworld.elf");
+		return;
+	}
+	let ino = desc.unwrap();
 	// The bytes to read would usually come from the inode, but we are in an
 	// interrupt context right now, so we cannot pause. Usually, this would
 	// be done by an exec system call.
-	let files_inode = 25u32;
-	let files_size = 14776;
-	let bytes_to_read = 1024 * 50;
-	let mut buffer = BlockBuffer::new(bytes_to_read);
+	let mut buffer = BlockBuffer::new(ino.size);
 	// Read the file from the disk. I got the inode by mounting
 	// the harddrive as a loop on Linux and stat'ing the inode.
-	let bytes_read = syscall_fs_read(
-	                                 8,
-	                                 files_inode,
-	                                 buffer.get_mut(),
-	                                 bytes_to_read as u32,
-	                                 0,
-	);
+
+	let bytes_read = MinixFileSystem::read(bdev, &ino, buffer.get_mut(), ino.size, 0);
 	// After compiling our program, I manually looked and saw it was 18,360
 	// bytes. So, to make sure we got the right one, I do a manual check
 	// here.
-	if bytes_read != files_size {
+	if bytes_read != ino.size {
 		println!(
-		         "Unable to load program at inode {}, which should \
+		         "Unable to load program, which should \
 		          be {} bytes, got {}",
-		         files_inode, files_size, bytes_read
+		         ino.size, bytes_read
 		);
 		return;
 	}
@@ -53,7 +55,7 @@ pub fn test_elf() {
 	// Everything is "page" based since we're going to map pages to
 	// user space. So, we need to know how many program pages we
 	// need. Each page is 4096 bytes.
-	let program_pages = (bytes_read / PAGE_SIZE) + 1;
+	let program_pages = (bytes_read as usize / PAGE_SIZE) + 1;
 	let my_pid = unsafe { NEXT_PID + 1 };
 	let elf_hdr;
 	unsafe {
@@ -191,7 +193,7 @@ pub fn test_elf() {
 	// the process while holding onto the process list. It might
 	// matter since this is asynchronous--it is being ran as a kernel process.
 	unsafe {
-		PROCESS_LIST_MUTEX.spin_lock();
+		PROCESS_LIST_MUTEX.sleep_lock();
 	}
 	if let Some(mut pl) = unsafe { PROCESS_LIST.take() } {
 		// As soon as we push this process on the list, it'll be

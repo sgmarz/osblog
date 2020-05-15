@@ -4,8 +4,8 @@
 // 3 Jan 2020
 
 use crate::{block::block_op,
-            cpu::{dump_registers, TrapFrame},
-            minixfs,
+			cpu::{dump_registers, TrapFrame},
+			fs,
             page::{virt_to_phys, Table},
             process::{Process, PROCESS_LIST, PROCESS_LIST_MUTEX, delete_process, get_by_pid, set_sleeping, set_waiting}};
 
@@ -96,7 +96,7 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			// need to check all pages that this might span. We
 			// can't just do paddr and paddr + size, since there
 			// could be a missing page somewhere in between.
-			let _ = minixfs::process_read(
+			let _ = fs::process_read(
 			                              (*frame).pid as u16,
 			                              (*frame).regs[10]
 			                              as usize,
@@ -109,6 +109,11 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			// If we return 0, the trap handler will schedule
 			// another process.
 			0
+		},
+		172 => {
+			// A0 = pid
+			(*frame).regs[10] = (*frame).pid;
+			mepc + 4
 		},
 		180 => {
 			// println!(
@@ -207,6 +212,10 @@ pub fn syscall_sleep(duration: usize)
 pub fn syscall_add_process(process: Process) -> bool {
 	// Thid doesn't quite work since we move process which causes it to drop :(
 	1 == do_make_syscall(11, &process as *const Process as usize, 0, 0, 0, 0, 0)
+}
+
+pub fn syscall_get_pid() -> u16 {
+	do_make_syscall(172, 0, 0, 0, 0, 0, 0) as u16
 }
 // These system call numbers come from libgloss so that we can use newlib
 // for our system calls.
