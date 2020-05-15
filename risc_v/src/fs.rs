@@ -3,7 +3,7 @@
 // Stephen Marz
 // 16 March 2020
 
-use crate::{kmem::{talloc, tfree, kmalloc, kfree},
+use crate::{kmem::{talloc, tfree},
             process::{add_kernel_process_args, get_by_pid, set_running, set_waiting},
             syscall::syscall_block_read};
 
@@ -11,7 +11,7 @@ use crate::cpu::memcpy;
 use alloc::string::String;
 use alloc::collections::BTreeMap;
 use core::mem::size_of;
-use core::ptr::null_mut;
+use crate::buffer::Buffer;
 
 pub const MAGIC: u16 = 0x4d5a;
 pub const BLOCK_SIZE: u32 = 1024;
@@ -81,7 +81,7 @@ impl MinixFileSystem {
 		// When we read, everything needs to be a multiple of a sector (512 bytes)
 		// So, we need to have memory available that's at least 512 bytes, even if
 		// we only want 10 bytes or 32 bytes (size of an Inode).
-		let mut buffer = BlockBuffer::new(1024);
+		let mut buffer = Buffer::new(1024);
 
 		// Here is a little memory trick. We have a reference and it will refer to the
 		// top portion of our buffer. Since we won't be using the super block and inode
@@ -127,7 +127,7 @@ impl MinixFileSystem {
     /// it over and over again, like we do for read right now.
     fn cache_at(btm: &mut BTreeMap<String, Inode>, cwd: &String, inode_num: u32, bdev: usize) {
 		let ino = Self::get_inode(bdev, inode_num).unwrap();
-		let mut buf = BlockBuffer::new((ino.size + BLOCK_SIZE - 1) & !BLOCK_SIZE);
+		let mut buf = Buffer::new((ino.size + BLOCK_SIZE - 1) & !BLOCK_SIZE);
 		let dirents = buf.get() as *const DirEntry;
 		let sz = Self::read(bdev, &ino, buf.get_mut(), BLOCK_SIZE, 0);
 		let num_dirents = sz as usize / size_of::<DirEntry>();
@@ -208,11 +208,11 @@ impl MinixFileSystem {
 		};
 		let mut bytes_read = 0u32;
 		// The block buffer automatically drops when we quit early due to an error or we've read enough. This will be the holding port when we go out and read a block. Recall that even if we want 10 bytes, we have to read the entire block (really only 512 bytes of the block) first. So, we use the block_buffer as the middle man, which is then copied into the buffer.
-		let mut block_buffer = BlockBuffer::new(BLOCK_SIZE);
+		let mut block_buffer = Buffer::new(BLOCK_SIZE);
 		// Triply indirect zones point to a block of pointers (BLOCK_SIZE / 4). Each one of those pointers points to another block of pointers (BLOCK_SIZE / 4). Each one of those pointers yet again points to another block of pointers (BLOCK_SIZE / 4). This is why we have indirect, iindirect (doubly), and iiindirect (triply).
-		let mut indirect_buffer = BlockBuffer::new(BLOCK_SIZE);
-		let mut iindirect_buffer = BlockBuffer::new(BLOCK_SIZE);
-		let mut iiindirect_buffer = BlockBuffer::new(BLOCK_SIZE);
+		let mut indirect_buffer = Buffer::new(BLOCK_SIZE);
+		let mut iindirect_buffer = Buffer::new(BLOCK_SIZE);
+		let mut iiindirect_buffer = Buffer::new(BLOCK_SIZE);
 		// I put the pointers *const u32 here. That means we will allocate the indirect, doubly indirect, and triply indirect even for small files. I initially had these in their respective scopes, but that required us to recreate the indirect buffer for doubly indirect and both the indirect and doubly indirect buffers for the triply indirect. Not sure which is better, but I probably wasted brain cells on this.
 		let izones = indirect_buffer.get() as *const u32;
 		let iizones = iindirect_buffer.get() as *const u32;
@@ -519,41 +519,3 @@ pub enum FsError {
     IsDirectory,
 }
 
-// We need a BlockBuffer that can automatically be created and destroyed
-// in the lifetime of our read and write functions. In C, this would entail
-// goto statements that "unravel" all of the allocations that we made. Take
-// a look at the read() function to see why I thought this way would be better.
-pub struct BlockBuffer {
-	buffer: *mut u8,
-}
-
-impl BlockBuffer {
-	pub fn new(sz: u32) -> Self {
-		BlockBuffer { buffer: kmalloc(sz as usize), }
-	}
-
-	pub fn get_mut(&mut self) -> *mut u8 {
-		self.buffer
-	}
-
-	pub fn get(&self) -> *const u8 {
-		self.buffer
-	}
-}
-
-impl Default for BlockBuffer {
-	fn default() -> Self {
-		BlockBuffer { buffer: kmalloc(1024), }
-	}
-}
-
-// This is why we have the BlockBuffer. Instead of having to unwind
-// all other buffers, we drop here when the block buffer goes out of scope.
-impl Drop for BlockBuffer {
-	fn drop(&mut self) {
-		if !self.buffer.is_null() {
-			kfree(self.buffer);
-			self.buffer = null_mut();
-		}
-	}
-}
