@@ -8,7 +8,8 @@ use crate::{cpu::{build_satp,
                   satp_fence_asid,
                   CpuMode,
                   SatpMode,
-                  TrapFrame},
+				  TrapFrame,
+				  Registers},
             page::{alloc,
                    dealloc,
                    map,
@@ -268,8 +269,8 @@ pub fn add_kernel_process(func: fn()) -> u16 {
 		// 1 is the return address register. This makes it so we
 		// don't have to do syscall_exit() when a kernel process
 		// finishes.
-		(*ret_proc.frame).regs[1] = ra_delete_proc as usize;
-		(*ret_proc.frame).regs[2] =
+		(*ret_proc.frame).regs[Registers::Ra as usize] = ra_delete_proc as usize;
+		(*ret_proc.frame).regs[Registers::Sp as usize] =
 			ret_proc.stack as usize + STACK_PAGES * 4096;
 		(*ret_proc.frame).mode = CpuMode::Machine as usize;
 		(*ret_proc.frame).pid = ret_proc.pid as usize;
@@ -350,12 +351,12 @@ pub fn add_kernel_process_args(func: fn(args_ptr: usize), args: usize) -> u16 {
 		// bottom of the memory and far away from heap allocations.
 		unsafe {
 			(*ret_proc.frame).pc = func_vaddr;
-			(*ret_proc.frame).regs[10] = args;
+			(*ret_proc.frame).regs[Registers::A0 as usize] = args;
 			// 1 is the return address register. This makes it so we
 			// don't have to do syscall_exit() when a kernel process
 			// finishes.
-			(*ret_proc.frame).regs[1] = ra_delete_proc as usize;
-			(*ret_proc.frame).regs[2] =
+			(*ret_proc.frame).regs[Registers::Ra as usize] = ra_delete_proc as usize;
+			(*ret_proc.frame).regs[Registers::Sp as usize] =
 				ret_proc.stack as usize + STACK_PAGES * 4096;
 			(*ret_proc.frame).mode = CpuMode::Machine as usize;
 			(*ret_proc.frame).pid = ret_proc.pid as usize;
@@ -519,7 +520,7 @@ impl Process {
 		let saddr = ret_proc.stack as usize;
 		unsafe {
 			(*ret_proc.frame).pc = func_vaddr;
-			(*ret_proc.frame).regs[2] =
+			(*ret_proc.frame).regs[Registers::Sp as usize] =
 				STACK_ADDR + PAGE_SIZE * STACK_PAGES;
 			(*ret_proc.frame).mode = CpuMode::User as usize;
 			(*ret_proc.frame).pid = ret_proc.pid as usize;

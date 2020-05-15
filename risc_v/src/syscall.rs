@@ -4,7 +4,7 @@
 // 3 Jan 2020
 
 use crate::{block::block_op,
-			cpu::{dump_registers, TrapFrame},
+			cpu::{dump_registers, TrapFrame, Registers},
 			fs,
             page::{virt_to_phys, Table},
             process::{Process, PROCESS_LIST, PROCESS_LIST_MUTEX, delete_process, get_by_pid, set_sleeping, set_waiting}};
@@ -20,7 +20,7 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 	// Libgloss expects the system call number in A7, so let's follow
 	// their lead.
 	// A7 is X17, so it's register number 17.
-	let syscall_number = (*frame).regs[17];
+	let syscall_number = (*frame).regs[Registers::A7 as usize];
 	match syscall_number {
 		0 | 93 => {
 			// Exit
@@ -29,7 +29,7 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 		},
 		2 => {
 			// Easy putchar
-			print!("{}", (*frame).regs[10] as u8 as char);
+			print!("{}", (*frame).regs[Registers::A0 as usize] as u8 as char);
 			mepc + 4
 		},
 		8 => {
@@ -38,13 +38,13 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 		},
 		10 => {
 			// Sleep
-			set_sleeping((*frame).pid as u16, (*frame).regs[10]);
+			set_sleeping((*frame).pid as u16, (*frame).regs[Registers::A0 as usize]);
 			0
 		},
 		11 => {
 			// Add process to the scheduler. This is obviously insecure and
 			// we wouldn't do this realistically.
-			let my_proc = (*frame).regs[10] as *const Process;
+			let my_proc = (*frame).regs[Registers::A0 as usize] as *const Process;
 			if PROCESS_LIST_MUTEX.try_lock() {
 				if let Some(mut pl) = PROCESS_LIST.take() {
 					// As soon as we push this process on the list, it'll be
@@ -53,10 +53,10 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 					PROCESS_LIST.replace(pl);
 				}
 				PROCESS_LIST_MUTEX.unlock();
-				(*frame).regs[10] = 1;
+				(*frame).regs[Registers::A0 as usize] = 1;
 			}
 			else {
-				(*frame).regs[10] = 0;
+				(*frame).regs[Registers::A0 as usize] = 0;
 			}
 			mepc + 4
 		},
@@ -72,7 +72,7 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			// from a user process using virt_to_phys. If this turns
 			// out to be a page fault, we need to NOT proceed with
 			// the read!
-			let mut physical_buffer = (*frame).regs[12];
+			let mut physical_buffer = (*frame).regs[Registers::A2 as usize];
 			// If the MMU is turned on, we have to translate the
 			// address. Eventually, I will put this code into a
 			// convenient function, but for now, it will show how
@@ -86,7 +86,7 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 				let paddr =
 					virt_to_phys(table, (*frame).regs[12]);
 				if paddr.is_none() {
-					(*frame).regs[10] = -1isize as usize;
+					(*frame).regs[Registers::A0 as usize] = -1isize as usize;
 					return mepc + 4;
 				}
 				physical_buffer = paddr.unwrap();
@@ -98,13 +98,13 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			// could be a missing page somewhere in between.
 			let _ = fs::process_read(
 			                              (*frame).pid as u16,
-			                              (*frame).regs[10]
+			                              (*frame).regs[Registers::A0 as usize]
 			                              as usize,
-			                              (*frame).regs[11] as u32,
+			                              (*frame).regs[Registers::A1 as usize] as u32,
 			                              physical_buffer
 			                              as *mut u8,
-			                              (*frame).regs[13] as u32,
-			                              (*frame).regs[14] as u32,
+			                              (*frame).regs[Registers::A3 as usize] as u32,
+			                              (*frame).regs[Registers::A4 as usize] as u32,
 			);
 			// If we return 0, the trap handler will schedule
 			// another process.
@@ -112,24 +112,16 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 		},
 		172 => {
 			// A0 = pid
-			(*frame).regs[10] = (*frame).pid;
+			(*frame).regs[Registers::A0 as usize] = (*frame).pid;
 			mepc + 4
 		},
 		180 => {
-			// println!(
-			//          "Pid: {}, Dev: {}, Buffer: 0x{:x}, Size: {},
-			// Offset: {}",          (*frame).pid,
-			//          (*frame).regs[10],
-			//          (*frame).regs[11],
-			//          (*frame).regs[12],
-			//          (*frame).regs[13]
-			// );
 			set_waiting((*frame).pid as u16);
 			let _ = block_op(
-			                 (*frame).regs[10],
-			                 (*frame).regs[11] as *mut u8,
-			                 (*frame).regs[12] as u32,
-			                 (*frame).regs[13] as u64,
+			                 (*frame).regs[Registers::A0 as usize],
+			                 (*frame).regs[Registers::A1 as usize] as *mut u8,
+			                 (*frame).regs[Registers::A2 as usize] as u32,
+			                 (*frame).regs[Registers::A3 as usize] as u64,
 			                 false,
 			                 (*frame).pid as u16,
 			);

@@ -10,7 +10,8 @@ use crate::{buffer::Buffer,
                   satp_fence_asid,
                   CpuMode,
                   SatpMode,
-                  TrapFrame},
+                  TrapFrame,
+                  Registers},
             page::{map, zalloc, EntryBits, Table, PAGE_SIZE},
             process::{Process,
                       ProcessData,
@@ -243,7 +244,7 @@ impl File {
 			(*my_proc.frame).pc = elf_fl.header.entry_addr;
 			// Stack pointer. The stack starts at the bottom and works its
 			// way up, so we have to set the stack pointer to the bottom.
-			(*my_proc.frame).regs[2] =
+			(*my_proc.frame).regs[Registers::Sp as usize] =
 				STACK_ADDR as usize + STACK_PAGES * PAGE_SIZE;
 			// USER MODE! This is how we set what'll go into mstatus when we
 			// run the process.
