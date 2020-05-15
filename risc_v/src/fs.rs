@@ -184,6 +184,9 @@ impl MinixFileSystem {
 				MFS_INODE_CACHE[bdev-1] = Some(btm);
 			}
 		}
+		else {
+			println!("KERNEL: Initialized an already initialized filesystem {}", bdev);
+		}
 	}
 
 	/// The goal of open is to traverse the path given by path. If we cache the inodes

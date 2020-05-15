@@ -12,7 +12,9 @@ use alloc::string::String;
 pub fn test_elf() {
 	// This won't be necessary after we connect this to the VFS, but for now, we need it.
 	const BDEV: usize = 8;
-	MinixFileSystem::init(BDEV);
+	// This could be better. We should see what our probe gave us, and it if is
+	// a block device, init the filesystem.
+	MinixFileSystem::init(8);
 	let file_to_read = String::from("/helloworld.elf");
 	let desc = MinixFileSystem::open(BDEV, &file_to_read).ok();
 	if desc.is_none() {
