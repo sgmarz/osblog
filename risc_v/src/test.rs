@@ -15,7 +15,7 @@ pub fn test() {
 	// a block device, init the filesystem.
 	MinixFileSystem::init(BDEV);
 	let file_to_read = "/helloworld.elf";
-	let desc = MinixFileSystem::open(BDEV, &file_to_read).ok();
+	let desc = MinixFileSystem::open(BDEV, file_to_read).ok();
 	if desc.is_none() {
 		println!("Error reading {}", file_to_read);
 		return;
