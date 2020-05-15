@@ -25,9 +25,10 @@ pub fn test_elf() {
 	// This won't be necessary after we connect this to the VFS, but for now, we need it.
 	const BDEV: usize = 8;
 	let mfs = MinixFileSystem::init(BDEV);
-	let desc = mfs.open(&String::from("/helloworld.elf")).ok();
+	let file_to_read = String::from("/helloworld.elf");
+	let desc = mfs.open(&file_to_read).ok();
 	if desc.is_none() {
-		println!("Error reading /helloworld.elf");
+		println!("Error reading {}", file_to_read);
 		return;
 	}
 	let ino = desc.unwrap();
