@@ -6,8 +6,9 @@ use crate::{cpu::{build_satp,
                   CpuMode,
                   SatpMode,
                   TrapFrame},
-            elf,
-			fs::{MinixFileSystem, BlockBuffer},
+			elf,
+			buffer::Buffer,
+			fs::MinixFileSystem,
             page::{map, zalloc, EntryBits, Table, PAGE_SIZE},
             process::{Process,
                       ProcessData,
@@ -35,7 +36,7 @@ pub fn test_elf() {
 	// The bytes to read would usually come from the inode, but we are in an
 	// interrupt context right now, so we cannot pause. Usually, this would
 	// be done by an exec system call.
-	let mut buffer = BlockBuffer::new(ino.size);
+	let mut buffer = Buffer::new(ino.size);
 	// Read the file from the disk. I got the inode by mounting
 	// the harddrive as a loop on Linux and stat'ing the inode.
 
@@ -55,31 +56,15 @@ pub fn test_elf() {
 	// Everything is "page" based since we're going to map pages to
 	// user space. So, we need to know how many program pages we
 	// need. Each page is 4096 bytes.
+	let elf_fl = elf::File::load(&buffer);
+	if elf_fl.is_none() {
+		println!("Error reading elf file.");
+		return;
+	}
+	let elf_fl = elf_fl.unwrap();
+
 	let program_pages = (bytes_read as usize / PAGE_SIZE) + 1;
-	let my_pid = unsafe { NEXT_PID + 1 };
-	let elf_hdr;
-	unsafe {
-		NEXT_PID += 1;
-		// Load the ELF
-		elf_hdr =
-			(buffer.get() as *const elf::Header).as_ref().unwrap();
-	}
-	// The ELF magic is 0x75, followed by ELF
-	if elf_hdr.magic != elf::MAGIC {
-		println!("ELF magic didn't match.");
-		return;
-	}
-	// We need to make sure we're built for RISC-V
-	if elf_hdr.machine != elf::MACHINE_RISCV {
-		println!("ELF loaded is not RISC-V.");
-		return;
-	}
-	// ELF has several types. However, we can only load
-	// executables.
-	if elf_hdr.obj_type != elf::TYPE_EXEC {
-		println!("ELF is not an executable.");
-		return;
-	}
+	let my_pid = unsafe { let p = NEXT_PID + 1; NEXT_PID += 1; p };
 	let mut my_proc = Process { frame:       zalloc(1) as *mut TrapFrame,
 	                            stack:       zalloc(STACK_PAGES),
 	                            pid:         my_pid,
@@ -95,58 +80,43 @@ pub fn test_elf() {
 	// .rodata, .data, and .bss sections, but not necessarily.
 	// What we do here is map the program headers into the process' page
 	// table.
-	unsafe {
-		// The program header table starts where the ELF header says it is
-		// given by the field phoff (program header offset).
-		let ph_tab = buffer.get().add(elf_hdr.phoff)
-					 as *const elf::ProgramHeader;
-		// There are phnum number of program headers. We need to go through
-		// each one and load it into memory, if necessary.
-		for i in 0..elf_hdr.phnum as usize {
-			let ph = ph_tab.add(i).as_ref().unwrap();
-			// If the segment isn't marked as LOAD (loaded into memory),
-			// then there is no point to this. Most executables use a LOAD
-			// type for their program headers.
-			if ph.seg_type != elf::PH_SEG_TYPE_LOAD {
-				continue;
-			}
-			// If there's nothing in this section, don't load it.
-			if ph.memsz == 0 {
-				continue;
-			}
-			// Copy the buffer we got from the filesystem into the program
-			// memory we're going to map to the user. The memsz field in the
-			// program header tells us how many bytes will need to be loaded.
-			// The ph.off is the offset to load this into.
+	for p in elf_fl.programs.iter() {
+	// The program header table starts where the ELF header says it is
+	// given by the field phoff (program header offset).
+	// Copy the buffer we got from the filesystem into the program
+		// memory we're going to map to the user. The memsz field in the
+		// program header tells us how many bytes will need to be loaded.
+		// The ph.off is the offset to load this into.
+		unsafe {
 			memcpy(
-			       program_mem.add(ph.off,),
-			       buffer.get().add(ph.off,),
-			       ph.memsz,
+					program_mem.add(p.header.off),
+					p.data.get(),
+					p.header.memsz,
 			);
-			// We start off with the user bit set.
-			let mut bits = EntryBits::User.val();
-			// This sucks, but we check each bit in the flags to see
-			// if we need to add it to the PH permissions.
-			if ph.flags & elf::PROG_EXECUTE != 0 {
-				bits |= EntryBits::Execute.val();
-			}
-			if ph.flags & elf::PROG_READ != 0 {
-				bits |= EntryBits::Read.val();
-			}
-			if ph.flags & elf::PROG_WRITE != 0 {
-				bits |= EntryBits::Write.val();
-			}
-			// Now we map the program counter. The virtual address
-			// is provided in the ELF program header.
-			let pages = (ph.memsz + PAGE_SIZE) / PAGE_SIZE;
-			for i in 0..pages {
-				let vaddr = ph.vaddr + i * PAGE_SIZE;
-				// The ELF specifies a paddr, but not when we
-				// use the vaddr!
-				let paddr = program_mem as usize + ph.off + i * PAGE_SIZE;
-				// println!("DEBUG: Map 0x{:08x} to 0x{:08x} {:02x}", vaddr, paddr, bits);
-				map(table, vaddr, paddr, bits, 0);
-			}
+		}
+		// We start off with the user bit set.
+		let mut bits = EntryBits::User.val();
+		// This sucks, but we check each bit in the flags to see
+		// if we need to add it to the PH permissions.
+		if p.header.flags & elf::PROG_EXECUTE != 0 {
+			bits |= EntryBits::Execute.val();
+		}
+		if p.header.flags & elf::PROG_READ != 0 {
+			bits |= EntryBits::Read.val();
+		}
+		if p.header.flags & elf::PROG_WRITE != 0 {
+			bits |= EntryBits::Write.val();
+		}
+		// Now we map the program counter. The virtual address
+		// is provided in the ELF program header.
+		let pages = (p.header.memsz + PAGE_SIZE) / PAGE_SIZE;
+		for i in 0..pages {
+			let vaddr = p.header.vaddr + i * PAGE_SIZE;
+			// The ELF specifies a paddr, but not when we
+			// use the vaddr!
+			let paddr = program_mem as usize + p.header.off + i * PAGE_SIZE;
+			// println!("DEBUG: Map 0x{:08x} to 0x{:08x} {:02x}", vaddr, paddr, bits);
+			map(table, vaddr, paddr, bits, 0);
 		}
 	}
 	// This will map all of the program pages. Notice that in linker.lds in
@@ -165,7 +135,7 @@ pub fn test_elf() {
 	unsafe {
 		// The program counter is a virtual memory address and is loaded
 		// into mepc when we execute mret.
-		(*my_proc.frame).pc = elf_hdr.entry_addr;
+		(*my_proc.frame).pc = elf_fl.header.entry_addr;
 		// Stack pointer. The stack starts at the bottom and works its
 		// way up, so we have to set the stack pointer to the bottom.
 		(*my_proc.frame).regs[2] =
