@@ -58,8 +58,8 @@ m_trap_vector:
 	csrr	t1, mstatus
 	srli	t0, t1, 13
 	andi	t0, t0, 3
-
-	beqz	t0, 1f
+	li		t3, 3
+	bne		t0, t3, 1f
 	# Save floating point registers
 	.set 	i, 0
 	.rept	32
@@ -94,8 +94,8 @@ m_trap_vector:
 	csrr	t1, mstatus
 	srli	t0, t1, 13
 	andi	t0, t0, 3
-
-	beqz	t0, 1f
+	li		t3, 3
+	bne		t0, t3, 1f
 	.set	i, 0
 	.rept	32
 		load_fp %i
@@ -154,7 +154,6 @@ switch_to_user:
 	csrr	t1, mstatus
 	srli	t0, t1, 13
 	andi	t0, t0, 3
-
 	beqz	t0, 1f
 	.set	i, 0
 	.rept	32
