@@ -5,6 +5,7 @@
 
 use crate::{block, block::setup_block_device, page::PAGE_SIZE};
 use crate::rng::setup_entropy_device;
+use crate::gpu::setup_gpu_device;
 use core::mem::size_of;
 
 // Flags
@@ -323,10 +324,6 @@ pub fn probe() {
 }
 
 pub fn setup_network_device(_ptr: *mut u32) -> bool {
-	false
-}
-
-pub fn setup_gpu_device(_ptr: *mut u32) -> bool {
 	false
 }
 
