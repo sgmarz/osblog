@@ -201,6 +201,9 @@ impl MinixFileSystem {
 			else {
 				ret = Err(FsError::FileNotFound);
 			}
+			unsafe {
+				MFS_INODE_CACHE[bdev-1].replace(cache);
+			}
 			ret
 		}
 		else {
