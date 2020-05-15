@@ -14,7 +14,7 @@ pub fn test() {
 	const BDEV: usize = 8;
 	// This could be better. We should see what our probe gave us, and it if is
 	// a block device, init the filesystem.
-	MinixFileSystem::init(8);
+	MinixFileSystem::init(BDEV);
 	let file_to_read = String::from("/helloworld.elf");
 	let desc = MinixFileSystem::open(BDEV, &file_to_read).ok();
 	if desc.is_none() {
