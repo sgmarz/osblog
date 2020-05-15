@@ -192,7 +192,7 @@ impl MinixFileSystem {
 	/// The goal of open is to traverse the path given by path. If we cache the inodes
 	/// in RAM, it might make this much quicker. For now, this doesn't do anything since
 	/// we're just testing read based on if we know the Inode we're looking for.
-	pub fn open(bdev: usize,  path: &String) -> Result<Inode, FsError> {
+	pub fn open(bdev: usize,  path: &str) -> Result<Inode, FsError> {
 		if let Some(cache) = unsafe { MFS_INODE_CACHE[bdev-1].take() } {
 			let ret;
 			if let Some(inode) = cache.get(path) {

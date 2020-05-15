@@ -5,7 +5,6 @@ use crate::{elf,
 			fs::MinixFileSystem,
             process::{PROCESS_LIST,
 					  PROCESS_LIST_MUTEX}};
-use alloc::string::String;
 
 /// Test block will load raw binaries into memory to execute them. This function
 /// will load ELF files and try to execute them.
@@ -15,7 +14,7 @@ pub fn test() {
 	// This could be better. We should see what our probe gave us, and it if is
 	// a block device, init the filesystem.
 	MinixFileSystem::init(BDEV);
-	let file_to_read = String::from("/helloworld.elf");
+	let file_to_read = "/helloworld.elf";
 	let desc = MinixFileSystem::open(BDEV, &file_to_read).ok();
 	if desc.is_none() {
 		println!("Error reading {}", file_to_read);
