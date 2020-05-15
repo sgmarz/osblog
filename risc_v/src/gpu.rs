@@ -4,10 +4,9 @@
 // 12 May 2020
 
 #![allow(dead_code)]
-use crate::{kmem::{kfree, kmalloc},
-            page::{zalloc, PAGE_SIZE},
+use crate::{page::{zalloc, PAGE_SIZE},
             virtio,
-            virtio::{Descriptor, MmioOffsets, Queue, StatusField, VIRTIO_RING_SIZE}};
+            virtio::{MmioOffsets, Queue, StatusField, VIRTIO_RING_SIZE}};
 use core::{mem::size_of, ptr::null_mut};
 
 pub struct GpuDevice {

@@ -69,7 +69,6 @@ pub struct DirEntry {
 
 /// The MinixFileSystem implements the FileSystem trait for the VFS.
 pub struct MinixFileSystem {
-	bdev: usize,
 	inode_cache: BTreeMap<String, Inode>
 }
 
@@ -163,14 +162,13 @@ impl MinixFileSystem {
 	// Run this ONLY in a process!
 	pub fn init(bdev: usize) -> Self {
 		let mut btm = BTreeMap::new();
-		let mut cwd = String::from("/");
+		let cwd = String::from("/");
 
         // Let's look at the root (inode #1)
         Self::cache_at(&mut btm, &cwd, 1, bdev);
 
 
 		Self {
-			bdev,
 			inode_cache: btm
 		}
 	}
@@ -194,7 +192,7 @@ impl MinixFileSystem {
 		let mut blocks_seen = 0u32;
 		let offset_block = offset / BLOCK_SIZE;
 		let mut offset_byte = offset % BLOCK_SIZE;
-		const num_indirect_pointers: usize = BLOCK_SIZE as usize / 4;
+		const NUM_INDIRECT_POINTERS: usize = BLOCK_SIZE as usize / 4;
 		// First, the _size parameter (now in bytes_left) is the size of the buffer, not
 		// necessarily the size of the file. If our buffer is bigger than the file, we're OK.
 		// If our buffer is smaller than the file, then we can only read up to the buffer size.
@@ -283,7 +281,7 @@ impl MinixFileSystem {
 		if inode.zones[7] != 0 {
 			syc_read(bdev, indirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * inode.zones[7]);
 			let izones = indirect_buffer.get() as *const u32;
-			for i in 0..num_indirect_pointers {
+			for i in 0..NUM_INDIRECT_POINTERS{
 				// Where do I put unsafe? Dereferencing the pointers and memcpy are the unsafe functions.
 				unsafe {
 					if izones.add(i).read() != 0 {
@@ -323,10 +321,10 @@ impl MinixFileSystem {
 		if inode.zones[8] != 0 {
 			syc_read(bdev, indirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * inode.zones[8]);
 			unsafe {
-				for i in 0..num_indirect_pointers {
+				for i in 0..NUM_INDIRECT_POINTERS {
 					if izones.add(i).read() != 0 {
 						syc_read(bdev, iindirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * izones.add(i).read());
-						for j in 0..num_indirect_pointers {
+						for j in 0..NUM_INDIRECT_POINTERS {
 							if iizones.add(j).read() != 0 {
 								// Notice that this inner code is the same for all end-zone pointers. I'm thinking about
 								// moving this out of here into a function of its own, but that might make it harder
@@ -369,10 +367,10 @@ impl MinixFileSystem {
 		if inode.zones[9] != 0 {
 			syc_read(bdev, indirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * inode.zones[9]);
 			unsafe {
-				for i in 0..num_indirect_pointers {
+				for i in 0..NUM_INDIRECT_POINTERS {
 					if izones.add(i).read() != 0 {
 						syc_read(bdev, iindirect_buffer.get_mut(), BLOCK_SIZE, BLOCK_SIZE * izones.add(i).read());
-						for j in 0..num_indirect_pointers {
+						for j in 0..NUM_INDIRECT_POINTERS {
 							if iizones.add(j).read() != 0 {
 								syc_read(
 								         bdev,
@@ -380,7 +378,7 @@ impl MinixFileSystem {
 								         BLOCK_SIZE,
 								         BLOCK_SIZE * iizones.add(j,).read(),
 								);
-								for k in 0..num_indirect_pointers {
+								for k in 0..NUM_INDIRECT_POINTERS {
 									if iiizones.add(k).read() != 0 {
 										// Hey look! This again.
 										if offset_block <= blocks_seen {
@@ -425,7 +423,7 @@ impl MinixFileSystem {
 		bytes_read
 	}
 
-	pub fn write(&mut self, desc: &String, _buffer: *const u8, _offset: u32, _size: u32) -> u32 {
+	pub fn write(&mut self, _desc: &Inode, _buffer: *const u8, _offset: u32, _size: u32) -> u32 {
 		0
 	}
 

@@ -16,16 +16,15 @@ use crate::{cpu::{build_satp,
 					  PROCESS_LIST,
 					  PROCESS_LIST_MUTEX,
                       STACK_ADDR,
-                      STACK_PAGES},
-			syscall::{syscall_get_pid, syscall_fs_read, syscall_exit}};
+                      STACK_PAGES}};
 use alloc::string::String;
 
 /// Test block will load raw binaries into memory to execute them. This function
 /// will load ELF files and try to execute them.
 pub fn test_elf() {
 	// This won't be necessary after we connect this to the VFS, but for now, we need it.
-	const bdev: usize = 8;
-	let mfs = MinixFileSystem::init(bdev);
+	const BDEV: usize = 8;
+	let mfs = MinixFileSystem::init(BDEV);
 	let desc = mfs.open(&String::from("/helloworld.elf")).ok();
 	if desc.is_none() {
 		println!("Error reading /helloworld.elf");
@@ -39,7 +38,7 @@ pub fn test_elf() {
 	// Read the file from the disk. I got the inode by mounting
 	// the harddrive as a loop on Linux and stat'ing the inode.
 
-	let bytes_read = MinixFileSystem::read(bdev, &ino, buffer.get_mut(), ino.size, 0);
+	let bytes_read = MinixFileSystem::read(BDEV, &ino, buffer.get_mut(), ino.size, 0);
 	// After compiling our program, I manually looked and saw it was 18,360
 	// bytes. So, to make sure we got the right one, I do a manual check
 	// here.
