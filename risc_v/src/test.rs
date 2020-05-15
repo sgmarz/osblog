@@ -12,9 +12,9 @@ use alloc::string::String;
 pub fn test_elf() {
 	// This won't be necessary after we connect this to the VFS, but for now, we need it.
 	const BDEV: usize = 8;
-	let mfs = MinixFileSystem::init(BDEV);
+	MinixFileSystem::init(BDEV);
 	let file_to_read = String::from("/helloworld.elf");
-	let desc = mfs.open(&file_to_read).ok();
+	let desc = MinixFileSystem::open(BDEV, &file_to_read).ok();
 	if desc.is_none() {
 		println!("Error reading {}", file_to_read);
 		return;

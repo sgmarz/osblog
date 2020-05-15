@@ -68,9 +68,17 @@ pub struct DirEntry {
 }
 
 /// The MinixFileSystem implements the FileSystem trait for the VFS.
-pub struct MinixFileSystem {
-	inode_cache: BTreeMap<String, Inode>
-}
+pub struct MinixFileSystem;
+static mut MFS_INODE_CACHE: [Option<BTreeMap<String, Inode>>; 8] = [
+	None,
+	None,
+	None,
+	None,
+	None,
+	None,
+	None,
+	None
+];
 
 impl MinixFileSystem {
 	/// Inodes are the meta-data of a file, including the mode (permissions and type) and
@@ -165,24 +173,32 @@ impl MinixFileSystem {
 		}
 	}
 	// Run this ONLY in a process!
-	pub fn init(bdev: usize) -> Self {
-		let mut btm = BTreeMap::new();
-		let cwd = String::from("/");
+	pub fn init(bdev: usize) {
+		if unsafe {MFS_INODE_CACHE[bdev-1].is_none() } {
+			let mut btm = BTreeMap::new();
+			let cwd = String::from("/");
 
-        // Let's look at the root (inode #1)
-        Self::cache_at(&mut btm, &cwd, 1, bdev);
-
-		Self {
-			inode_cache: btm
+			// Let's look at the root (inode #1)
+			Self::cache_at(&mut btm, &cwd, 1, bdev);
+			unsafe {
+				MFS_INODE_CACHE[bdev-1] = Some(btm);
+			}
 		}
 	}
 
 	/// The goal of open is to traverse the path given by path. If we cache the inodes
 	/// in RAM, it might make this much quicker. For now, this doesn't do anything since
 	/// we're just testing read based on if we know the Inode we're looking for.
-	pub fn open(&self, path: &String) -> Result<Inode, FsError> {
-		if let Some(inode) = self.inode_cache.get(path) {
-			Ok(*inode)
+	pub fn open(bdev: usize,  path: &String) -> Result<Inode, FsError> {
+		if let Some(cache) = unsafe { MFS_INODE_CACHE[bdev-1].take() } {
+			let ret;
+			if let Some(inode) = cache.get(path) {
+				ret = Ok(*inode);
+			}
+			else {
+				ret = Err(FsError::FileNotFound);
+			}
+			ret
 		}
 		else {
 			Err(FsError::FileNotFound)
