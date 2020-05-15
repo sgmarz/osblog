@@ -10,7 +10,7 @@ use crate::{kmem::{talloc, tfree, kmalloc, kfree},
 use crate::cpu::memcpy;
 use alloc::string::String;
 use alloc::collections::BTreeMap;
-use core::{mem::size_of};
+use core::mem::size_of;
 use core::ptr::null_mut;
 
 pub const MAGIC: u16 = 0x4d5a;
@@ -126,9 +126,9 @@ impl MinixFileSystem {
 	/// Init is where we would cache the superblock and inode to avoid having to read
     /// it over and over again, like we do for read right now.
     fn cache_at(btm: &mut BTreeMap<String, Inode>, cwd: &String, inode_num: u32, bdev: usize) {
-		let mut buf = BlockBuffer::new(BLOCK_SIZE);
-		let dirents = buf.get() as *const DirEntry;
 		let ino = Self::get_inode(bdev, inode_num).unwrap();
+		let mut buf = BlockBuffer::new((ino.size + BLOCK_SIZE - 1) & !BLOCK_SIZE);
+		let dirents = buf.get() as *const DirEntry;
 		let sz = Self::read(bdev, &ino, buf.get_mut(), BLOCK_SIZE, 0);
 		let num_dirents = sz as usize / size_of::<DirEntry>();
 		// We start at 2 because the first two entries are . and ..
