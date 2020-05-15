@@ -9,7 +9,7 @@ use alloc::string::String;
 
 /// Test block will load raw binaries into memory to execute them. This function
 /// will load ELF files and try to execute them.
-pub fn test_elf() {
+pub fn test() {
 	// This won't be necessary after we connect this to the VFS, but for now, we need it.
 	const BDEV: usize = 8;
 	// This could be better. We should see what our probe gave us, and it if is
