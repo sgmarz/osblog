@@ -24,7 +24,7 @@ pub fn test() {
 	// The bytes to read would usually come from the inode, but we are in an
 	// interrupt context right now, so we cannot pause. Usually, this would
 	// be done by an exec system call.
-	let mut buffer = Buffer::new(ino.size);
+	let mut buffer = Buffer::new(ino.size as usize);
 	// Read the file from the disk. I got the inode by mounting
 	// the harddrive as a loop on Linux and stat'ing the inode.
 

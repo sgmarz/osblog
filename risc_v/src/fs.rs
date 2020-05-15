@@ -69,6 +69,9 @@ pub struct DirEntry {
 
 /// The MinixFileSystem implements the FileSystem trait for the VFS.
 pub struct MinixFileSystem;
+// The plan for this in the future is to have a single inode cache. What we
+// will do is have a cache of Node structures which will combine the Inode
+// with the block drive.
 static mut MFS_INODE_CACHE: [Option<BTreeMap<String, Inode>>; 8] = [
 	None,
 	None,
@@ -135,7 +138,7 @@ impl MinixFileSystem {
     /// it over and over again, like we do for read right now.
     fn cache_at(btm: &mut BTreeMap<String, Inode>, cwd: &String, inode_num: u32, bdev: usize) {
 		let ino = Self::get_inode(bdev, inode_num).unwrap();
-		let mut buf = Buffer::new((ino.size + BLOCK_SIZE - 1) & !BLOCK_SIZE);
+		let mut buf = Buffer::new(((ino.size + BLOCK_SIZE - 1) & !BLOCK_SIZE) as usize);
 		let dirents = buf.get() as *const DirEntry;
 		let sz = Self::read(bdev, &ino, buf.get_mut(), BLOCK_SIZE, 0);
 		let num_dirents = sz as usize / size_of::<DirEntry>();
@@ -230,11 +233,11 @@ impl MinixFileSystem {
 		};
 		let mut bytes_read = 0u32;
 		// The block buffer automatically drops when we quit early due to an error or we've read enough. This will be the holding port when we go out and read a block. Recall that even if we want 10 bytes, we have to read the entire block (really only 512 bytes of the block) first. So, we use the block_buffer as the middle man, which is then copied into the buffer.
-		let mut block_buffer = Buffer::new(BLOCK_SIZE);
+		let mut block_buffer = Buffer::new(BLOCK_SIZE as usize);
 		// Triply indirect zones point to a block of pointers (BLOCK_SIZE / 4). Each one of those pointers points to another block of pointers (BLOCK_SIZE / 4). Each one of those pointers yet again points to another block of pointers (BLOCK_SIZE / 4). This is why we have indirect, iindirect (doubly), and iiindirect (triply).
-		let mut indirect_buffer = Buffer::new(BLOCK_SIZE);
-		let mut iindirect_buffer = Buffer::new(BLOCK_SIZE);
-		let mut iiindirect_buffer = Buffer::new(BLOCK_SIZE);
+		let mut indirect_buffer = Buffer::new(BLOCK_SIZE as usize);
+		let mut iindirect_buffer = Buffer::new(BLOCK_SIZE as usize);
+		let mut iiindirect_buffer = Buffer::new(BLOCK_SIZE as usize);
 		// I put the pointers *const u32 here. That means we will allocate the indirect, doubly indirect, and triply indirect even for small files. I initially had these in their respective scopes, but that required us to recreate the indirect buffer for doubly indirect and both the indirect and doubly indirect buffers for the triply indirect. Not sure which is better, but I probably wasted brain cells on this.
 		let izones = indirect_buffer.get() as *const u32;
 		let iizones = iindirect_buffer.get() as *const u32;

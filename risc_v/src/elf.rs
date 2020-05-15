@@ -133,7 +133,7 @@ impl File {
 					continue;
 				}
 				let mut ph_buffer =
-					Buffer::new(ph.memsz as u32);
+					Buffer::new(ph.memsz);
 
 				memcpy(
 				       ph_buffer.get_mut(),
