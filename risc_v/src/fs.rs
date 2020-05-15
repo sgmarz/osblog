@@ -136,7 +136,7 @@ impl MinixFileSystem {
 			unsafe {
 				let ref d = *dirents.add(i);
 				let d_ino = Self::get_inode(bdev, d.inode).unwrap();
-				let mut new_cwd: String = String::with_capacity(120);
+				let mut new_cwd = String::with_capacity(120);
 				for i in cwd.bytes() {
 					new_cwd.push(i as char);
 				}
