@@ -63,6 +63,43 @@ pub enum Registers {
 	T6
 }
 
+// Floating point registers
+#[repr(usize)]
+pub enum FRegisters {
+	Ft0,
+	Ft1,
+	Ft2,
+	Ft3,
+	Ft4,
+	Ft5,
+	Ft6,
+	Ft7,
+	Fs0,
+	Fs1,
+	Fa0, /* 10 */
+	Fa1,
+	Fa2,
+	Fa3,
+	Fa4,
+	Fa5,
+	Fa6,
+	Fa7,
+	Fs2,
+	Fs3,
+	Fs4, /* 20 */
+	Fs5,
+	Fs6,
+	Fs7,
+	Fs8,
+	Fs9,
+	Fs10,
+	Fs11,
+	Ft8,
+	Ft9,
+	Ft10, /* 30 */
+	Ft11
+}
+
 /// The trap frame is set into a structure
 /// and packed into each hart's mscratch register.
 /// This allows for quick reference and full

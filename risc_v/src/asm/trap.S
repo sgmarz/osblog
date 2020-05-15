@@ -54,11 +54,24 @@ m_trap_vector:
 
 	# Restore the kernel trap frame into mscratch
 	csrw	mscratch, t5
-	# csrw	mie, zero
+
+	csrr	t1, mstatus
+	srli	t0, t1, 13
+	andi	t0, t0, 3
+
+	beqz	t0, 1f
+	# Save floating point registers
+	.set 	i, 0
+	.rept	32
+		save_fp	%i, t5
+		.set	i, i+1
+	.endr
+1:
 	# Get ready to go into Rust (trap.rs)
 	# We don't want to write into the user's stack or whomever
 	# messed with us here.
 	# csrw	mie, zero
+
 	csrr	a0, mepc
 	sd		a0, 520(t5)
 	csrr	a1, mtval
@@ -78,6 +91,17 @@ m_trap_vector:
 	# Now load the trap frame back into t6
 	csrr	t6, mscratch
 
+	csrr	t1, mstatus
+	srli	t0, t1, 13
+	andi	t0, t0, 3
+
+	beqz	t0, 1f
+	.set	i, 0
+	.rept	32
+		load_fp %i
+		.set i, i+1
+	.endr
+1:
 	# Restore all GP registers
 	.set	i, 1
 	.rept	31
@@ -108,7 +132,7 @@ switch_to_user:
 	# 1 << 7 is MPIE
 	# Since user mode is 00, we don't need to set anything
 	# in MPP (bits 12:11)
-	li		t0, 1 << 7 | 1 << 5
+	li		t0, 1 << 7 | 1 << 5 | 1 << 13
 	# Combine enable bits with mode bits.
 	slli	a3, a3, 11
 	or		t0, t0, a3
@@ -127,6 +151,17 @@ switch_to_user:
 	# A0 is the context frame, so we need to reload it back
 	# and mret so we can start running the program.
 	mv	t6, a0
+	csrr	t1, mstatus
+	srli	t0, t1, 13
+	andi	t0, t0, 3
+
+	beqz	t0, 1f
+	.set	i, 0
+	.rept	32
+		load_fp %i
+		.set i, i+1
+	.endr
+1:
 	.set	i, 1
 	.rept	31
 		load_gp %i, t6

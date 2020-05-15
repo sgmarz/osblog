@@ -96,7 +96,7 @@ _start:
 	sub		sp, sp, t0
 
 	# The parked harts will be put into machine mode with interrupts enabled.
-	li		t0, 0b11 << 11 | (1 << 7)
+	li		t0, 0b11 << 11 | (1 << 7) | (1 << 13)
 	csrw	mstatus, t0
 	# Allow for MSIP (Software interrupt). We will write the MSIP from hart #0 to
 	# awaken these parked harts.
