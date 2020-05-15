@@ -140,6 +140,9 @@ impl MinixFileSystem {
 				for i in cwd.bytes() {
 					new_cwd.push(i as char);
 				}
+				// Add a directory separator between this inode and the next.
+				// If we're the root (inode 1), we don't want to double up the
+				// frontslash, so only do it for non-roots.
 				if inode_num != 1 {
 					new_cwd.push('/');
 				}
@@ -149,8 +152,10 @@ impl MinixFileSystem {
 					}
 					new_cwd.push(d.name[i] as char);
 				}
+				new_cwd.shrink_to_fit();
 				if d_ino.mode & S_IFDIR != 0 {
-					// This is a directory, cache these.
+					// This is a directory, cache these. This is a recursive call,
+					// which I don't really like.
 					Self::cache_at(btm, &new_cwd, d.inode, bdev);	
 				}
 				else {
@@ -166,7 +171,6 @@ impl MinixFileSystem {
 
         // Let's look at the root (inode #1)
         Self::cache_at(&mut btm, &cwd, 1, bdev);
-
 
 		Self {
 			inode_cache: btm
