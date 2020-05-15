@@ -44,11 +44,11 @@ pub fn test_elf() {
 	// user space. So, we need to know how many program pages we
 	// need. Each page is 4096 bytes.
 	let my_proc = elf::File::load_proc(&buffer, bytes_read as usize);
-	if my_proc.is_none() {
+	if my_proc.is_err() {
 		println!("Unable to load process");
 		return;
 	}
-	let my_proc = my_proc.unwrap();
+	let my_proc = my_proc.ok().unwrap();
 	// I took a different tact here than in process.rs. In there I created
 	// the process while holding onto the process list. It might
 	// matter since this is asynchronous--it is being ran as a kernel process.

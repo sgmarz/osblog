@@ -79,13 +79,20 @@ pub struct Program {
 	pub data:   Buffer
 }
 
+pub enum LoadErrors {
+    Magic,
+    Machine,
+    TypeExec,
+    FileRead
+}
+
 pub struct File {
 	pub header:   Header,
 	pub programs: VecDeque<Program>
 }
 
 impl File {
-	pub fn load(buffer: &Buffer) -> Option<Self> {
+	pub fn load(buffer: &Buffer) -> Result<Self, LoadErrors> {
 		let elf_hdr;
 		unsafe {
 			// Load the ELF
@@ -94,19 +101,16 @@ impl File {
 		}
 		// The ELF magic is 0x75, followed by ELF
 		if elf_hdr.magic != MAGIC {
-			println!("ELF magic didn't match.");
-			return None;
+			return Err(LoadErrors::Magic);
 		}
 		// We need to make sure we're built for RISC-V
 		if elf_hdr.machine != MACHINE_RISCV {
-			println!("ELF loaded is not RISC-V.");
-			return None;
+			return Err(LoadErrors::Machine);
 		}
 		// ELF has several types. However, we can only load
 		// executables.
 		if elf_hdr.obj_type != TYPE_EXEC {
-			println!("ELF is not an executable.");
-			return None;
+			return Err(LoadErrors::TypeExec);
 		}
 		let ph_tab = unsafe { buffer.get().add(elf_hdr.phoff) }
 		             as *const ProgramHeader;
@@ -140,17 +144,16 @@ impl File {
 				                        data:   ph_buffer });
 			}
 		}
-		Some(ret)
+		Ok(ret)
 	}
 
 	// load
-	pub fn load_proc(buffer: &Buffer, sz: usize) -> Option<Process> {
-		let elf_fl = Self::load(&buffer);
-		if elf_fl.is_none() {
-			println!("Error reading elf file.");
-			return None;
-		}
-		let elf_fl = elf_fl.unwrap();
+	pub fn load_proc(buffer: &Buffer, sz: usize) -> Result<Process, LoadErrors> {
+        let elf_fl = Self::load(&buffer);
+        if elf_fl.is_err() {
+            return Err(elf_fl.err().unwrap());
+        }
+		let elf_fl = elf_fl.ok().unwrap();
 
         let program_pages = (sz as usize / PAGE_SIZE) + 1;
         // I did this to demonstrate the expressive nature of Rust. Kinda cool, no?
@@ -262,6 +265,6 @@ impl File {
 		// now. Since we don't reuse PIDs, this means that we can only spawn
 		// 65534 processes.
 		satp_fence_asid(my_pid as usize);
-		Some(my_proc)
+		Ok(my_proc)
 	}
 }
