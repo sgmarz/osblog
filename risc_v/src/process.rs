@@ -19,7 +19,7 @@ use crate::{cpu::{build_satp,
                    Table,
                    PAGE_SIZE},
             syscall::syscall_exit};
-use alloc::collections::vec_deque::VecDeque;
+use alloc::{string::String, collections::{vec_deque::VecDeque, BTreeMap}};
 use core::ptr::null_mut;
 use crate::lock::Mutex;
 
@@ -596,7 +596,7 @@ impl Drop for Process {
 // private process data. This is essentially our resource control block (RCB).
 #[allow(dead_code)]
 pub struct ProcessData {
-	cwd_path: [u8; 128],
+	environ: BTreeMap<String, String>
 }
 
 // This is private data that we can query with system calls.
@@ -604,6 +604,8 @@ pub struct ProcessData {
 // is a per-process block queuing algorithm, we can put that here.
 impl ProcessData {
 	pub fn zero() -> Self {
-		ProcessData { cwd_path: [0; 128], }
+		ProcessData { 
+			environ: BTreeMap::new()
+		 }
 	}
 }
