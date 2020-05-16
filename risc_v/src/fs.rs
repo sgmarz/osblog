@@ -3,7 +3,8 @@
 // Stephen Marz
 // 16 March 2020
 
-use crate::{kmem::{talloc, tfree},
+use crate::{cpu::Registers,
+	        kmem::{talloc, tfree},
             process::{add_kernel_process_args,
                       get_by_pid,
                       set_running,
@@ -580,7 +581,7 @@ fn read_proc(args_addr: usize) {
 	unsafe {
 		let ptr = get_by_pid(args.pid);
 		if !ptr.is_null() {
-			(*(*ptr).get_frame_mut()).regs[10] = bytes as usize;
+			(*(*ptr).get_frame_mut()).regs[Registers::A0 as usize] = bytes as usize;
 		}
 	}
 	// This is the process making the system call. The system itself spawns another process
