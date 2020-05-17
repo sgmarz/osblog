@@ -10,7 +10,7 @@ use crate::{block::block_op,
 			buffer::Buffer,
 			kmem::{kfree, kmalloc},
             page::{virt_to_phys, Table},
-            process::{PROCESS_LIST, delete_process, get_by_pid, set_sleeping, set_waiting, add_kernel_process_args}};
+            process::{PROCESS_LIST, PROCESS_LIST_MUTEX, delete_process, get_by_pid, set_sleeping, set_waiting, add_kernel_process_args}};
 use alloc::string::String;
 use core::mem::size_of;
 /// do_syscall is called from trap.rs to invoke a system call. No discernment is
@@ -245,10 +245,12 @@ fn exec_func(args: usize) {
 			println!("Failed to launch process.");
 		}
 		else {
+			PROCESS_LIST_MUTEX.sleep_lock();
 			if let Some(mut proc_list) = PROCESS_LIST.take()  {
 				proc_list.push_back(proc.ok().unwrap());
 				PROCESS_LIST.replace(proc_list);
 			}
+			PROCESS_LIST_MUTEX.unlock();
 		}
 		kfree(inode_ptr as *mut u8);
 	}
