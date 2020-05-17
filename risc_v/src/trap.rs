@@ -52,26 +52,10 @@ extern "C" fn m_trap(epc: usize,
 				// process to run.
 				// Machine timer
 				let new_frame = schedule();
-				// let p = frame as *const TrapFrame;
-				// println!(
-				// 		 "CTX Startup {}, pc = {:x}",
-				// 		 (*p).pid,
-				// 		 (*p).pc
-				// );
-				// print!("   ");
-				// for i in 1..32 {
-				// 	if i % 4 == 0 {
-				// 		println!();
-				// 		print!("   ");
-				// 	}
-				// 	print!("{:2}:{:08x}   ", i, (*p).regs[i]);
-				// }
-				// println!();
 				schedule_next_context_switch(1);
 				if new_frame != 0 {
 					rust_switch_to_user(new_frame);
 				}
-				
 			},
 			11 => {
 				// Machine external (interrupt from Platform Interrupt Controller (PLIC))
