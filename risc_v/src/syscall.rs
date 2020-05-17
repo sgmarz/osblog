@@ -49,14 +49,14 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			// execv
 			//A0 = path
 			//A1 = argv
-			let p = get_by_pid((*frame).pid as u16);
-			let table = ((*p).get_table_address()
-						 as *mut Table)
-						.as_ref()
-						.unwrap();
 			let mut path_addr = (*frame).regs[Registers::A0 as usize];
 			// If the MMU is turned on, translate.
 			if (*frame).satp >> 60 != 0 {
+				let p = get_by_pid((*frame).pid as u16);
+				let table = ((*p).get_table_address()
+							 as *mut Table)
+							.as_ref()
+							.unwrap();
 				path_addr = virt_to_phys(table, path_addr).unwrap();
 			}
 			let path_bytes = path_addr as *const u8;
