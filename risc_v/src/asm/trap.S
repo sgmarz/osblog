@@ -151,10 +151,6 @@ switch_to_user:
 	# A0 is the context frame, so we need to reload it back
 	# and mret so we can start running the program.
 	mv	t6, a0
-	csrr	t1, mstatus
-	srli	t0, t1, 13
-	andi	t0, t0, 3
-	beqz	t0, 1f
 	.set	i, 0
 	.rept	32
 		load_fp %i

@@ -6,9 +6,13 @@
 use crate::{block::block_op,
 			cpu::{dump_registers, TrapFrame, Registers},
 			fs,
+			elf,
+			buffer::Buffer,
+			kmem::{kfree, kmalloc},
             page::{virt_to_phys, Table},
-            process::{Process, PROCESS_LIST, PROCESS_LIST_MUTEX, delete_process, get_by_pid, set_sleeping, set_waiting}};
-
+            process::{PROCESS_LIST, delete_process, get_by_pid, set_sleeping, set_waiting, add_kernel_process_args}};
+use alloc::string::String;
+use core::mem::size_of;
 /// do_syscall is called from trap.rs to invoke a system call. No discernment is
 /// made here whether this is a U-mode, S-mode, or M-mode system call.
 /// Since we can't do anything unless we dereference the passed pointer,
@@ -42,23 +46,44 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			0
 		},
 		11 => {
-			// Add process to the scheduler. This is obviously insecure and
-			// we wouldn't do this realistically.
-			let my_proc = (*frame).regs[Registers::A0 as usize] as *const Process;
-			if PROCESS_LIST_MUTEX.try_lock() {
-				if let Some(mut pl) = PROCESS_LIST.take() {
-					// As soon as we push this process on the list, it'll be
-					// schedule-able.
-					pl.push_back(my_proc.read());
-					PROCESS_LIST.replace(pl);
+			// execv
+			//A0 = path
+			//A1 = argv
+			let p = get_by_pid((*frame).pid as u16);
+			let table = ((*p).get_table_address()
+						 as *mut Table)
+						.as_ref()
+						.unwrap();
+			let mut path_addr = (*frame).regs[Registers::A0 as usize];
+			// If the MMU is turned on, translate.
+			if (*frame).satp >> 60 != 0 {
+				path_addr = virt_to_phys(table, path_addr).unwrap();
+			}
+			let path_bytes = path_addr as *const u8;
+			let mut path = String::new();
+			let mut iterator: usize = 0;
+			// I really have to figure out how to change an array of bytes
+			// to a string.
+			loop {
+				let ch = *path_bytes.add(iterator);
+				if ch == 0 {
+					break;
 				}
-				PROCESS_LIST_MUTEX.unlock();
-				(*frame).regs[Registers::A0 as usize] = 1;
+				iterator += 1;
+				path.push(ch as char);
+			}
+			if let Ok(inode) = fs::MinixFileSystem::open(8, &path) {
+				let inode_heap = kmalloc(size_of::<fs::Inode>()) as *mut fs::Inode;
+				*inode_heap = inode;
+				add_kernel_process_args(exec_func, inode_heap as *const fs::Inode as usize);
+				delete_process((*frame).pid as u16);
+				return 0;
 			}
 			else {
-				(*frame).regs[Registers::A0 as usize] = 0;
+				println!("Could not open path '{}'.", path);
+				(*frame).regs[Registers::A0 as usize] = -1isize as usize;
+				return mepc + 4;
 			}
-			mepc + 4
 		},
 		63 => {
 			// Read system call
@@ -161,6 +186,10 @@ pub fn syscall_exit() {
 	let _ = do_make_syscall(93, 0, 0, 0, 0, 0, 0);
 }
 
+pub fn syscall_execv(path: *const u8, argv: usize) -> usize {
+	do_make_syscall(11, path as usize, argv, 0, 0, 0, 0)
+}
+
 pub fn syscall_fs_read(dev: usize,
                        inode: u32,
                        buffer: *mut u8,
@@ -201,13 +230,28 @@ pub fn syscall_sleep(duration: usize)
 	let _ = do_make_syscall(10, duration, 0, 0, 0, 0, 0);
 }
 
-pub fn syscall_add_process(process: Process) -> bool {
-	// Thid doesn't quite work since we move process which causes it to drop :(
-	1 == do_make_syscall(11, &process as *const Process as usize, 0, 0, 0, 0, 0)
-}
-
 pub fn syscall_get_pid() -> u16 {
 	do_make_syscall(172, 0, 0, 0, 0, 0, 0) as u16
+}
+
+fn exec_func(args: usize) {
+	unsafe {
+		let inode_ptr = args as *const fs::Inode;
+		let inode = *inode_ptr;
+		let mut buffer = Buffer::new(inode.size as usize);
+		fs::MinixFileSystem::read(8, &inode, buffer.get_mut(), inode.size, 0);
+		let proc = elf::File::load_proc(&buffer, inode.size as usize);
+		if proc.is_err() {
+			println!("Failed to launch process.");
+		}
+		else {
+			if let Some(mut proc_list) = PROCESS_LIST.take()  {
+				proc_list.push_back(proc.ok().unwrap());
+				PROCESS_LIST.replace(proc_list);
+			}
+		}
+		kfree(inode_ptr as *mut u8);
+	}
 }
 // These system call numbers come from libgloss so that we can use newlib
 // for our system calls.
