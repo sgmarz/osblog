@@ -8,11 +8,10 @@ use crate::{block::block_op,
 			fs,
 			elf,
 			buffer::Buffer,
-			kmem::{kfree, kmalloc},
             page::{virt_to_phys, Table},
             process::{PROCESS_LIST, PROCESS_LIST_MUTEX, delete_process, get_by_pid, set_sleeping, set_waiting, add_kernel_process_args}};
-use alloc::string::String;
-use core::mem::size_of;
+use alloc::{boxed::Box, string::String};
+
 /// do_syscall is called from trap.rs to invoke a system call. No discernment is
 /// made here whether this is a U-mode, S-mode, or M-mode system call.
 /// Since we can't do anything unless we dereference the passed pointer,
@@ -73,9 +72,8 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 				path.push(ch as char);
 			}
 			if let Ok(inode) = fs::MinixFileSystem::open(8, &path) {
-				let inode_heap = kmalloc(size_of::<fs::Inode>()) as *mut fs::Inode;
-				*inode_heap = inode;
-				add_kernel_process_args(exec_func, inode_heap as usize);
+				let inode_heap = Box::new(inode);
+				add_kernel_process_args(exec_func, Box::into_raw(inode_heap) as usize);
 				delete_process((*frame).pid as u16);
 				return 0;
 			}
@@ -236,8 +234,7 @@ pub fn syscall_get_pid() -> u16 {
 
 fn exec_func(args: usize) {
 	unsafe {
-		let inode_ptr = args as *const fs::Inode;
-		let inode = *inode_ptr;
+		let inode = Box::from_raw(args as *mut fs::Inode);
 		let mut buffer = Buffer::new(inode.size as usize);
 		fs::MinixFileSystem::read(8, &inode, buffer.get_mut(), inode.size, 0);
 		let proc = elf::File::load_proc(&buffer, inode.size as usize);
@@ -252,7 +249,6 @@ fn exec_func(args: usize) {
 			}
 			PROCESS_LIST_MUTEX.unlock();
 		}
-		kfree(inode_ptr as *mut u8);
 	}
 }
 // These system call numbers come from libgloss so that we can use newlib
