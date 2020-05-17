@@ -75,7 +75,7 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			if let Ok(inode) = fs::MinixFileSystem::open(8, &path) {
 				let inode_heap = kmalloc(size_of::<fs::Inode>()) as *mut fs::Inode;
 				*inode_heap = inode;
-				add_kernel_process_args(exec_func, inode_heap as  usize);
+				add_kernel_process_args(exec_func, inode_heap as usize);
 				delete_process((*frame).pid as u16);
 				return 0;
 			}
