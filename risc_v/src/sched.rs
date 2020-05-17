@@ -9,7 +9,9 @@ use crate::cpu::get_mtime;
 pub fn schedule() -> usize {
 	let mut frame_addr: usize = 0x1111;
 	unsafe {
-		PROCESS_LIST_MUTEX.spin_lock();
+		if PROCESS_LIST_MUTEX.try_lock() == false {
+			return 0;
+		}
 		if let Some(mut pl) = PROCESS_LIST.take() {
 			// Rust allows us to label loops so that break statements can be
 			// targeted.

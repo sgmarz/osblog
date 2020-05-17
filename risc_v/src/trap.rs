@@ -51,7 +51,7 @@ extern "C" fn m_trap(epc: usize,
 				// We would typically invoke the scheduler here to pick another
 				// process to run.
 				// Machine timer
-				let frame = schedule();
+				let new_frame = schedule();
 				// let p = frame as *const TrapFrame;
 				// println!(
 				// 		 "CTX Startup {}, pc = {:x}",
@@ -68,7 +68,10 @@ extern "C" fn m_trap(epc: usize,
 				// }
 				// println!();
 				schedule_next_context_switch(1);
-				rust_switch_to_user(frame);
+				if new_frame != 0 {
+					rust_switch_to_user(new_frame);
+				}
+				
 			},
 			11 => {
 				// Machine external (interrupt from Platform Interrupt Controller (PLIC))
