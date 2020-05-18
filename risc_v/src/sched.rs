@@ -9,6 +9,9 @@ use crate::cpu::get_mtime;
 pub fn schedule() -> usize {
 	let mut frame_addr: usize = 0x1111;
 	unsafe {
+		// If we can't get the lock, then usually this means a kernel
+		// process has the lock. So, we return 0. This has a special
+		// meaning to whomever calls the scheduler to say "nobody else got scheduled"
 		if PROCESS_LIST_MUTEX.try_lock() == false {
 			return 0;
 		}
