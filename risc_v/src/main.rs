@@ -74,52 +74,6 @@ extern "C" fn abort() -> ! {
 	}
 }
 
-// ///////////////////////////////////
-// / CONSTANTS
-// ///////////////////////////////////
-// const STR_Y: &str = "\x1b[38;2;79;221;13m✓\x1b[m";
-// const STR_N: &str = "\x1b[38;2;221;41;13m✘\x1b[m";
-
-// The following symbols come from asm/mem.S. We can use
-// the symbols directly, but the address of the symbols
-// themselves are their values, which can cause issues.
-// Instead, I created doubleword values in mem.S in the .rodata and .data
-// sections.
-// extern "C" {
-// static TEXT_START: usize;
-// static TEXT_END: usize;
-// static DATA_START: usize;
-// static DATA_END: usize;
-// static RODATA_START: usize;
-// static RODATA_END: usize;
-// static BSS_START: usize;
-// static BSS_END: usize;
-// static KERNEL_STACK_START: usize;
-// static KERNEL_STACK_END: usize;
-// static HEAP_START: usize;
-// static HEAP_SIZE: usize;
-// }
-/// Identity map range
-/// Takes a contiguous allocation of memory and maps it using PAGE_SIZE
-/// This assumes that start <= end
-pub fn id_map_range(root: &mut page::Table,
-                    start: usize,
-                    end: usize,
-                    bits: i64)
-{
-	let mut memaddr = start & !(page::PAGE_SIZE - 1);
-	let num_kb_pages =
-		(page::align_val(end, 12) - memaddr) / page::PAGE_SIZE;
-
-	// I named this num_kb_pages for future expansion when
-	// I decide to allow for GiB (2^30) and 2MiB (2^21) page
-	// sizes. However, the overlapping memory regions are causing
-	// nightmares.
-	for _ in 0..num_kb_pages {
-		page::map(root, memaddr, memaddr, bits, 0);
-		memaddr += 1 << 12;
-	}
-}
 extern "C" {
 	fn switch_to_user(frame: usize) -> !;
 }
