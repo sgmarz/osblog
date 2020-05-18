@@ -4,7 +4,6 @@
 // 16 March 2020
 
 use crate::{cpu::Registers,
-	        kmem::{talloc, tfree},
             process::{add_kernel_process_args,
                       get_by_pid,
                       set_running,
@@ -12,7 +11,7 @@ use crate::{cpu::Registers,
             syscall::syscall_block_read};
 
 use crate::{buffer::Buffer, cpu::memcpy};
-use alloc::{collections::BTreeMap, string::String};
+use alloc::{collections::BTreeMap, string::String, boxed::Box};
 use core::mem::size_of;
 
 pub const MAGIC: u16 = 0x4d5a;
@@ -563,8 +562,7 @@ struct ProcArgs {
 
 // This is the actual code ran inside of the read process.
 fn read_proc(args_addr: usize) {
-	let args_ptr = args_addr as *mut ProcArgs;
-	let args = unsafe { args_ptr.as_ref().unwrap() };
+	let args = unsafe { Box::from_raw(args_addr as *mut ProcArgs) };
 
 	// Start the read! Since we're in a kernel process, we can block by putting this
 	// process into a waiting state and wait until the block driver returns.
@@ -589,9 +587,6 @@ fn read_proc(args_addr: usize) {
 	// the process and get it ready to go. The only thing this process needs to clean up is the
 	// tfree(), but the user process doesn't care about that.
 	set_running(args.pid);
-
-	// tfree() is used to free a pointer created by talloc.
-	tfree(args_ptr);
 }
 
 /// System calls will call process_read, which will spawn off a kernel process to read
@@ -604,17 +599,19 @@ pub fn process_read(pid: u16,
                     offset: u32)
 {
 	// println!("FS read {}, {}, 0x{:x}, {}, {}", pid, dev, buffer as usize, size, offset);
-	let args = talloc::<ProcArgs>().unwrap();
-	args.pid = pid;
-	args.dev = dev;
-	args.buffer = buffer;
-	args.size = size;
-	args.offset = offset;
-	args.node = node;
+	let args = ProcArgs {
+		pid,
+		dev,
+		buffer,
+		size,
+		offset,
+		node,
+	};
+	let boxed_args = Box::new(args);
 	set_waiting(pid);
 	let _ = add_kernel_process_args(
 	                                read_proc,
-	                                args as *mut ProcArgs as usize
+	                                Box::into_raw(boxed_args) as usize
 	);
 }
 

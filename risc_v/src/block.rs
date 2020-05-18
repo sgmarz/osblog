@@ -3,7 +3,7 @@
 // Stephen Marz
 // 10 March 2020
 
-use crate::{kmem::{kfree, kmalloc, talloc, tfree},
+use crate::{kmem::{kfree, kmalloc},
             page::{zalloc, PAGE_SIZE},
             process::{add_kernel_process_args,
                       get_by_pid,
@@ -16,6 +16,7 @@ use crate::{kmem::{kfree, kmalloc, talloc, tfree},
                      StatusField,
                      VIRTIO_RING_SIZE}};
 use core::mem::size_of;
+use alloc::boxed::Box;
 
 #[repr(C)]
 pub struct Geometry {
@@ -461,8 +462,7 @@ struct ProcArgs {
 
 /// This will be a
 fn read_proc(args_addr: usize) {
-	let args_ptr = args_addr as *mut ProcArgs;
-	let args = unsafe { args_ptr.as_ref().unwrap() };
+	let args = unsafe { Box::from_raw(args_addr as *mut ProcArgs) };
 	let _ = block_op(
 	                 args.dev,
 	                 args.buffer,
@@ -471,7 +471,6 @@ fn read_proc(args_addr: usize) {
 	                 false,
 	                 args.pid,
 	);
-	tfree(args_ptr);
 	// This should be handled by the RA now.
 	// syscall_exit();
 }
@@ -484,22 +483,23 @@ pub fn process_read(pid: u16,
 {
 	// println!("Block read {}, {}, 0x{:x}, {}, {}", pid, dev, buffer as
 	// usize, size, offset);
-	let args = talloc::<ProcArgs>().unwrap();
-	args.pid = pid;
-	args.dev = dev;
-	args.buffer = buffer;
-	args.size = size;
-	args.offset = offset;
+	let args = ProcArgs {
+		pid,
+		dev,
+		buffer,
+		size,
+		offset,
+	};
+	let boxed_args = Box::new(args);
 	set_waiting(pid);
 	let _ = add_kernel_process_args(
 	                                read_proc,
-	                                args as *mut ProcArgs as usize,
+	                                Box::into_raw(boxed_args) as usize,
 	);
 }
 
 fn write_proc(args_addr: usize) {
-	let args_ptr = args_addr as *mut ProcArgs;
-	let args = unsafe { args_ptr.as_ref().unwrap() };
+	let args = unsafe { Box::from_raw(args_addr as *mut ProcArgs) };
 
 	let _ = block_op(
 	                 args.dev,
@@ -509,7 +509,6 @@ fn write_proc(args_addr: usize) {
 	                 true,
 	                 args.pid,
 	);
-	tfree(args_ptr);
 	// syscall_exit();
 }
 
@@ -519,15 +518,17 @@ pub fn process_write(pid: u16,
                      size: u32,
                      offset: u64)
 {
-	let args = talloc::<ProcArgs>().unwrap();
-	args.pid = pid;
-	args.dev = dev;
-	args.buffer = buffer;
-	args.size = size;
-	args.offset = offset;
+	let args = ProcArgs {
+		pid,
+		dev,
+		buffer,
+		size,
+		offset,
+	};
+	let boxed_args = Box::new(args);
 	set_waiting(pid);
 	let _ = add_kernel_process_args(
 	                                write_proc,
-	                                args as *mut ProcArgs as usize,
+	                                Box::into_raw(boxed_args) as usize,
 	);
 }
