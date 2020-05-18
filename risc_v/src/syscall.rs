@@ -58,11 +58,13 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 							.unwrap();
 				path_addr = virt_to_phys(table, path_addr).unwrap();
 			}
+			// Our path address here is now a physical address. If it came in virtual,
+			// it is now physical.
 			let path_bytes = path_addr as *const u8;
 			let mut path = String::new();
 			let mut iterator: usize = 0;
 			// I really have to figure out how to change an array of bytes
-			// to a string.
+			// to a string. For now, this is very C-style and mimics strcpy.
 			loop {
 				let ch = *path_bytes.add(iterator);
 				if ch == 0 {
@@ -71,13 +73,25 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 				iterator += 1;
 				path.push(ch as char);
 			}
+			// See if we can find the path.
 			if let Ok(inode) = fs::MinixFileSystem::open(8, &path) {
 				let inode_heap = Box::new(inode);
+				// The Box above moves the Inode to a new memory location on the heap.
+				// This needs to be on the heap since we are about to hand over control
+				// to a kernel process.
+				// THERE is an issue here. If we fail somewhere inside the kernel process,
+				// we shouldn't delete our process here. However, since this is asynchronous
+				// our process will still get deleted and the error won't be reported.
+				// We have to make sure we relinquish Box control here by using into_raw.
+				// Otherwise, the Box will free the memory associated with this inode.
 				add_kernel_process_args(exec_func, Box::into_raw(inode_heap) as usize);
+				// This deletes us, which is what we want.
 				delete_process((*frame).pid as u16);
 				return 0;
 			}
 			else {
+				// If we get here, the path couldn't be found, or for some reason
+				// open failed. So, we return -1 and move on.
 				println!("Could not open path '{}'.", path);
 				(*frame).regs[Registers::A0 as usize] = -1isize as usize;
 				return mepc + 4;
@@ -232,16 +246,26 @@ pub fn syscall_get_pid() -> u16 {
 	do_make_syscall(172, 0, 0, 0, 0, 0, 0) as u16
 }
 
+/// This is a helper function ran as a process in kernel space
+/// to finish loading and executing a process.
 fn exec_func(args: usize) {
 	unsafe {
+		// We got the inode from the syscall. Its Box rid itself of control, so
+		// we take control back here. The Box now owns the Inode and will complete
+		// freeing the heap memory allocated for it.
 		let inode = Box::from_raw(args as *mut fs::Inode);
 		let mut buffer = Buffer::new(inode.size as usize);
+		// This is why we need to be in a process context. The read() call may sleep as it
+		// waits for the block driver to return.
 		fs::MinixFileSystem::read(8, &inode, buffer.get_mut(), inode.size, 0);
+		// Now we have the data, so the following will load the ELF file and give us a process.
 		let proc = elf::File::load_proc(&buffer, inode.size as usize);
 		if proc.is_err() {
 			println!("Failed to launch process.");
 		}
 		else {
+			// If we hold this lock, we can still be preempted, but the scheduler will
+			// return control to us. This required us to use try_lock in the scheduler.
 			PROCESS_LIST_MUTEX.sleep_lock();
 			if let Some(mut proc_list) = PROCESS_LIST.take()  {
 				proc_list.push_back(proc.ok().unwrap());
