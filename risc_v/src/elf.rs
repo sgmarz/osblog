@@ -169,7 +169,7 @@ impl File {
 			          pid:         my_pid,
 			          root:        zalloc(1) as *mut Table,
 			          state:       ProcessState::Running,
-			          data:        ProcessData::zero(),
+			          data:        ProcessData::new(),
 			          sleep_until: 0,
 			          program:     zalloc(program_pages) };
 

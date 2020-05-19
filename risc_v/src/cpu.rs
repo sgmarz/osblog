@@ -7,7 +7,7 @@
 // The frequency of QEMU is 10 MHz
 pub const FREQ: u64 = 10_000_000;
 // Let's do this 250 times per second for switching
-pub const CONTEXT_SWITCH_TIME: u64 = FREQ / 250;
+pub const CONTEXT_SWITCH_TIME: u64 = FREQ / 500;
 
 /// In 64-bit mode, we're given three different modes for the MMU:
 /// 0 - The MMU is off -- no protection and no translation PA = VA

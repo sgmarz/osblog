@@ -10,6 +10,7 @@ use crate::{cpu::{build_satp,
                   SatpMode,
 				  TrapFrame,
 				  Registers},
+			fs::Inode,
             page::{alloc,
                    dealloc,
                    map,
@@ -249,7 +250,7 @@ pub fn add_kernel_process(func: fn()) -> u16 {
 					pid:         my_pid,
 					root:        zalloc(1) as *mut Table,
 					state:       ProcessState::Running,
-					data:        ProcessData::zero(),
+					data:        ProcessData::new(),
 					sleep_until: 0,
 					program:		null_mut()
 					};
@@ -334,7 +335,7 @@ pub fn add_kernel_process_args(func: fn(args_ptr: usize), args: usize) -> u16 {
 			          pid:         my_pid,
 			          root:        zalloc(1) as *mut Table,
 			          state:       ProcessState::Running,
-			          data:        ProcessData::zero(),
+			          data:        ProcessData::new(),
 					  sleep_until: 0, 
 					  program:		null_mut(),
 					};
@@ -501,7 +502,7 @@ impl Process {
 			          pid:         unsafe { NEXT_PID },
 			          root:        zalloc(1) as *mut Table,
 			          state:       ProcessState::Running,
-			          data:        ProcessData::zero(),
+			          data:        ProcessData::new(),
 					  sleep_until: 0, 
 					  program:     null_mut()
 					};
@@ -570,7 +571,6 @@ impl Drop for Process {
 	/// Since we're storing ownership of a Process in the linked list,
 	/// we can cause it to deallocate automatically when it is removed.
 	fn drop(&mut self) {
-		// println!("Dropping process {}", self.get_pid());
 		// We allocate the stack as a page.
 		dealloc(self.stack);
 		// This is unsafe, but it's at the drop stage, so we won't
@@ -589,6 +589,13 @@ impl Drop for Process {
 	}
 }
 
+pub enum FileDescriptor {
+	File(Inode),
+	Device(usize),
+	Network,
+	Unknown,
+}
+
 // The private data in a process contains information
 // that is relevant to where we are, including the path
 // and open file descriptors.
@@ -596,16 +603,18 @@ impl Drop for Process {
 // private process data. This is essentially our resource control block (RCB).
 #[allow(dead_code)]
 pub struct ProcessData {
-	environ: BTreeMap<String, String>
+	environ: BTreeMap<String, String>,
+	fdesc: BTreeMap<u16, FileDescriptor>,
 }
 
 // This is private data that we can query with system calls.
 // If we want to implement CFQ (completely fair queuing), which
 // is a per-process block queuing algorithm, we can put that here.
 impl ProcessData {
-	pub fn zero() -> Self {
+	pub fn new() -> Self {
 		ProcessData { 
-			environ: BTreeMap::new()
+			environ: BTreeMap::new(),
+			fdesc: BTreeMap::new(),
 		 }
 	}
 }
