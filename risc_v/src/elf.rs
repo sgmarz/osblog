@@ -149,14 +149,18 @@ impl File {
 	}
 
 	// load
-	pub fn load_proc(buffer: &Buffer, sz: usize) -> Result<Process, LoadErrors> {
+	pub fn load_proc(buffer: &Buffer) -> Result<Process, LoadErrors> {
         let elf_fl = Self::load(&buffer);
         if elf_fl.is_err() {
             return Err(elf_fl.err().unwrap());
         }
 		let elf_fl = elf_fl.ok().unwrap();
-
-        let program_pages = (sz as usize / PAGE_SIZE) + 1;
+		let mut sz = PAGE_SIZE;
+		// Get the size, in memory, that we're going to need for the program storage.
+		for p in elf_fl.programs.iter() {
+			sz += p.header.memsz;
+		}
+		let program_pages = (sz + PAGE_SIZE) / PAGE_SIZE;
         // I did this to demonstrate the expressive nature of Rust. Kinda cool, no?
 		let my_pid = unsafe {
 			let p = NEXT_PID + 1;
@@ -214,7 +218,8 @@ impl File {
 				// The ELF specifies a paddr, but not when we
 				// use the vaddr!
 				let paddr = program_mem as usize
-				            + p.header.off + i * PAGE_SIZE;
+							+ p.header.off + i * PAGE_SIZE;
+							
 				// println!("DEBUG: Map 0x{:08x} to 0x{:08x} {:02x}", vaddr, paddr, bits);
 				map(table, vaddr, paddr, bits, 0);
 			}
