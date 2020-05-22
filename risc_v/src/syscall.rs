@@ -259,7 +259,7 @@ fn exec_func(args: usize) {
 		// waits for the block driver to return.
 		fs::MinixFileSystem::read(8, &inode, buffer.get_mut(), inode.size, 0);
 		// Now we have the data, so the following will load the ELF file and give us a process.
-		let proc = elf::File::load_proc(&buffer, inode.size as usize);
+		let proc = elf::File::load_proc(&buffer);
 		if proc.is_err() {
 			println!("Failed to launch process.");
 		}
