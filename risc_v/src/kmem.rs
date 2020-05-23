@@ -79,7 +79,7 @@ pub fn get_num_allocations() -> usize {
 pub fn init() {
 	unsafe {
 		// Allocate kernel pages (KMEM_ALLOC)
-		KMEM_ALLOC = 512;
+		KMEM_ALLOC = 2048;
 		let k_alloc = zalloc(KMEM_ALLOC);
 		assert!(!k_alloc.is_null());
 		KMEM_HEAD = k_alloc as *mut AllocList;
