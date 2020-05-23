@@ -277,6 +277,8 @@ pub fn setup_gpu_device(ptr: *mut u32) -> bool {
 		// finished. We will look at that later, but we need
 		// what is called a memory "fence" or barrier.
 		ptr.add(MmioOffsets::QueueSel.scale32()).write_volatile(0);
+		// TODO: Set up queue #1 (cursorq)
+
 		// Alignment is very important here. This is the memory address
 		// alignment between the available and used rings. If this is wrong,
 		// then we and the device will refer to different memory addresses
@@ -295,6 +297,7 @@ pub fn setup_gpu_device(ptr: *mut u32) -> bool {
 		status_bits |= StatusField::DriverOk.val32();
 		ptr.add(MmioOffsets::Status.scale32()).write_volatile(status_bits);
 
+
 		let dev = Device {
 			queue: queue_ptr,
 			dev: ptr,
@@ -308,3 +311,32 @@ pub fn setup_gpu_device(ptr: *mut u32) -> bool {
 	}
 }
 
+pub fn pending(dev: &mut Device) {
+	// Here we need to check the used ring and then free the resources
+	// given by the descriptor id.
+	unsafe {
+		let ref queue = *dev.queue;
+		while dev.ack_used_idx != queue.used.idx {
+			println!("Ack {}", dev.ack_used_idx);
+			let ref elem = queue.used.ring
+				[dev.ack_used_idx as usize % VIRTIO_RING_SIZE];
+			dev.ack_used_idx = dev.ack_used_idx.wrapping_add(1);
+			// Requests stay resident on the heap until this
+			// function, so we can recapture the address here
+		}
+	}
+}
+
+pub fn handle_interrupt(idx: usize) {
+	unsafe {
+		if let Some(bdev) = GPU_DEVICES[idx].as_mut() {
+			pending(bdev);
+		}
+		else {
+			println!(
+			         "Invalid block device for interrupt {}",
+			         idx + 1
+			);
+		}
+	}
+}

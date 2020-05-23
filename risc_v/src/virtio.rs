@@ -5,7 +5,7 @@
 
 use crate::{block, block::setup_block_device, page::PAGE_SIZE};
 use crate::rng::setup_entropy_device;
-use crate::gpu::setup_gpu_device;
+use crate::{gpu, gpu::setup_gpu_device};
 use core::mem::size_of;
 
 // Flags
@@ -304,6 +304,11 @@ pub fn probe() {
 						println!("setup failed.");
 					}
 					else {
+						let idx = (addr - MMIO_VIRTIO_START) >> 12;
+						unsafe {
+							VIRTIO_DEVICES[idx] =
+								Some(VirtioDevice::new_with(DeviceTypes::Gpu));
+						}
 						println!("setup succeeded!");
 					}
 				},
@@ -342,6 +347,9 @@ pub fn handle_interrupt(interrupt: u32) {
 			match vd.devtype {
 				DeviceTypes::Block => {
 					block::handle_interrupt(idx);
+				},
+				DeviceTypes::Gpu => {
+					gpu::handle_interrupt(idx);
 				},
 				_ => {
 					println!("Invalid device generated interrupt!");
