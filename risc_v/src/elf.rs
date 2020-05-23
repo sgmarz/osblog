@@ -155,12 +155,15 @@ impl File {
             return Err(elf_fl.err().unwrap());
         }
 		let elf_fl = elf_fl.ok().unwrap();
-		let mut sz = PAGE_SIZE;
+		let mut sz = 0usize;
 		// Get the size, in memory, that we're going to need for the program storage.
 		for p in elf_fl.programs.iter() {
 			sz += p.header.memsz;
 		}
-		let program_pages = (sz + PAGE_SIZE) / PAGE_SIZE;
+		// We add two pages since we could possibly split the front and back pages, hence
+		// necessitating the need for two extra pages. This can get wasteful, but for now
+		// if we don't do this, we could end up mapping into the MMU table!
+		let program_pages = (sz + PAGE_SIZE * 2) / PAGE_SIZE;
         // I did this to demonstrate the expressive nature of Rust. Kinda cool, no?
 		let my_pid = unsafe {
 			let p = NEXT_PID + 1;
@@ -219,9 +222,11 @@ impl File {
 				// use the vaddr!
 				let paddr = program_mem as usize
 							+ p.header.off + i * PAGE_SIZE;
-							
-				// println!("DEBUG: Map 0x{:08x} to 0x{:08x} {:02x}", vaddr, paddr, bits);
+				// There is no checking here! This is very dangerous, and I have already
+				// been bitten by it. I mapped too far and mapped userspace into the MMU
+				// table, which is AWFUL!
 				map(table, vaddr, paddr, bits, 0);
+				// println!("DEBUG: Map 0x{:08x} to 0x{:08x} {:02x}", vaddr, paddr, bits);
 			}
 		}
 		// This will map all of the program pages. Notice that in linker.lds in
