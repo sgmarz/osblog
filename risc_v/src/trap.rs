@@ -82,6 +82,16 @@ extern "C" fn m_trap(epc: usize,
 				// This is what I want so that I remember to remove this and replace
 				// them later.
 				delete_process((*frame).pid as u16);
+				let frame = schedule();
+				schedule_next_context_switch(1);
+				rust_switch_to_user(frame);
+			},
+			7 => unsafe {
+				// println!("Error with pid {}, at PC 0x{:08x}, mepc 0x{:08x}", (*frame).pid, (*frame).pc, epc);
+				delete_process((*frame).pid as u16);
+				let frame = schedule();
+				schedule_next_context_switch(1);
+				rust_switch_to_user(frame);
 			},
 			8 | 9 | 11 => unsafe {
 				// Environment (system) call from User, Supervisor, and Machine modes
