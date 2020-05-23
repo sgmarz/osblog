@@ -9,7 +9,10 @@ use crate::{page::{zalloc, PAGE_SIZE},
             virtio::{MmioOffsets, Queue, StatusField, VIRTIO_RING_SIZE}};
 use core::{mem::size_of, ptr::null_mut};
 
-pub const EVENT_DISPLAY: usize = 1 << 0;
+pub const F_VIRGL: u32 = 0;
+pub const F_EDID: u32 = 1;
+
+pub const EVENT_DISPLAY: u32 = 1 << 0;
 #[repr(C)]
 pub struct Config {
 	//events_read signals pending events to the driver. The driver MUST NOT write to this field.
@@ -52,7 +55,7 @@ pub enum CtrlType {
 	RespErrInvalidParameter,
 }
 
-pub const FLAG_FENCE: usize = 1 << 0;
+pub const FLAG_FENCE: u32= 1 << 0;
 #[repr(C)]
 pub struct CtrlHeader {
 	ctrl_type: CtrlType,
