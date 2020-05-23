@@ -253,6 +253,8 @@ pub struct Device {
 	idx:          u16,
 	ack_used_idx: u16,
 	framebuffer:  *mut Pixel,
+	width:        u32,
+	height:       u32,
 }
 
 impl Device {
@@ -262,6 +264,8 @@ impl Device {
 		       idx:          0,
 			   ack_used_idx: 0, 
 			   framebuffer:  null_mut(),
+			   width: 640,
+			   height: 480
 		}
 	}
 }
@@ -277,12 +281,12 @@ static mut GPU_DEVICES: [Option<Device>; 8] = [
 	None,
 ];
 
-pub fn test_draw(buffer: *mut Pixel, r: Rect, color: Pixel) {
+pub fn test_draw(dev: &mut Device, r: Rect, color: Pixel) {
 	for row in r.y..(r.y+r.height) {
 		for col in r.x..(r.x+r.width) {
-			let byte = row as usize * 640 + col as usize;
+			let byte = row as usize * dev.width as usize + col as usize;
 			unsafe {
-				buffer.add(byte).write(color);
+				dev.framebuffer.add(byte).write(color);
 			}
 		}
 	}
@@ -291,8 +295,8 @@ pub fn test_draw(buffer: *mut Pixel, r: Rect, color: Pixel) {
 pub fn init(gdev: usize)  {
 	if let Some(mut dev) = unsafe { GPU_DEVICES[gdev-1].take() } {
 		// Put some crap in the framebuffer:
-		test_draw(dev.framebuffer, Rect::new(15, 15, 200, 200), Pixel::new(255, 130, 0, 255));
-		test_draw(dev.framebuffer, Rect::new( 255, 15, 150, 150), Pixel::new( 255, 255, 255, 255));
+		test_draw(&mut dev, Rect::new(15, 15, 200, 200), Pixel::new(255, 130, 0, 255));
+		test_draw(&mut dev, Rect::new( 255, 15, 150, 150), Pixel::new( 255, 255, 255, 255));
 		// //// STEP 1: Create a host resource using create 2d
 		let rq = Request::new(ResourceCreate2d {
 			hdr: CtrlHeader {
@@ -304,8 +308,8 @@ pub fn init(gdev: usize)  {
 			},
 			resource_id: 1,
 			format: Formats::R8G8B8A8Unorm,
-			width: 640,
-			height: 480,
+			width: dev.width,
+			height: dev.height,
 		});
 		let desc_c2d = Descriptor {
 			addr: unsafe { &(*rq).request as *const ResourceCreate2d as u64 },
@@ -386,7 +390,7 @@ pub fn init(gdev: usize)  {
 				ctx_id: 0,
 				padding: 0,
 			},
-			r: Rect::new(0, 0, 640, 480),
+			r: Rect::new(0, 0, dev.width, dev.height),
 			resource_id: 1,
 			scanout_id: 0,
 		});
@@ -421,7 +425,7 @@ pub fn init(gdev: usize)  {
 				ctx_id: 0,
 				padding: 0,
 			},
-			r: Rect::new(0, 0, 640, 480),
+			r: Rect::new(0, 0, dev.width, dev.height),
 			offset: 0,
 			resource_id: 1,
 			padding: 0,
@@ -457,7 +461,7 @@ pub fn init(gdev: usize)  {
 				ctx_id: 0,
 				padding: 0,
 			},
-			r: Rect::new(0, 0, 640, 480),
+			r: Rect::new(0, 0, dev.width, dev.height),
 			resource_id: 1,
 			padding: 0,
 		});
@@ -584,6 +588,8 @@ pub fn setup_gpu_device(ptr: *mut u32) -> bool {
 			idx: 0,
 			ack_used_idx: 0,
 			framebuffer: kmalloc(640*480*size_of::<Pixel>()) as *mut Pixel,
+			width: 640,
+			height: 480,
 		};
 
 		GPU_DEVICES[idx] = Some(dev);
