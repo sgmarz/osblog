@@ -202,6 +202,8 @@ pub struct Pixel {
 	a: u8,
 }
 
+// This is not in the specification, but this makes
+// it easier for us to do just a single kfree.
 pub struct Request<RqT, RpT> {
 	request: RqT,
 	response: RpT,
@@ -213,6 +215,24 @@ impl<RqT, RpT> Request<RqT, RpT> {
 		let ptr = kmalloc(sz) as *mut Self;
 		unsafe {
 			(*ptr).request = request;
+		}
+		ptr
+	}
+}
+
+pub struct Request3<RqT, RmT, RpT> {
+	request: RqT,
+	mementries: RmT,
+	response: RpT,
+}
+
+impl<RqT, RmT, RpT> Request3<RqT, RmT, RpT> {
+	pub fn new(request: RqT, meminfo: RmT) -> *mut Self {
+		let sz = size_of::<RqT>() + size_of::<RmT>() + size_of::<RpT>();
+		let ptr = kmalloc(sz) as *mut Self;
+		unsafe {
+			(*ptr).request = request;
+			(*ptr).mementries = meminfo;
 		}
 		ptr
 	}
@@ -250,34 +270,209 @@ static mut GPU_DEVICES: [Option<Device>; 8] = [
 
 pub fn init(gdev: usize)  {
 	if let Some(mut dev) = unsafe { GPU_DEVICES[gdev-1].take() } {
-		let rq = Request::<CtrlHeader, RespDisplayInfo>::new(CtrlHeader {
-			ctrl_type: CtrlType::CmdGetDisplayInfo,
-			flags: 0,
-			fence_id: 0,
-			ctx_id: 0,
-			padding: 0,
+		// Put some crap in the framebuffer:
+		for i in 0..640*480 {
+			unsafe {
+				dev.framebuffer.add(i).write(Pixel {
+					r: 255,
+					g: 130,
+					b: 0,
+					a: 255,
+				});
+			}
+		}
+		// //// STEP 1: Create a host resource using create 2d
+		let rq = Request::new(ResourceCreate2d {
+			hdr: CtrlHeader {
+				ctrl_type: CtrlType::CmdResourceCreate2d,
+				flags: 0,
+				fence_id: 0,
+				ctx_id: 0,
+				padding: 0,
+			},
+			resource_id: 1,
+			format: Formats::R8G8B8A8Unorm,
+			width: 640,
+			height: 480,
 		});
-		let desc = Descriptor {
-			addr: unsafe { &(*rq).request as *const CtrlHeader as u64 },
-			len: size_of::<CtrlHeader>() as u32,
+		let desc_c2d = Descriptor {
+			addr: unsafe { &(*rq).request as *const ResourceCreate2d as u64 },
+			len: size_of::<ResourceCreate2d>() as u32,
 			flags: VIRTIO_DESC_F_NEXT,
 			next: (dev.idx + 1) % VIRTIO_RING_SIZE as u16,
 		};
-		let desc_resp = Descriptor {
-			addr: unsafe { &(*rq).response as *const RespDisplayInfo as u64 },
-			len: size_of::<RespDisplayInfo>() as u32,
+		let desc_c2d_resp = Descriptor {
+			addr: unsafe { &(*rq).response as *const CtrlHeader as u64 },
+			len: size_of::<CtrlHeader>() as u32,
 			flags: VIRTIO_DESC_F_WRITE,
 			next: 0,
 		};
 		unsafe {
 			let head = dev.idx;
-			(*dev.queue).desc[dev.idx as usize] = desc;
+			(*dev.queue).desc[dev.idx as usize] = desc_c2d;
 			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
-			(*dev.queue).desc[dev.idx as usize] = desc_resp;
+			(*dev.queue).desc[dev.idx as usize] = desc_c2d_resp;
 			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
 			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize] = head;
 			(*dev.queue).avail.idx =
 				(*dev.queue).avail.idx.wrapping_add(1);
+		}
+		// //// STEP 2: Attach backing
+		let rq = Request3::new(AttachBacking {
+			hdr: CtrlHeader {
+				ctrl_type: CtrlType::CmdResourceAttachBacking,
+				flags: 0,
+				fence_id: 0,
+				ctx_id: 0,
+				padding: 0,
+			},
+			resource_id: 1,
+			nr_entries: 1,
+		},
+		MemEntry {
+			addr: dev.framebuffer as u64,
+			length: (640*480*size_of::<Pixel>()) as u32,
+			padding: 0, 
+		}
+		);
+		let desc_ab = Descriptor {
+			addr: unsafe { &(*rq).request as *const AttachBacking as u64 },
+			len: size_of::<AttachBacking>() as u32,
+			flags: VIRTIO_DESC_F_NEXT,
+			next: (dev.idx + 1) % VIRTIO_RING_SIZE as u16,
+		};
+		let desc_ab_mementry = Descriptor {
+			addr: unsafe { &(*rq).mementries as *const MemEntry as u64 },
+			len: size_of::<MemEntry>() as u32,
+			flags: VIRTIO_DESC_F_NEXT,
+			next: (dev.idx + 2) % VIRTIO_RING_SIZE as u16,
+		};
+		let desc_ab_resp = Descriptor {
+			addr: unsafe { &(*rq).response as *const CtrlHeader as u64 },
+			len: size_of::<CtrlHeader>() as u32,
+			flags: VIRTIO_DESC_F_WRITE,
+			next: 0,
+		};
+		unsafe {
+			let head = dev.idx;
+			(*dev.queue).desc[dev.idx as usize] = desc_ab;
+			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
+			(*dev.queue).desc[dev.idx as usize] = desc_ab_mementry;
+			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
+			(*dev.queue).desc[dev.idx as usize] = desc_ab_resp;
+			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
+			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize] = head;
+			(*dev.queue).avail.idx =
+				(*dev.queue).avail.idx.wrapping_add(1);
+		}
+		// //// STEP 3: Set scanout
+		let rq = Request::new(SetScanout {
+			hdr: CtrlHeader {
+				ctrl_type: CtrlType::CmdSetScanout,
+				flags: 0,
+				fence_id: 0,
+				ctx_id: 0,
+				padding: 0,
+			},
+			r: Rect::new(0, 0, 640, 480),
+			resource_id: 1,
+			scanout_id: 0,
+		});
+		let desc_sso = Descriptor {
+			addr: unsafe { &(*rq).request as *const SetScanout as u64 },
+			len: size_of::<SetScanout>() as u32,
+			flags: VIRTIO_DESC_F_NEXT,
+			next: (dev.idx + 1) % VIRTIO_RING_SIZE as u16,
+		};
+		let desc_sso_resp = Descriptor {
+			addr: unsafe { &(*rq).response as *const CtrlHeader as u64 },
+			len: size_of::<CtrlHeader>() as u32,
+			flags: VIRTIO_DESC_F_WRITE,
+			next: 0,
+		};
+		unsafe {
+			let head = dev.idx;
+			(*dev.queue).desc[dev.idx as usize] = desc_sso;
+			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
+			(*dev.queue).desc[dev.idx as usize] = desc_sso_resp;
+			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
+			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize] = head;
+			(*dev.queue).avail.idx =
+				(*dev.queue).avail.idx.wrapping_add(1);
+		}
+		// //// STEP 4: Transfer to host
+		let rq = Request::new(TransferToHost2d {
+			hdr: CtrlHeader {
+				ctrl_type: CtrlType::CmdTransferToHost2d,
+				flags: 0,
+				fence_id: 0,
+				ctx_id: 0,
+				padding: 0,
+			},
+			r: Rect::new(0, 0, 640, 480),
+			offset: 0,
+			resource_id: 1,
+			padding: 0,
+		});
+		let desc_t2h = Descriptor {
+			addr: unsafe { &(*rq).request as *const TransferToHost2d as u64 },
+			len: size_of::<TransferToHost2d>() as u32,
+			flags: VIRTIO_DESC_F_NEXT,
+			next: (dev.idx + 1) % VIRTIO_RING_SIZE as u16,
+		};
+		let desc_t2h_resp = Descriptor {
+			addr: unsafe { &(*rq).response as *const CtrlHeader as u64 },
+			len: size_of::<CtrlHeader>() as u32,
+			flags: VIRTIO_DESC_F_WRITE,
+			next: 0,
+		};
+		unsafe {
+			let head = dev.idx;
+			(*dev.queue).desc[dev.idx as usize] = desc_t2h;
+			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
+			(*dev.queue).desc[dev.idx as usize] = desc_t2h_resp;
+			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
+			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize] = head;
+			(*dev.queue).avail.idx =
+				(*dev.queue).avail.idx.wrapping_add(1);
+		}
+		// Step 5: Flush
+		let rq = Request::new(ResourceFlush {
+			hdr: CtrlHeader {
+				ctrl_type: CtrlType::CmdResourceFlush,
+				flags: 0,
+				fence_id: 0,
+				ctx_id: 0,
+				padding: 0,
+			},
+			r: Rect::new(0, 0, 640, 480),
+			resource_id: 1,
+			padding: 0,
+		});
+		let desc_rf = Descriptor {
+			addr: unsafe { &(*rq).request as *const ResourceFlush as u64 },
+			len: size_of::<ResourceFlush>() as u32,
+			flags: VIRTIO_DESC_F_NEXT,
+			next: (dev.idx + 1) % VIRTIO_RING_SIZE as u16,
+		};
+		let desc_rf_resp = Descriptor {
+			addr: unsafe { &(*rq).response as *const CtrlHeader as u64 },
+			len: size_of::<CtrlHeader>() as u32,
+			flags: VIRTIO_DESC_F_WRITE,
+			next: 0,
+		};
+		unsafe {
+			let head = dev.idx;
+			(*dev.queue).desc[dev.idx as usize] = desc_rf;
+			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
+			(*dev.queue).desc[dev.idx as usize] = desc_rf_resp;
+			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
+			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize] = head;
+			(*dev.queue).avail.idx =
+				(*dev.queue).avail.idx.wrapping_add(1);
+		}
+		// Run Queue
+		unsafe {
 			dev.dev
 			.add(MmioOffsets::QueueNotify.scale32())
 			.write_volatile(0);
@@ -396,16 +591,11 @@ pub fn pending(dev: &mut Device) {
 				[dev.ack_used_idx as usize % VIRTIO_RING_SIZE];
 			// println!("Ack {}, elem {}, len {}", dev.ack_used_idx, elem.id, elem.len);
 			let ref desc = queue.desc[elem.id as usize];
-			let ptr = desc.addr as *const Request<CtrlHeader, RespDisplayInfo>;
-			// pub struct RespDisplayInfo {
-				// hdr: CtrlHeader,
-				// pmodes: [DisplayOne; MAX_SCANOUTS],
-			// }
-			// println!("Free 0x{:08x}", desc.addr);
-			kfree(desc.addr as *mut u8);
-			dev.ack_used_idx = dev.ack_used_idx.wrapping_add(1);
 			// Requests stay resident on the heap until this
 			// function, so we can recapture the address here
+			kfree(desc.addr as *mut u8);
+			dev.ack_used_idx = dev.ack_used_idx.wrapping_add(1);
+
 		}
 	}
 }
