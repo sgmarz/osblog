@@ -295,8 +295,10 @@ pub fn test_draw(dev: &mut Device, rect: Rect, color: Pixel) {
 pub fn init(gdev: usize)  {
 	if let Some(mut dev) = unsafe { GPU_DEVICES[gdev-1].take() } {
 		// Put some crap in the framebuffer:
+		// First clear the buffer to white?
+		test_draw(&mut dev, Rect::new(0, 0, 640, 480), Pixel::new(255, 255, 255, 255));
 		test_draw(&mut dev, Rect::new(15, 15, 200, 200), Pixel::new(255, 130, 0, 255));
-		test_draw(&mut dev, Rect::new( 255, 15, 150, 150), Pixel::new( 255, 255, 255, 255));
+		test_draw(&mut dev, Rect::new( 255, 15, 150, 150), Pixel::new( 0, 0, 0, 255));
 		// //// STEP 1: Create a host resource using create 2d
 		let rq = Request::new(ResourceCreate2d {
 			hdr: CtrlHeader {
