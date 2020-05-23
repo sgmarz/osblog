@@ -280,9 +280,9 @@ static mut GPU_DEVICES: [Option<Device>; 8] = [
 pub fn test_draw(buffer: *mut Pixel, r: Rect, color: Pixel) {
 	for row in r.y..(r.y+r.height) {
 		for col in r.x..(r.x+r.width) {
-			let byte = row * 640 + col;
+			let byte = row as usize * 640 + col as usize;
 			unsafe {
-				buffer.add(byte as usize).write(color);
+				buffer.add(byte).write(color);
 			}
 		}
 	}
