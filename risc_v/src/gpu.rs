@@ -281,9 +281,9 @@ static mut GPU_DEVICES: [Option<Device>; 8] = [
 	None,
 ];
 
-pub fn test_draw(dev: &mut Device, r: Rect, color: Pixel) {
-	for row in r.y..(r.y+r.height) {
-		for col in r.x..(r.x+r.width) {
+pub fn test_draw(dev: &mut Device, rect: Rect, color: Pixel) {
+	for row in rect.y..(rect.y+rect.height) {
+		for col in rect.x..(rect.x+rect.width) {
 			let byte = row as usize * dev.width as usize + col as usize;
 			unsafe {
 				dev.framebuffer.add(byte).write(color);
