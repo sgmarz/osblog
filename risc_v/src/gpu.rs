@@ -9,13 +9,188 @@ use crate::{page::{zalloc, PAGE_SIZE},
             virtio::{MmioOffsets, Queue, StatusField, VIRTIO_RING_SIZE}};
 use core::{mem::size_of, ptr::null_mut};
 
-pub struct GpuDevice {
+pub const EVENT_DISPLAY: usize = 1 << 0;
+#[repr(C)]
+pub struct Config {
+	//events_read signals pending events to the driver. The driver MUST NOT write to this field.
+	// events_clear clears pending events in the device. Writing a ’1’ into a bit will clear the corresponding bit in events_read mimicking write-to-clear behavior.
+	//num_scanouts specifies the maximum number of scanouts supported by the device. Minimum value is 1, maximum value is 16.
+	events_read: u32,
+	events_clear: u32,
+	num_scanouts: u32,
+	reserved: u32,
+}
+#[repr(u32)]
+pub enum CtrlType {
+	/* 2d commands */
+	CmdGetDisplayInfo = 0x0100,
+	CmdResourceCreate2d,
+	CmdResourceUref,
+	CmdSetScanout,
+	CmdResourceFlush,
+	CmdTransferToHost2d,
+	CmdResourceAttachBacking,
+	CmdResourceDetachBacking,
+	CmdGetCapsetInfo,
+	CmdGetCapset,
+	CmdGetEdid,
+	/* cursor commands */
+	CmdUpdateCursor = 0x0300,
+	CmdMoveCursor,
+	/* success responses */
+	RespOkNoData = 0x1100,
+	RespOkDisplayInfo,
+	RespOkCapsetInfo,
+	RespOkCapset,
+	RespOkEdid,
+	/* error responses */
+	RespErrUnspec = 0x1200,
+	RespErrOutOfMemory,
+	RespErrInvalidScanoutId,
+	RespErrInvalidResourceId,
+	RespErrInvalidContextId,
+	RespErrInvalidParameter,
+}
+
+const FLAG_FENCE: usize = 1 << 0;
+#[repr(C)]
+pub struct CtrlHeader {
+	ctrl_type: CtrlType,
+	flags: u32,
+	fence_id: u64,
+	ctx_id: u32,
+	padding: u32
+}
+
+const MAX_SCANOUTS: usize = 16;
+#[repr(C)]
+pub struct Rect {
+	x: u32,
+	y: u32,
+	width: u32,
+	height: u32,
+}
+#[repr(C)]
+pub struct DisplayOne {
+	r: Rect,
+	enabled: u32,
+	flags: u32,
+}
+
+#[repr(C)]
+pub struct RespDisplayInfo {
+	hdr: CtrlHeader,
+	pmodes: [DisplayOne; MAX_SCANOUTS],
+}
+#[repr(C)]
+pub struct GetEdid {
+	hdr: CtrlHeader,
+	scanout: u32,
+	padding: u32,
+}
+#[repr(C)]
+pub struct RespEdid {
+	hdr: CtrlHeader,
+	size: u32,
+	padding: u32,
+	edid: [u8; 1024],
+}
+#[repr(u32)]
+pub enum Formats {
+	B8G8R8A8Unorm = 1,
+	B8G8R8X8Unorm = 2,
+	A8R8G8B8Unorm = 3,
+	X8R8G8B8Unorm = 4,
+	R8G8B8A8Unorm = 67,
+	X8B8G8R8Unorm = 68,
+	A8B8G8R8Unorm = 121,
+	R8G8B8X8Unorm = 134,
+}
+
+#[repr(C)]
+pub struct ResourceCreate2d {
+	hdr: CtrlHeader,
+	resource_id: u32,
+	format: Formats,
+	width: u32,
+	height: u32,
+}
+#[repr(C)]
+pub struct ResourceUnref {
+	hdr: CtrlHeader,
+	resource_id: u32,
+	padding: u32,
+}
+#[repr(C)]
+pub struct SetScanout {
+	hdr: CtrlHeader,
+	r: Rect,
+	scanout_id: u32,
+	resource_id: u32,
+}
+#[repr(C)]
+pub struct ResourceFlush {
+	hdr: CtrlHeader,
+	r: Rect,
+	resource_id: u32,
+	padding: u32,
+}
+
+#[repr(C)]
+pub struct TransferToHost2d {
+	hdr: CtrlHeader,
+	r: Rect,
+	offset: u64,
+	resource_id: u32,
+	padding: u32,
+}
+#[repr(C)]
+pub struct AttachBacking {
+	hdr: CtrlHeader,
+	resource_id: u32,
+	nr_entries: u32,
+}
+
+#[repr(C)]
+pub struct MemEntry {
+	addr: u64,
+	length: u32,
+	padding: u32,
+}
+
+#[repr(C)]
+pub struct DetachBacking {
+	hdr: CtrlHeader,
+	resource_id: u32,
+	padding: u32,
+}
+#[repr(C)]
+pub struct CursorPos {
+	scanout_id: u32,
+	x: u32,
+	y: u32,
+	padding: u32,
+}
+
+#[repr(C)]
+pub struct UpdateCursor {
+	hdr: CtrlHeader,
+	pos: CursorPos,
+	resource_id: u32,
+	hot_x: u32,
+	hot_y: u32,
+	padding: u32,
+}
+
+
+
+pub struct Device {
 	queue:        *mut Queue,
 	dev:          *mut u32,
 	idx:          u16,
 	ack_used_idx: u16,
 }
-impl GpuDevice {
+impl Device {
 	pub const fn new() -> Self {
 		Self { queue:        null_mut(),
 		       dev:          null_mut(),
@@ -24,7 +199,7 @@ impl GpuDevice {
 	}
 }
 
-static mut GPU_DEVICES: [Option<GpuDevice>; 8] = [
+static mut GPU_DEVICES: [Option<Device>; 8] = [
 	None,
 	None,
 	None,
@@ -117,14 +292,14 @@ pub fn setup_gpu_device(ptr: *mut u32) -> bool {
 		status_bits |= StatusField::DriverOk.val32();
 		ptr.add(MmioOffsets::Status.scale32()).write_volatile(status_bits);
 
-		let rngdev = GpuDevice {
+		let dev = Device {
 			queue: queue_ptr,
 			dev: ptr,
 			idx: 0,
 			ack_used_idx: 0,
 		};
 
-		GPU_DEVICES[idx] = Some(rngdev);
+		GPU_DEVICES[idx] = Some(dev);
 
 		true
 	}
