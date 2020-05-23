@@ -5,9 +5,11 @@
 
 #![allow(dead_code)]
 use crate::{page::{zalloc, PAGE_SIZE},
+			kmem::kmalloc,
             virtio,
-            virtio::{MmioOffsets, Queue, StatusField, VIRTIO_RING_SIZE}};
+            virtio::{MmioOffsets, Queue, StatusField, VIRTIO_RING_SIZE, Descriptor}};
 use core::{mem::size_of, ptr::null_mut};
+use alloc::boxed::Box;
 
 pub const F_VIRGL: u32 = 0;
 pub const F_EDID: u32 = 1;
@@ -72,6 +74,14 @@ pub struct Rect {
 	y: u32,
 	width: u32,
 	height: u32,
+}
+
+impl Rect {
+	pub fn new(x: u32, y: u32, width: u32, height: u32) -> Self {
+		Self {
+			x, y, width, height
+		}
+	}
 }
 #[repr(C)]
 pub struct DisplayOne {
@@ -185,20 +195,29 @@ pub struct UpdateCursor {
 	padding: u32,
 }
 
-
+pub struct Pixel {
+	r: u8,
+	g: u8,
+	b: u8,
+	a: u8,
+}
 
 pub struct Device {
 	queue:        *mut Queue,
 	dev:          *mut u32,
 	idx:          u16,
 	ack_used_idx: u16,
+	framebuffer:  *mut Pixel,
 }
+
 impl Device {
 	pub const fn new() -> Self {
 		Self { queue:        null_mut(),
 		       dev:          null_mut(),
 		       idx:          0,
-		       ack_used_idx: 0, }
+			   ack_used_idx: 0, 
+			   framebuffer:  null_mut(),
+		}
 	}
 }
 
@@ -212,6 +231,141 @@ static mut GPU_DEVICES: [Option<Device>; 8] = [
 	None,
 	None,
 ];
+
+pub fn init(gdev: usize)  {
+	if let Some(mut dev) = unsafe { GPU_DEVICES[gdev-1].take() } {
+
+		let rq = Box::new(ResourceCreate2d {
+			hdr: CtrlHeader {
+				ctrl_type: CtrlType::CmdResourceCreate2d,
+				flags: 0,
+				fence_id: 0,
+				ctx_id: 0,
+				padding: 0,
+			},
+			resource_id: 1,
+			format: Formats::R8G8B8A8Unorm,
+			width: 1024,
+			height: 768,
+		});
+		for col in 0..1024 {
+			for row in 0..768 {
+				unsafe { 
+					dev.framebuffer.add(col*row).write(Pixel {
+						r: 255,
+						g: 155,
+						b: 55,
+						a: 255,
+					});
+				}
+			}
+		}
+		let buffer = Box::into_raw(rq);
+
+		let desc_c2d =
+				Descriptor { addr:  buffer as u64,
+				             len:   size_of::<ResourceCreate2d>() as u32,
+				             flags: 0,
+							 next:  0, };
+
+	    let rq = Box::new(AttachBacking {
+			hdr: CtrlHeader {
+				ctrl_type: CtrlType::CmdResourceAttachBacking,
+				flags: 0,
+				fence_id: 0,
+				ctx_id: 0,
+				padding: 0,
+			},
+			resource_id: 1,
+			nr_entries: 1
+		});
+		let buffer = Box::into_raw(rq);
+		let desc_ab =
+				Descriptor { addr:  buffer as u64,
+							 len:   size_of::<AttachBacking>() as u32,
+							 flags: 0,
+							 next:  0, 
+							};
+
+		let rq = Box::new(SetScanout {
+			hdr: CtrlHeader {
+				ctrl_type: CtrlType::CmdSetScanout,
+				flags: 0,
+				fence_id: 0,
+				ctx_id: 0,
+				padding: 0,
+			},
+			r: Rect::new(0, 0, 1024, 768),
+			scanout_id: 1,
+			resource_id: 1,
+		});
+		let buffer = Box::into_raw(rq);
+		let desc_scanout =
+				Descriptor { addr:  buffer as u64,
+					len:   size_of::<SetScanout>() as u32,
+					flags: 0,
+					next:  0, 
+				};
+		let rq = Box::new(TransferToHost2d {
+			hdr: CtrlHeader {
+				ctrl_type: CtrlType::CmdTransferToHost2d,
+				flags: 0,
+				fence_id: 0,
+				ctx_id: 0,
+				padding: 0,
+			},
+			r: Rect::new(0, 0, 1024, 768),
+			offset: 0,
+			resource_id: 1,
+			padding: 0,
+		});
+		let buffer = Box::into_raw(rq);
+		let desc_t2h =
+				Descriptor { addr:  buffer as u64,
+					len:   size_of::<TransferToHost2d>() as u32,
+					flags: 0,
+					next:  0, 
+				};
+		let rq = Box::new(ResourceFlush {
+			hdr: CtrlHeader {
+				ctrl_type: CtrlType::CmdResourceFlush,
+				flags: 0,
+				fence_id: 0,
+				ctx_id: 0,
+				padding: 0,
+			},
+			r: Rect::new(0, 0, 1024, 768),
+			resource_id: 1,
+			padding: 0,
+		});
+		let buffer = Box::into_raw(rq);
+		let desc_flush =
+				Descriptor { addr:  buffer as u64,
+					len:   size_of::<ResourceFlush>() as u32,
+					flags: 0,
+					next:  0, 
+				};
+		unsafe {
+			(*dev.queue).desc[dev.idx as usize] = desc_c2d;
+			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
+			(*dev.queue).desc[dev.idx as usize] = desc_ab;
+			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
+			(*dev.queue).desc[dev.idx as usize] = desc_scanout;
+			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
+			(*dev.queue).desc[dev.idx as usize] = desc_t2h;
+			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
+			(*dev.queue).desc[dev.idx as usize] = desc_flush;
+			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
+			(*dev.queue).avail.idx =
+				(*dev.queue).avail.idx.wrapping_add(5);
+			println!("Avail idx {}", (*dev.queue).avail.idx);
+			dev.dev
+			.add(MmioOffsets::QueueNotify.scale32())
+			.write_volatile(0);
+			GPU_DEVICES[gdev-1].replace(dev);
+		}
+	}
+}
 
 pub fn setup_gpu_device(ptr: *mut u32) -> bool {
 	unsafe {
@@ -303,6 +457,7 @@ pub fn setup_gpu_device(ptr: *mut u32) -> bool {
 			dev: ptr,
 			idx: 0,
 			ack_used_idx: 0,
+			framebuffer: kmalloc(1024*768*size_of::<Pixel>()) as *mut Pixel,
 		};
 
 		GPU_DEVICES[idx] = Some(dev);
@@ -334,7 +489,7 @@ pub fn handle_interrupt(idx: usize) {
 		}
 		else {
 			println!(
-			         "Invalid block device for interrupt {}",
+			         "Invalid GPU device for interrupt {}",
 			         idx + 1
 			);
 		}

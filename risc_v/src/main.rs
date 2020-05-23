@@ -111,6 +111,8 @@ extern "C" fn kinit() {
 	virtio::probe();
 	// Test the block driver!
 	process::add_kernel_process(test::test);
+	// Get the GPU going
+	gpu::init(6);
 	// We schedule the next context switch using a multiplier of 1
 	// Block testing code removed.
 	trap::schedule_next_context_switch(1);
