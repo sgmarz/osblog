@@ -69,6 +69,7 @@ pub struct CtrlHeader {
 
 pub const MAX_SCANOUTS: usize = 16;
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub struct Rect {
 	x: u32,
 	y: u32,
@@ -202,6 +203,13 @@ pub struct Pixel {
 	b: u8,
 	a: u8,
 }
+impl Pixel {
+	pub fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
+		Self {
+			r, g, b, a
+		}
+	}
+}
 
 // This is not in the specification, but this makes
 // it easier for us to do just a single kfree.
@@ -283,18 +291,8 @@ pub fn test_draw(buffer: *mut Pixel, r: Rect, color: Pixel) {
 pub fn init(gdev: usize)  {
 	if let Some(mut dev) = unsafe { GPU_DEVICES[gdev-1].take() } {
 		// Put some crap in the framebuffer:
-		test_draw(dev.framebuffer, Rect {
-			x: 15,
-			y: 15,
-			width: 200,
-			height: 200,
-		}, Pixel { r: 255, g: 130, b: 0, a: 255});
-		test_draw(dev.framebuffer, Rect {
-			x: 255,
-			y: 15,
-			width: 150,
-			height: 150,
-		}, Pixel {r: 255, g: 255, b: 255, a: 255});
+		test_draw(dev.framebuffer, Rect::new(15, 15, 200, 200), Pixel::new(255, 130, 0, 255));
+		test_draw(dev.framebuffer, Rect::new( 255, 15, 150, 150), Pixel::new( 255, 255, 255, 255));
 		// //// STEP 1: Create a host resource using create 2d
 		let rq = Request::new(ResourceCreate2d {
 			hdr: CtrlHeader {
