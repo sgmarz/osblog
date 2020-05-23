@@ -405,11 +405,15 @@ fn mycos(angle_degrees: f64) -> f64 {
 	COS_TABLE[lookup_ang % COS_TABLE.len()]
 }
 
+fn mysin(angle_degrees: f64) -> f64 {
+	mycos(90.0 - angle_degrees)
+}
+
 pub fn draw_cosine(dev: &mut Device, rect: Rect, color: Pixel) {
 	for x in 1..=(rect.width-rect.x) {
 		let fx = x as f64;
-		let fy = mycos(fx*7.0);
-		let y = ((fy * 60.0) as i32 + rect.y as i32) as u32;
+		let fy = 1.0 - mycos(fx);
+		let y = ((fy * rect.height as f64) as i32 + rect.y as i32) as u32;
 		// println!("cos({}) is {}, gives y: {}", fx, fy, y);
 		fill_rect(dev, Rect::new(
 			rect.x + x,
@@ -426,7 +430,7 @@ pub fn init(gdev: usize)  {
 		fill_rect(&mut dev, Rect::new(0, 0, 640, 480), Pixel::new(255, 255, 255, 255));
 		fill_rect(&mut dev, Rect::new(15, 15, 200, 200), Pixel::new(255, 130, 0, 255));
 		stroke_rect(&mut dev, Rect::new( 255, 15, 150, 150), Pixel::new( 0, 0, 0, 255), 5);
-		draw_cosine(&mut dev, Rect::new(0, 300, 550, 200), Pixel::new(255, 15, 15, 255));
+		draw_cosine(&mut dev, Rect::new(0, 300, 550, 60), Pixel::new(255, 15, 15, 255));
 		// //// STEP 1: Create a host resource using create 2d
 		let rq = Request::new(ResourceCreate2d {
 			hdr: CtrlHeader {
