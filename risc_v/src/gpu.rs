@@ -5,11 +5,11 @@
 
 #![allow(dead_code)]
 use crate::{page::{zalloc, PAGE_SIZE},
-			kmem::kmalloc,
+			kmem::{kmalloc, kfree},
             virtio,
-            virtio::{MmioOffsets, Queue, StatusField, VIRTIO_RING_SIZE, Descriptor}};
+            virtio::{MmioOffsets, Queue, StatusField, VIRTIO_RING_SIZE, Descriptor, VIRTIO_DESC_F_WRITE, VIRTIO_DESC_F_NEXT}};
 use core::{mem::size_of, ptr::null_mut};
-use alloc::boxed::Box;
+// use alloc::boxed::Box;
 
 pub const F_VIRGL: u32 = 0;
 pub const F_EDID: u32 = 1;
@@ -202,6 +202,22 @@ pub struct Pixel {
 	a: u8,
 }
 
+pub struct Request<RqT, RpT> {
+	request: RqT,
+	response: RpT,
+}
+
+impl<RqT, RpT> Request<RqT, RpT> {
+	pub fn new(request: RqT) -> *mut Self {
+		let sz = size_of::<RqT>() + size_of::<RpT>();
+		let ptr = kmalloc(sz) as *mut Self;
+		unsafe {
+			(*ptr).request = request;
+		}
+		ptr
+	}
+}
+
 pub struct Device {
 	queue:        *mut Queue,
 	dev:          *mut u32,
@@ -234,131 +250,34 @@ static mut GPU_DEVICES: [Option<Device>; 8] = [
 
 pub fn init(gdev: usize)  {
 	if let Some(mut dev) = unsafe { GPU_DEVICES[gdev-1].take() } {
-
-		let rq = Box::new(ResourceCreate2d {
-			hdr: CtrlHeader {
-				ctrl_type: CtrlType::CmdResourceCreate2d,
-				flags: 0,
-				fence_id: 0,
-				ctx_id: 0,
-				padding: 0,
-			},
-			resource_id: 1,
-			format: Formats::R8G8B8A8Unorm,
-			width: 1024,
-			height: 768,
-		});
-		for col in 0..1024 {
-			for row in 0..768 {
-				unsafe { 
-					dev.framebuffer.add(col*row).write(Pixel {
-						r: 255,
-						g: 155,
-						b: 55,
-						a: 255,
-					});
-				}
-			}
-		}
-		let buffer = Box::into_raw(rq);
-
-		let desc_c2d =
-				Descriptor { addr:  buffer as u64,
-				             len:   size_of::<ResourceCreate2d>() as u32,
-				             flags: 0,
-							 next:  0, };
-
-	    let rq = Box::new(AttachBacking {
-			hdr: CtrlHeader {
-				ctrl_type: CtrlType::CmdResourceAttachBacking,
-				flags: 0,
-				fence_id: 0,
-				ctx_id: 0,
-				padding: 0,
-			},
-			resource_id: 1,
-			nr_entries: 1
-		});
-		let buffer = Box::into_raw(rq);
-		let desc_ab =
-				Descriptor { addr:  buffer as u64,
-							 len:   size_of::<AttachBacking>() as u32,
-							 flags: 0,
-							 next:  0, 
-							};
-
-		let rq = Box::new(SetScanout {
-			hdr: CtrlHeader {
-				ctrl_type: CtrlType::CmdSetScanout,
-				flags: 0,
-				fence_id: 0,
-				ctx_id: 0,
-				padding: 0,
-			},
-			r: Rect::new(0, 0, 1024, 768),
-			scanout_id: 1,
-			resource_id: 1,
-		});
-		let buffer = Box::into_raw(rq);
-		let desc_scanout =
-				Descriptor { addr:  buffer as u64,
-					len:   size_of::<SetScanout>() as u32,
-					flags: 0,
-					next:  0, 
-				};
-		let rq = Box::new(TransferToHost2d {
-			hdr: CtrlHeader {
-				ctrl_type: CtrlType::CmdTransferToHost2d,
-				flags: 0,
-				fence_id: 0,
-				ctx_id: 0,
-				padding: 0,
-			},
-			r: Rect::new(0, 0, 1024, 768),
-			offset: 0,
-			resource_id: 1,
+		let rq = Request::<CtrlHeader, RespDisplayInfo>::new(CtrlHeader {
+			ctrl_type: CtrlType::CmdGetDisplayInfo,
+			flags: 0,
+			fence_id: 0,
+			ctx_id: 0,
 			padding: 0,
 		});
-		let buffer = Box::into_raw(rq);
-		let desc_t2h =
-				Descriptor { addr:  buffer as u64,
-					len:   size_of::<TransferToHost2d>() as u32,
-					flags: 0,
-					next:  0, 
-				};
-		let rq = Box::new(ResourceFlush {
-			hdr: CtrlHeader {
-				ctrl_type: CtrlType::CmdResourceFlush,
-				flags: 0,
-				fence_id: 0,
-				ctx_id: 0,
-				padding: 0,
-			},
-			r: Rect::new(0, 0, 1024, 768),
-			resource_id: 1,
-			padding: 0,
-		});
-		let buffer = Box::into_raw(rq);
-		let desc_flush =
-				Descriptor { addr:  buffer as u64,
-					len:   size_of::<ResourceFlush>() as u32,
-					flags: 0,
-					next:  0, 
-				};
+		let desc = Descriptor {
+			addr: unsafe { &(*rq).request as *const CtrlHeader as u64 },
+			len: size_of::<CtrlHeader>() as u32,
+			flags: VIRTIO_DESC_F_NEXT,
+			next: (dev.idx + 1) % VIRTIO_RING_SIZE as u16,
+		};
+		let desc_resp = Descriptor {
+			addr: unsafe { &(*rq).response as *const RespDisplayInfo as u64 },
+			len: size_of::<RespDisplayInfo>() as u32,
+			flags: VIRTIO_DESC_F_WRITE,
+			next: 0,
+		};
 		unsafe {
-			(*dev.queue).desc[dev.idx as usize] = desc_c2d;
+			let head = dev.idx;
+			(*dev.queue).desc[dev.idx as usize] = desc;
 			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
-			(*dev.queue).desc[dev.idx as usize] = desc_ab;
+			(*dev.queue).desc[dev.idx as usize] = desc_resp;
 			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
-			(*dev.queue).desc[dev.idx as usize] = desc_scanout;
-			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
-			(*dev.queue).desc[dev.idx as usize] = desc_t2h;
-			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
-			(*dev.queue).desc[dev.idx as usize] = desc_flush;
-			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
+			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize] = head;
 			(*dev.queue).avail.idx =
-				(*dev.queue).avail.idx.wrapping_add(5);
-			println!("Avail idx {}", (*dev.queue).avail.idx);
+				(*dev.queue).avail.idx.wrapping_add(1);
 			dev.dev
 			.add(MmioOffsets::QueueNotify.scale32())
 			.write_volatile(0);
@@ -457,7 +376,7 @@ pub fn setup_gpu_device(ptr: *mut u32) -> bool {
 			dev: ptr,
 			idx: 0,
 			ack_used_idx: 0,
-			framebuffer: kmalloc(1024*768*size_of::<Pixel>()) as *mut Pixel,
+			framebuffer: kmalloc(640*480*size_of::<Pixel>()) as *mut Pixel,
 		};
 
 		GPU_DEVICES[idx] = Some(dev);
@@ -472,9 +391,18 @@ pub fn pending(dev: &mut Device) {
 	unsafe {
 		let ref queue = *dev.queue;
 		while dev.ack_used_idx != queue.used.idx {
-			println!("Ack {}", dev.ack_used_idx);
+			
 			let ref elem = queue.used.ring
 				[dev.ack_used_idx as usize % VIRTIO_RING_SIZE];
+			// println!("Ack {}, elem {}, len {}", dev.ack_used_idx, elem.id, elem.len);
+			let ref desc = queue.desc[elem.id as usize];
+			let ptr = desc.addr as *const Request<CtrlHeader, RespDisplayInfo>;
+			// pub struct RespDisplayInfo {
+				// hdr: CtrlHeader,
+				// pmodes: [DisplayOne; MAX_SCANOUTS],
+			// }
+			// println!("Free 0x{:08x}", desc.addr);
+			kfree(desc.addr as *mut u8);
 			dev.ack_used_idx = dev.ack_used_idx.wrapping_add(1);
 			// Requests stay resident on the heap until this
 			// function, so we can recapture the address here
