@@ -52,7 +52,7 @@ pub enum CtrlType {
 	RespErrInvalidParameter,
 }
 
-const FLAG_FENCE: usize = 1 << 0;
+pub const FLAG_FENCE: usize = 1 << 0;
 #[repr(C)]
 pub struct CtrlHeader {
 	ctrl_type: CtrlType,
@@ -62,7 +62,7 @@ pub struct CtrlHeader {
 	padding: u32
 }
 
-const MAX_SCANOUTS: usize = 16;
+pub const MAX_SCANOUTS: usize = 16;
 #[repr(C)]
 pub struct Rect {
 	x: u32,
