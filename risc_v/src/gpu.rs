@@ -281,7 +281,7 @@ static mut GPU_DEVICES: [Option<Device>; 8] = [
 	None,
 ];
 
-pub fn test_draw(dev: &mut Device, rect: Rect, color: Pixel) {
+pub fn fill_rect(dev: &mut Device, rect: Rect, color: Pixel) {
 	for row in rect.y..(rect.y+rect.height) {
 		for col in rect.x..(rect.x+rect.width) {
 			let byte = row as usize * dev.width as usize + col as usize;
@@ -292,13 +292,141 @@ pub fn test_draw(dev: &mut Device, rect: Rect, color: Pixel) {
 	}
 }
 
+pub fn stroke_rect(dev: &mut Device, rect: Rect, color: Pixel, size: u32) {
+	// Essentially stroke the four sides.
+	// Top
+	fill_rect(dev, Rect::new(
+		rect.x,
+		rect.y,
+		rect.width,
+		size
+	), color);
+	// Bottom
+	fill_rect(dev, Rect::new(
+		rect.x,
+		rect.y+rect.height,
+		rect.width,
+		size
+	), color);
+	// Left
+	fill_rect(dev, Rect::new(
+		rect.x,
+		rect.y,
+		size,
+		rect.height
+	), color);
+
+	// Right
+	fill_rect(dev, Rect::new(
+		rect.x+rect.width,
+		rect.y,
+		size,
+		rect.height+size
+	), color);
+}
+
+fn mycos(angle_degrees: f64) -> f64 {
+	const COS_TABLE: [f64; 73] = [
+		1.0,
+		0.9962,
+		0.9848,
+		0.9659,
+		0.9397,
+		0.9063,
+		0.8660,
+		0.8191,
+		0.7660,
+		0.7071,
+		0.6428,
+		0.5736,
+		0.5000,
+		0.4226,
+		0.3420,
+		0.2558,
+		0.1736,
+		0.0872,
+		0.0,
+		-0.0872,
+		-0.1736,
+		-0.2558,
+		-0.3420,
+		-0.4226,
+		-0.5000,
+		-0.5736,
+		-0.6428,
+		-0.7071,
+		-0.7660,
+		-0.8191,
+		-0.8660,
+		-0.9063,
+		-0.9397,
+		-0.9659,
+		-0.9848,
+		-0.9962,
+		-1.0,
+		-0.9962,
+		-0.9848,
+		-0.9659,
+		-0.9397,
+		-0.9063,
+		-0.8660,
+		-0.8191,
+		-0.7660,
+		-0.7071,
+		-0.6428,
+		-0.5736,
+		-0.5000,
+		-0.4226,
+		-0.3420,
+		-0.2558,
+		-0.1736,
+		-0.0872,
+		0.0,
+		0.0872,
+		0.1736,
+		0.2558,
+		0.3420,
+		0.4226,
+		0.5000,
+		0.5736,
+		0.6428,
+		0.7071,
+		0.7660,
+		0.8191,
+		0.8660,
+		0.9063,
+		0.9397,
+		0.9659,
+		0.9848,
+		0.9962,
+		1.0,
+	];
+	let lookup_ang = angle_degrees as usize / 5;
+	COS_TABLE[lookup_ang % COS_TABLE.len()]
+}
+
+pub fn draw_cosine(dev: &mut Device, rect: Rect, color: Pixel) {
+	for x in 1..=(rect.width-rect.x) {
+		let fx = x as f64;
+		let fy = mycos(fx*7.0);
+		let y = ((fy * 60.0) as i32 + rect.y as i32) as u32;
+		// println!("cos({}) is {}, gives y: {}", fx, fy, y);
+		fill_rect(dev, Rect::new(
+			rect.x + x,
+			y,
+			10, 10
+		), color);
+	}
+}
+
 pub fn init(gdev: usize)  {
 	if let Some(mut dev) = unsafe { GPU_DEVICES[gdev-1].take() } {
 		// Put some crap in the framebuffer:
 		// First clear the buffer to white?
-		test_draw(&mut dev, Rect::new(0, 0, 640, 480), Pixel::new(255, 255, 255, 255));
-		test_draw(&mut dev, Rect::new(15, 15, 200, 200), Pixel::new(255, 130, 0, 255));
-		test_draw(&mut dev, Rect::new( 255, 15, 150, 150), Pixel::new( 0, 0, 0, 255));
+		fill_rect(&mut dev, Rect::new(0, 0, 640, 480), Pixel::new(255, 255, 255, 255));
+		fill_rect(&mut dev, Rect::new(15, 15, 200, 200), Pixel::new(255, 130, 0, 255));
+		stroke_rect(&mut dev, Rect::new( 255, 15, 150, 150), Pixel::new( 0, 0, 0, 255), 5);
+		draw_cosine(&mut dev, Rect::new(0, 300, 550, 200), Pixel::new(255, 15, 15, 255));
 		// //// STEP 1: Create a host resource using create 2d
 		let rq = Request::new(ResourceCreate2d {
 			hdr: CtrlHeader {
@@ -349,7 +477,7 @@ pub fn init(gdev: usize)  {
 		},
 		MemEntry {
 			addr: dev.framebuffer as u64,
-			length: (640*480*size_of::<Pixel>()) as u32,
+			length: dev.width * dev.height * size_of::<Pixel>() as u32,
 			padding: 0, 
 		}
 		);
