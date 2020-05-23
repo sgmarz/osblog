@@ -195,6 +195,7 @@ pub struct UpdateCursor {
 	padding: u32,
 }
 
+#[derive(Clone, Copy)]
 pub struct Pixel {
 	r: u8,
 	g: u8,
@@ -268,19 +269,32 @@ static mut GPU_DEVICES: [Option<Device>; 8] = [
 	None,
 ];
 
+pub fn test_draw(buffer: *mut Pixel, r: Rect, color: Pixel) {
+	for row in r.y..(r.y+r.height) {
+		for col in r.x..(r.x+r.width) {
+			let byte = row * 640 + col;
+			unsafe {
+				buffer.add(byte as usize).write(color);
+			}
+		}
+	}
+}
+
 pub fn init(gdev: usize)  {
 	if let Some(mut dev) = unsafe { GPU_DEVICES[gdev-1].take() } {
 		// Put some crap in the framebuffer:
-		for i in 0..640*480 {
-			unsafe {
-				dev.framebuffer.add(i).write(Pixel {
-					r: 255,
-					g: 130,
-					b: 0,
-					a: 255,
-				});
-			}
-		}
+		test_draw(dev.framebuffer, Rect {
+			x: 15,
+			y: 15,
+			width: 200,
+			height: 200,
+		}, Pixel { r: 255, g: 130, b: 0, a: 255});
+		test_draw(dev.framebuffer, Rect {
+			x: 255,
+			y: 15,
+			width: 150,
+			height: 150,
+		}, Pixel {r: 255, g: 255, b: 255, a: 255});
 		// //// STEP 1: Create a host resource using create 2d
 		let rq = Request::new(ResourceCreate2d {
 			hdr: CtrlHeader {
