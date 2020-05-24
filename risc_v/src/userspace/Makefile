@@ -1,7 +1,7 @@
-CROSS=riscv64-unknown-elf-
+CROSS=riscv64-unknown-linux-gnu-
 CXX=g++
 OBJCOPY=objcopy
-CXXFLAGS=-Wall -O0 -ffreestanding -nostartfiles -nostdlib -static -march=rv64g -mabi=lp64d
+CXXFLAGS=-Wall -O3 -ffreestanding -nostartfiles -nostdlib -static -march=rv64g -mabi=lp64d
 LINKER_SCRIPT=-T./startlib/linker.lds
 INCLUDES=-I./startlib
 LIBS=-L./startlib
