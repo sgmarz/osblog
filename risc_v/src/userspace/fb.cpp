@@ -8,6 +8,9 @@ struct Pixel {
 	unsigned char a;
 };
 
+#define min(x, y) ((x < y) ? x : y)
+#define max(x, y) ((x > y) ? x : y)
+
 using u32 = unsigned int;
 using i32 = signed int;
 using u64 = unsigned long;
@@ -19,16 +22,44 @@ void fill_rect(Pixel *fb, u32 x, u32 y, u32 width, u32 height, Pixel &color);
 void set_pixel(Pixel *fb, u32 x, u32 y, Pixel &color);
 void draw_cosine(Pixel *fb, u32 x, u32 y, u32 width, u32 height, Pixel &color);
 
+const u64 slptm = 700000;
+
+struct Rect {
+	u32 x;
+	u32 y;
+	u32 width;
+	u32 height;
+};
+
 int main()
 {
-	int VERSION = 1;
+	int VERSION = -1;
 	printf("(%d): TESTING FRAMEBUFFER FROM USERSPACE\n", VERSION);
 	Pixel *fb = (Pixel *)syscall_get_fb(6);
-	Pixel ut_color = {255, 130, 0, 255};
 	Pixel blue_color = {0, 0, 255, 255};
-	fill_rect(fb, 15, 15, 250, 250, ut_color);
-	draw_cosine(fb, 15, 200, 360, 100, blue_color);
-	syscall_inv_rect(6, 0, 0, 640, 480);
+	Pixel white_color = {255, 255, 255, 255};
+	Rect prev, next;
+	prev.x = 10;
+	prev.y = 10;
+	prev.width = 50;
+	prev.height = 50;
+	next = prev;
+	do {
+		fill_rect(fb, prev.x, prev.y, prev.width, prev.height, white_color);
+		next.x = prev.x + 2;
+		if (next.x > 200) {
+			next.x = 10;
+			next.y += 55;
+			if (next.y > 200) {
+				next.y = 10;
+			}
+		}
+		fill_rect(fb, next.x, next.y, next.width, next.height, blue_color);
+		syscall_inv_rect(6, prev.x, prev.y, (prev.x+50), (prev.y+50)); 
+		syscall_inv_rect(6, next.x, next.y, (next.x+50), (next.y+50)); 
+		prev = next;
+		syscall_sleep(slptm);
+	} while (1);
 	return 0;
 }
 
@@ -152,7 +183,7 @@ f64 mysin(f64 angle_degrees) {
 void draw_cosine(Pixel *fb, u32 x, u32 y, u32 width, u32 height, Pixel &color) {
 	for (u32 i = 1; i <= width;i++) {
 		f64 fy = -mycos(i % 360);
-		f64 yy = fy * (height / 2.0);
+		f64 yy = fy / 2.0 * height;
 		u32 nx = x + i;
 		u32 ny = yy + y;
 		// printf("Cos %u = %lf, x: %u, y: %u\n", (i % 360), fy, nx, ny);
