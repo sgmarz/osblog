@@ -1,5 +1,5 @@
 
-.section .text.init
+.section .text
 .global _start
 _start:
 .option push
