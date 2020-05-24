@@ -325,7 +325,7 @@ pub fn stroke_rect(dev: &mut Device, rect: Rect, color: Pixel, size: u32) {
 	), color);
 }
 
-fn mycos(angle_degrees: f64) -> f64 {
+fn look_mycos(angle_degrees: f64) -> f64 {
 	const COS_TABLE: [f64; 73] = [
 		1.0,
 		0.9962,
@@ -404,6 +404,31 @@ fn mycos(angle_degrees: f64) -> f64 {
 	let lookup_ang = angle_degrees as usize / 5;
 	COS_TABLE[lookup_ang % COS_TABLE.len()]
 }
+fn fmod(x: f64, y: f64) -> f64 {
+	let x = x as i64;
+	let y = y as i64;
+	(x - x / y * y) as f64
+}
+
+fn mycos(angle_degrees: f64) -> f64 {
+	let angle_mod_360 = fmod(angle_degrees, 360.0);
+	let x = 3.14159265359 * angle_mod_360 / 180.0;
+	let mut result = 1.0;
+	let mut inter = 1.0;
+	let num = x * x;
+	for i in 1..=10 {
+		let comp = 2.0 * i as f64;
+		let den = comp * (comp - 1.0);
+		inter *= num / den;
+		if i % 2 == 0 {
+			result += inter;
+		}
+		else {
+			result -= inter;
+		}
+	}
+	result
+}
 
 fn mysin(angle_degrees: f64) -> f64 {
 	mycos(90.0 - angle_degrees)
@@ -412,13 +437,13 @@ fn mysin(angle_degrees: f64) -> f64 {
 pub fn draw_cosine(dev: &mut Device, rect: Rect, color: Pixel) {
 	for x in 1..=(rect.width-rect.x) {
 		let fx = x as f64;
-		let fy = 1.0 - mycos(fx);
+		let fy = -mycos(fx);
 		let y = ((fy * rect.height as f64) as i32 + rect.y as i32) as u32;
 		// println!("cos({}) is {}, gives y: {}", fx, fy, y);
 		fill_rect(dev, Rect::new(
 			rect.x + x,
 			y,
-			10, 10
+			1, 1
 		), color);
 	}
 }
