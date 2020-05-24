@@ -268,9 +268,18 @@ impl Device {
 			   height: 480
 		}
 	}
+	pub fn get_framebuffer(&self) -> *mut Pixel {
+		self.framebuffer
+	}
+	pub fn get_width(&self) -> u32 {
+		self.width
+	}
+	pub fn get_height(&self) -> u32 {
+		self.height
+	}
 }
 
-static mut GPU_DEVICES: [Option<Device>; 8] = [
+pub static mut GPU_DEVICES: [Option<Device>; 8] = [
 	None,
 	None,
 	None,
@@ -325,137 +334,14 @@ pub fn stroke_rect(dev: &mut Device, rect: Rect, color: Pixel, size: u32) {
 	), color);
 }
 
-fn look_mycos(angle_degrees: f64) -> f64 {
-	const COS_TABLE: [f64; 73] = [
-		1.0,
-		0.9962,
-		0.9848,
-		0.9659,
-		0.9397,
-		0.9063,
-		0.8660,
-		0.8191,
-		0.7660,
-		0.7071,
-		0.6428,
-		0.5736,
-		0.5000,
-		0.4226,
-		0.3420,
-		0.2558,
-		0.1736,
-		0.0872,
-		0.0,
-		-0.0872,
-		-0.1736,
-		-0.2558,
-		-0.3420,
-		-0.4226,
-		-0.5000,
-		-0.5736,
-		-0.6428,
-		-0.7071,
-		-0.7660,
-		-0.8191,
-		-0.8660,
-		-0.9063,
-		-0.9397,
-		-0.9659,
-		-0.9848,
-		-0.9962,
-		-1.0,
-		-0.9962,
-		-0.9848,
-		-0.9659,
-		-0.9397,
-		-0.9063,
-		-0.8660,
-		-0.8191,
-		-0.7660,
-		-0.7071,
-		-0.6428,
-		-0.5736,
-		-0.5000,
-		-0.4226,
-		-0.3420,
-		-0.2558,
-		-0.1736,
-		-0.0872,
-		0.0,
-		0.0872,
-		0.1736,
-		0.2558,
-		0.3420,
-		0.4226,
-		0.5000,
-		0.5736,
-		0.6428,
-		0.7071,
-		0.7660,
-		0.8191,
-		0.8660,
-		0.9063,
-		0.9397,
-		0.9659,
-		0.9848,
-		0.9962,
-		1.0,
-	];
-	let lookup_ang = angle_degrees as usize / 5;
-	COS_TABLE[lookup_ang % COS_TABLE.len()]
-}
-fn fmod(x: f64, y: f64) -> f64 {
-	let x = x as i64;
-	let y = y as i64;
-	(x - x / y * y) as f64
-}
-
-fn mycos(angle_degrees: f64) -> f64 {
-	let angle_mod_360 = fmod(angle_degrees, 360.0);
-	let x = 3.14159265359 * angle_mod_360 / 180.0;
-	let mut result = 1.0;
-	let mut inter = 1.0;
-	let num = x * x;
-	for i in 1..=10 {
-		let comp = 2.0 * i as f64;
-		let den = comp * (comp - 1.0);
-		inter *= num / den;
-		if i % 2 == 0 {
-			result += inter;
-		}
-		else {
-			result -= inter;
-		}
-	}
-	result
-}
-
-fn mysin(angle_degrees: f64) -> f64 {
-	mycos(90.0 - angle_degrees)
-}
-
-pub fn draw_cosine(dev: &mut Device, rect: Rect, color: Pixel) {
-	for x in 1..=(rect.width-rect.x) {
-		let fx = x as f64;
-		let fy = -mycos(fx);
-		let y = ((fy * rect.height as f64) as i32 + rect.y as i32) as u32;
-		// println!("cos({}) is {}, gives y: {}", fx, fy, y);
-		fill_rect(dev, Rect::new(
-			rect.x + x,
-			y,
-			1, 1
-		), color);
-	}
-}
-
 pub fn init(gdev: usize)  {
 	if let Some(mut dev) = unsafe { GPU_DEVICES[gdev-1].take() } {
 		// Put some crap in the framebuffer:
 		// First clear the buffer to white?
 		fill_rect(&mut dev, Rect::new(0, 0, 640, 480), Pixel::new(255, 255, 255, 255));
-		fill_rect(&mut dev, Rect::new(15, 15, 200, 200), Pixel::new(255, 130, 0, 255));
-		stroke_rect(&mut dev, Rect::new( 255, 15, 150, 150), Pixel::new( 0, 0, 0, 255), 5);
-		draw_cosine(&mut dev, Rect::new(0, 300, 550, 60), Pixel::new(255, 15, 15, 255));
+		// fill_rect(&mut dev, Rect::new(15, 15, 200, 200), Pixel::new(255, 130, 0, 255));
+		// stroke_rect(&mut dev, Rect::new( 255, 15, 150, 150), Pixel::new( 0, 0, 0, 255), 5);
+		// draw_cosine(&mut dev, Rect::new(0, 300, 550, 60), Pixel::new(255, 15, 15, 255));
 		// //// STEP 1: Create a host resource using create 2d
 		let rq = Request::new(ResourceCreate2d {
 			hdr: CtrlHeader {
@@ -656,6 +542,88 @@ pub fn init(gdev: usize)  {
 	}
 }
 
+pub fn transfer(gdev: usize, x: u32, y: u32, width: u32, height: u32) {
+	if let Some(mut dev) = unsafe { GPU_DEVICES[gdev-1].take() } {
+		let rq = Request::new(TransferToHost2d {
+			hdr: CtrlHeader {
+				ctrl_type: CtrlType::CmdTransferToHost2d,
+				flags: 0,
+				fence_id: 0,
+				ctx_id: 0,
+				padding: 0,
+			},
+			r: Rect::new(x, y, width, height),
+			offset: 0,
+			resource_id: 1,
+			padding: 0,
+		});
+		let desc_t2h = Descriptor {
+			addr: unsafe { &(*rq).request as *const TransferToHost2d as u64 },
+			len: size_of::<TransferToHost2d>() as u32,
+			flags: VIRTIO_DESC_F_NEXT,
+			next: (dev.idx + 1) % VIRTIO_RING_SIZE as u16,
+		};
+		let desc_t2h_resp = Descriptor {
+			addr: unsafe { &(*rq).response as *const CtrlHeader as u64 },
+			len: size_of::<CtrlHeader>() as u32,
+			flags: VIRTIO_DESC_F_WRITE,
+			next: 0,
+		};
+		unsafe {
+			let head = dev.idx;
+			(*dev.queue).desc[dev.idx as usize] = desc_t2h;
+			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
+			(*dev.queue).desc[dev.idx as usize] = desc_t2h_resp;
+			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
+			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize] = head;
+			(*dev.queue).avail.idx =
+				(*dev.queue).avail.idx.wrapping_add(1);
+		}
+		// Step 5: Flush
+		let rq = Request::new(ResourceFlush {
+			hdr: CtrlHeader {
+				ctrl_type: CtrlType::CmdResourceFlush,
+				flags: 0,
+				fence_id: 0,
+				ctx_id: 0,
+				padding: 0,
+			},
+			r: Rect::new(x, y, width, height),
+			resource_id: 1,
+			padding: 0,
+		});
+		let desc_rf = Descriptor {
+			addr: unsafe { &(*rq).request as *const ResourceFlush as u64 },
+			len: size_of::<ResourceFlush>() as u32,
+			flags: VIRTIO_DESC_F_NEXT,
+			next: (dev.idx + 1) % VIRTIO_RING_SIZE as u16,
+		};
+		let desc_rf_resp = Descriptor {
+			addr: unsafe { &(*rq).response as *const CtrlHeader as u64 },
+			len: size_of::<CtrlHeader>() as u32,
+			flags: VIRTIO_DESC_F_WRITE,
+			next: 0,
+		};
+		unsafe {
+			let head = dev.idx;
+			(*dev.queue).desc[dev.idx as usize] = desc_rf;
+			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
+			(*dev.queue).desc[dev.idx as usize] = desc_rf_resp;
+			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
+			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize] = head;
+			(*dev.queue).avail.idx =
+				(*dev.queue).avail.idx.wrapping_add(1);
+		}
+		// Run Queue
+		unsafe {
+			dev.dev
+			.add(MmioOffsets::QueueNotify.scale32())
+			.write_volatile(0);
+			GPU_DEVICES[gdev-1].replace(dev);
+		}
+	}
+}
+
 pub fn setup_gpu_device(ptr: *mut u32) -> bool {
 	unsafe {
 		// We can get the index of the device based on its address.
@@ -740,13 +708,14 @@ pub fn setup_gpu_device(ptr: *mut u32) -> bool {
 		status_bits |= StatusField::DriverOk.val32();
 		ptr.add(MmioOffsets::Status.scale32()).write_volatile(status_bits);
 
-
+		let num_pages = (PAGE_SIZE * 2+640*480*size_of::<Pixel>())/PAGE_SIZE;
+		let page_alloc = zalloc(num_pages) as *mut Pixel;
 		let dev = Device {
 			queue: queue_ptr,
 			dev: ptr,
 			idx: 0,
 			ack_used_idx: 0,
-			framebuffer: kmalloc(640*480*size_of::<Pixel>()) as *mut Pixel,
+			framebuffer: page_alloc,
 			width: 640,
 			height: 480,
 		};
