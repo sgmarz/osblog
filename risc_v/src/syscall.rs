@@ -7,8 +7,9 @@ use crate::{block::block_op,
 			cpu::{dump_registers, TrapFrame, Registers},
 			fs,
 			elf,
+			gpu,
 			buffer::Buffer,
-            page::{virt_to_phys, Table},
+            page::{virt_to_phys, Table, map, EntryBits},
             process::{PROCESS_LIST, PROCESS_LIST_MUTEX, delete_process, get_by_pid, set_sleeping, set_waiting, add_kernel_process_args}};
 use alloc::{boxed::Box, string::String};
 
@@ -164,6 +165,47 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			);
 			0
 		},
+		// System calls 1000 and above are "special" system calls for our OS. I'll
+		// try to mimic the normal system calls below 1000 so that this OS is compatible
+		// with libraries.
+		1000 => {
+			// get framebuffer
+			// syscall_get_framebuffer(device)
+			let dev = (*frame).regs[Registers::A0 as usize];
+			(*frame).regs[Registers::A0 as usize] = 0;
+			if dev > 0 && dev <= 8 {
+				if let Some(p) = gpu::GPU_DEVICES[dev - 1].take() {
+					let ptr = p.get_framebuffer() as usize;
+					gpu::GPU_DEVICES[dev-1].replace(p);
+					if (*frame).satp >> 60 != 0 {
+						let p = get_by_pid((*frame).pid as u16);
+						let table = ((*p).get_table_address()
+									 as *mut Table)
+									.as_mut()
+									.unwrap();
+						for i in 0..302 {
+							let vaddr = 0x3000_0000 + (i << 12);
+							let paddr = ptr + (i << 12);
+							map(table, vaddr, paddr, EntryBits::UserReadWrite as i64, 0);
+						}
+					}
+					(*frame).regs[Registers::A0 as usize] = 0x3000_0000;
+				}
+			}
+			mepc + 4
+		},
+		1001 => {
+			// transfer rectangle and invalidate
+			let dev = (*frame).regs[Registers::A0 as usize];
+			let x = (*frame).regs[Registers::A1 as usize] as u32;
+			let y = (*frame).regs[Registers::A2 as usize] as u32;
+			let width = (*frame).regs[Registers::A3 as usize] as u32;
+			let height = (*frame).regs[Registers::A4 as usize] as u32;
+			// println!("TX: {} {} {} {} {}", dev, x, y, width, height);
+			gpu::transfer(dev, x, y, width, height);
+	
+			mepc + 4
+		}
 		_ => {
 			println!("Unknown syscall number {}", syscall_number);
 			mepc + 4

@@ -2,6 +2,10 @@
 .section .text.init
 .global _start
 _start:
+.option push
+.option norelax
+	la	gp, __global_pointer$
+.option pop
 	call	main
 	# Exit system call after main
 	li	a0, 93
