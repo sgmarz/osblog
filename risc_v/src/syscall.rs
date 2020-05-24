@@ -205,6 +205,11 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			gpu::transfer(dev, x, y, width, height);
 	
 			mepc + 4
+		},
+		1062 => {
+			// gettime
+			(*frame).regs[Registers::A0 as usize] = crate::cpu::get_mtime();
+			mepc + 4
 		}
 		_ => {
 			println!("Unknown syscall number {}", syscall_number);
