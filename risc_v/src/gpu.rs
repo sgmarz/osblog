@@ -374,7 +374,7 @@ pub fn init(gdev: usize)  {
 			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
 			(*dev.queue).desc[dev.idx as usize] = desc_c2d_resp;
 			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
-			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize] = head;
+			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize % VIRTIO_RING_SIZE] = head;
 			(*dev.queue).avail.idx =
 				(*dev.queue).avail.idx.wrapping_add(1);
 		}
@@ -422,7 +422,7 @@ pub fn init(gdev: usize)  {
 			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
 			(*dev.queue).desc[dev.idx as usize] = desc_ab_resp;
 			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
-			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize] = head;
+			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize % VIRTIO_RING_SIZE] = head;
 			(*dev.queue).avail.idx =
 				(*dev.queue).avail.idx.wrapping_add(1);
 		}
@@ -457,7 +457,7 @@ pub fn init(gdev: usize)  {
 			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
 			(*dev.queue).desc[dev.idx as usize] = desc_sso_resp;
 			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
-			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize] = head;
+			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize % VIRTIO_RING_SIZE] = head;
 			(*dev.queue).avail.idx =
 				(*dev.queue).avail.idx.wrapping_add(1);
 		}
@@ -493,7 +493,7 @@ pub fn init(gdev: usize)  {
 			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
 			(*dev.queue).desc[dev.idx as usize] = desc_t2h_resp;
 			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
-			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize] = head;
+			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize % VIRTIO_RING_SIZE] = head;
 			(*dev.queue).avail.idx =
 				(*dev.queue).avail.idx.wrapping_add(1);
 		}
@@ -528,7 +528,7 @@ pub fn init(gdev: usize)  {
 			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
 			(*dev.queue).desc[dev.idx as usize] = desc_rf_resp;
 			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
-			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize] = head;
+			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize % VIRTIO_RING_SIZE] = head;
 			(*dev.queue).avail.idx =
 				(*dev.queue).avail.idx.wrapping_add(1);
 		}
@@ -575,7 +575,7 @@ pub fn transfer(gdev: usize, x: u32, y: u32, width: u32, height: u32) {
 			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
 			(*dev.queue).desc[dev.idx as usize] = desc_t2h_resp;
 			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
-			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize] = head;
+			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize % VIRTIO_RING_SIZE] = head;
 			(*dev.queue).avail.idx =
 				(*dev.queue).avail.idx.wrapping_add(1);
 		}
@@ -610,7 +610,7 @@ pub fn transfer(gdev: usize, x: u32, y: u32, width: u32, height: u32) {
 			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
 			(*dev.queue).desc[dev.idx as usize] = desc_rf_resp;
 			dev.idx = (dev.idx + 1) % VIRTIO_RING_SIZE as u16;
-			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize] = head;
+			(*dev.queue).avail.ring[(*dev.queue).avail.idx as usize % VIRTIO_RING_SIZE] = head;
 			(*dev.queue).avail.idx =
 				(*dev.queue).avail.idx.wrapping_add(1);
 		}
