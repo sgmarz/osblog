@@ -709,6 +709,8 @@ pub fn setup_gpu_device(ptr: *mut u32) -> bool {
 		status_bits |= StatusField::DriverOk.val32();
 		ptr.add(MmioOffsets::Status.scale32()).write_volatile(status_bits);
 
+		// We are going to give the framebuffer to user space, so this needs to be page aligned
+		// so that we can map it into the user space's MMU. This is why we don't want kmalloc here!
 		let num_pages = (PAGE_SIZE * 2+640*480*size_of::<Pixel>())/PAGE_SIZE;
 		let page_alloc = zalloc(num_pages) as *mut Pixel;
 		let dev = Device {
