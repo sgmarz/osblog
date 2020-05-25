@@ -301,7 +301,7 @@ pub fn fill_rect(dev: &mut Device, rect: Rect, color: Pixel) {
 }
 
 pub fn stroke_rect(dev: &mut Device, rect: Rect, color: Pixel, size: u32) {
-	// Essentially stroke the four sides.
+	// Essentially fill the four sides.
 	// Top
 	fill_rect(dev, Rect::new(
 		rect.x,
