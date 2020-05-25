@@ -77,7 +77,7 @@ pub struct Rect {
 }
 
 impl Rect {
-	pub fn new(x: u32, y: u32, width: u32, height: u32) -> Self {
+	pub const fn new(x: u32, y: u32, width: u32, height: u32) -> Self {
 		Self {
 			x, y, width, height
 		}
@@ -203,7 +203,7 @@ pub struct Pixel {
 	pub a: u8,
 }
 impl Pixel {
-	pub fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
+	pub const fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
 		Self {
 			r, g, b, a
 		}
