@@ -26,7 +26,7 @@ struct Config {
 }
 #[repr(u32)]
 enum CtrlType {
-	/* 2d commands */
+	// 2d commands
 	CmdGetDisplayInfo = 0x0100,
 	CmdResourceCreate2d,
 	CmdResourceUref,
@@ -38,16 +38,16 @@ enum CtrlType {
 	CmdGetCapsetInfo,
 	CmdGetCapset,
 	CmdGetEdid,
-	/* cursor commands */
+	// cursor commands
 	CmdUpdateCursor = 0x0300,
 	CmdMoveCursor,
-	/* success responses */
+	// success responses
 	RespOkNoData = 0x1100,
 	RespOkDisplayInfo,
 	RespOkCapsetInfo,
 	RespOkCapset,
 	RespOkEdid,
-	/* error responses */
+	// error responses
 	RespErrUnspec = 0x1200,
 	RespErrOutOfMemory,
 	RespErrInvalidScanoutId,
