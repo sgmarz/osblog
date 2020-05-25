@@ -11,12 +11,11 @@ use crate::{page::{zalloc, PAGE_SIZE},
 use core::{mem::size_of, ptr::null_mut};
 // use alloc::boxed::Box;
 
-pub const F_VIRGL: u32 = 0;
-pub const F_EDID: u32 = 1;
-
-pub const EVENT_DISPLAY: u32 = 1 << 0;
+const F_VIRGL: u32 = 0;
+const F_EDID: u32 = 1;
+const EVENT_DISPLAY: u32 = 1 << 0;
 #[repr(C)]
-pub struct Config {
+struct Config {
 	//events_read signals pending events to the driver. The driver MUST NOT write to this field.
 	// events_clear clears pending events in the device. Writing a ’1’ into a bit will clear the corresponding bit in events_read mimicking write-to-clear behavior.
 	//num_scanouts specifies the maximum number of scanouts supported by the device. Minimum value is 1, maximum value is 16.
@@ -26,7 +25,7 @@ pub struct Config {
 	reserved: u32,
 }
 #[repr(u32)]
-pub enum CtrlType {
+enum CtrlType {
 	/* 2d commands */
 	CmdGetDisplayInfo = 0x0100,
 	CmdResourceCreate2d,
@@ -57,9 +56,9 @@ pub enum CtrlType {
 	RespErrInvalidParameter,
 }
 
-pub const FLAG_FENCE: u32= 1 << 0;
+const FLAG_FENCE: u32 = 1 << 0;
 #[repr(C)]
-pub struct CtrlHeader {
+struct CtrlHeader {
 	ctrl_type: CtrlType,
 	flags: u32,
 	fence_id: u64,
@@ -67,14 +66,14 @@ pub struct CtrlHeader {
 	padding: u32
 }
 
-pub const MAX_SCANOUTS: usize = 16;
+const MAX_SCANOUTS: usize = 16;
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct Rect {
-	x: u32,
-	y: u32,
-	width: u32,
-	height: u32,
+	pub x: u32,
+	pub y: u32,
+	pub width: u32,
+	pub height: u32,
 }
 
 impl Rect {
@@ -85,32 +84,32 @@ impl Rect {
 	}
 }
 #[repr(C)]
-pub struct DisplayOne {
+struct DisplayOne {
 	r: Rect,
 	enabled: u32,
 	flags: u32,
 }
 
 #[repr(C)]
-pub struct RespDisplayInfo {
+struct RespDisplayInfo {
 	hdr: CtrlHeader,
 	pmodes: [DisplayOne; MAX_SCANOUTS],
 }
 #[repr(C)]
-pub struct GetEdid {
+struct GetEdid {
 	hdr: CtrlHeader,
 	scanout: u32,
 	padding: u32,
 }
 #[repr(C)]
-pub struct RespEdid {
+struct RespEdid {
 	hdr: CtrlHeader,
 	size: u32,
 	padding: u32,
 	edid: [u8; 1024],
 }
 #[repr(u32)]
-pub enum Formats {
+enum Formats {
 	B8G8R8A8Unorm = 1,
 	B8G8R8X8Unorm = 2,
 	A8R8G8B8Unorm = 3,
@@ -122,7 +121,7 @@ pub enum Formats {
 }
 
 #[repr(C)]
-pub struct ResourceCreate2d {
+struct ResourceCreate2d {
 	hdr: CtrlHeader,
 	resource_id: u32,
 	format: Formats,
@@ -130,20 +129,20 @@ pub struct ResourceCreate2d {
 	height: u32,
 }
 #[repr(C)]
-pub struct ResourceUnref {
+struct ResourceUnref {
 	hdr: CtrlHeader,
 	resource_id: u32,
 	padding: u32,
 }
 #[repr(C)]
-pub struct SetScanout {
+struct SetScanout {
 	hdr: CtrlHeader,
 	r: Rect,
 	scanout_id: u32,
 	resource_id: u32,
 }
 #[repr(C)]
-pub struct ResourceFlush {
+struct ResourceFlush {
 	hdr: CtrlHeader,
 	r: Rect,
 	resource_id: u32,
@@ -151,7 +150,7 @@ pub struct ResourceFlush {
 }
 
 #[repr(C)]
-pub struct TransferToHost2d {
+struct TransferToHost2d {
 	hdr: CtrlHeader,
 	r: Rect,
 	offset: u64,
@@ -159,27 +158,27 @@ pub struct TransferToHost2d {
 	padding: u32,
 }
 #[repr(C)]
-pub struct AttachBacking {
+struct AttachBacking {
 	hdr: CtrlHeader,
 	resource_id: u32,
 	nr_entries: u32,
 }
 
 #[repr(C)]
-pub struct MemEntry {
+struct MemEntry {
 	addr: u64,
 	length: u32,
 	padding: u32,
 }
 
 #[repr(C)]
-pub struct DetachBacking {
+struct DetachBacking {
 	hdr: CtrlHeader,
 	resource_id: u32,
 	padding: u32,
 }
 #[repr(C)]
-pub struct CursorPos {
+struct CursorPos {
 	scanout_id: u32,
 	x: u32,
 	y: u32,
@@ -187,7 +186,7 @@ pub struct CursorPos {
 }
 
 #[repr(C)]
-pub struct UpdateCursor {
+struct UpdateCursor {
 	hdr: CtrlHeader,
 	pos: CursorPos,
 	resource_id: u32,
@@ -198,10 +197,10 @@ pub struct UpdateCursor {
 
 #[derive(Clone, Copy)]
 pub struct Pixel {
-	r: u8,
-	g: u8,
-	b: u8,
-	a: u8,
+	pub r: u8,
+	pub g: u8,
+	pub b: u8,
+	pub a: u8,
 }
 impl Pixel {
 	pub fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
@@ -213,7 +212,7 @@ impl Pixel {
 
 // This is not in the specification, but this makes
 // it easier for us to do just a single kfree.
-pub struct Request<RqT, RpT> {
+struct Request<RqT, RpT> {
 	request: RqT,
 	response: RpT,
 }
@@ -229,7 +228,7 @@ impl<RqT, RpT> Request<RqT, RpT> {
 	}
 }
 
-pub struct Request3<RqT, RmT, RpT> {
+struct Request3<RqT, RmT, RpT> {
 	request: RqT,
 	mementries: RmT,
 	response: RpT,
@@ -338,7 +337,7 @@ pub fn init(gdev: usize)  {
 	if let Some(mut dev) = unsafe { GPU_DEVICES[gdev-1].take() } {
 		// Put some crap in the framebuffer:
 		// First clear the buffer to white?
-		fill_rect(&mut dev, Rect::new(0, 0, 640, 480), Pixel::new(255, 255, 255, 255));
+		fill_rect(&mut dev, Rect::new(0, 0, 640, 480), Pixel::new(2, 2, 2, 255));
 		// fill_rect(&mut dev, Rect::new(15, 15, 200, 200), Pixel::new(255, 130, 0, 255));
 		// stroke_rect(&mut dev, Rect::new( 255, 15, 150, 150), Pixel::new( 0, 0, 0, 255), 5);
 		// draw_cosine(&mut dev, Rect::new(0, 300, 550, 60), Pixel::new(255, 15, 15, 255));
@@ -542,6 +541,8 @@ pub fn init(gdev: usize)  {
 	}
 }
 
+/// Invalidate and transfer a rectangular portion of the screen.
+/// I found out that width and height are actually x2, y2...oh well.
 pub fn transfer(gdev: usize, x: u32, y: u32, width: u32, height: u32) {
 	if let Some(mut dev) = unsafe { GPU_DEVICES[gdev-1].take() } {
 		let rq = Request::new(TransferToHost2d {
