@@ -136,6 +136,7 @@ pub mod cpu;
 pub mod elf;
 pub mod fs;
 pub mod gpu;
+pub mod input;
 pub mod kmem;
 pub mod lock;
 pub mod page;
