@@ -735,7 +735,6 @@ pub fn pending(dev: &mut Device) {
 	unsafe {
 		let ref queue = *dev.queue;
 		while dev.ack_used_idx != queue.used.idx {
-			
 			let ref elem = queue.used.ring
 				[dev.ack_used_idx as usize % VIRTIO_RING_SIZE];
 			// println!("Ack {}, elem {}, len {}", dev.ack_used_idx, elem.id, elem.len);
