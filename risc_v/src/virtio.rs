@@ -6,11 +6,16 @@
 use crate::{block, block::setup_block_device, page::PAGE_SIZE};
 use crate::rng::setup_entropy_device;
 use crate::{gpu, gpu::setup_gpu_device};
+use crate::{input, input::setup_input_device};
 use core::mem::size_of;
 
 // Flags
 // Descriptor flags have VIRTIO_DESC_F as a prefix
 // Available flags have VIRTIO_AVAIL_F
+
+pub const VIRTIO_F_RING_INDIRECT_DESC: u32 = 28;
+pub const VIRTIO_F_RING_EVENT_IDX: u32 = 29;
+pub const VIRTIO_F_VERSION_1: u32 = 32;
 
 pub const VIRTIO_DESC_F_NEXT: u16 = 1;
 pub const VIRTIO_DESC_F_WRITE: u16 = 2;
@@ -319,6 +324,11 @@ pub fn probe() {
 						println!("setup failed.");
 					}
 					else {
+						let idx = (addr - MMIO_VIRTIO_START) >> 12;
+						unsafe {
+							VIRTIO_DEVICES[idx] =
+								Some(VirtioDevice::new_with(DeviceTypes::Input));
+						}
 						println!("setup succeeded!");
 					}
 				},
@@ -329,10 +339,6 @@ pub fn probe() {
 }
 
 pub fn setup_network_device(_ptr: *mut u32) -> bool {
-	false
-}
-
-pub fn setup_input_device(_ptr: *mut u32) -> bool {
 	false
 }
 
@@ -350,6 +356,9 @@ pub fn handle_interrupt(interrupt: u32) {
 				},
 				DeviceTypes::Gpu => {
 					gpu::handle_interrupt(idx);
+				},
+				DeviceTypes::Input => {
+					input::handle_interrupt(idx);
 				},
 				_ => {
 					println!("Invalid device generated interrupt!");
