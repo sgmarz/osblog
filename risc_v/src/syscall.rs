@@ -10,7 +10,8 @@ use crate::{block::block_op,
 			gpu,
 			buffer::Buffer,
             page::{virt_to_phys, Table, map, EntryBits},
-            process::{PROCESS_LIST, PROCESS_LIST_MUTEX, delete_process, get_by_pid, set_sleeping, set_waiting, add_kernel_process_args}};
+			process::{PROCESS_LIST, PROCESS_LIST_MUTEX, delete_process, get_by_pid, set_sleeping, set_waiting, add_kernel_process_args}};
+use crate::input::{KEY_EVENTS, ABS_EVENTS, KEY_OBSERVERS, ABS_OBSERVERS, Event};
 use alloc::{boxed::Box, string::String};
 
 /// do_syscall is called from trap.rs to invoke a system call. No discernment is
@@ -201,16 +202,47 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			let y = (*frame).regs[Registers::A2 as usize] as u32;
 			let width = (*frame).regs[Registers::A3 as usize] as u32;
 			let height = (*frame).regs[Registers::A4 as usize] as u32;
-			// println!("TX: {} {} {} {} {}", dev, x, y, width, height);
 			gpu::transfer(dev, x, y, width, height);
-	
 			mepc + 4
+		},
+		1002 => {
+			// wait for keyboard events
+			let ret_pc = mepc + 4;
+			let mut ev = KEY_EVENTS.take().unwrap();
+			if ev.is_empty() {
+				(*frame).regs[Registers::A0 as usize] = -1isize as usize;
+			}
+			else {
+				let event = ev.pop_front().unwrap();
+				let ret = ((event.code as usize) << 16) | event.value as usize;
+				// println!("Code: {}, Value: {}, ret: 0x{:016x}", event.code, event.value, ret);
+				(*frame).regs[Registers::A0 as usize] = ret;
+			}
+			KEY_EVENTS.replace(ev);
+			ret_pc
+		},
+		1004 => {
+			// wait for abs events
+			let ret_pc = mepc + 4;
+			let mut ev = ABS_EVENTS.take().unwrap();
+			if ev.is_empty() {
+				(*frame).regs[Registers::A0 as usize] = -1isize as usize;
+			}
+			else {
+				let event = ev.pop_front().unwrap();
+				let mut ret = event.code as usize;
+				ret <<= 16;
+				ret |= event.value as usize;
+				(*frame).regs[Registers::A0 as usize] = ret;
+			}
+			ABS_EVENTS.replace(ev);
+			ret_pc
 		},
 		1062 => {
 			// gettime
 			(*frame).regs[Registers::A0 as usize] = crate::cpu::get_mtime();
 			mepc + 4
-		}
+		},
 		_ => {
 			println!("Unknown syscall number {}", syscall_number);
 			mepc + 4

@@ -3,13 +3,21 @@
 // Stephen Marz
 
 use crate::virtio::{Queue, MmioOffsets, MMIO_VIRTIO_START, StatusField, VIRTIO_RING_SIZE, Descriptor, VIRTIO_DESC_F_WRITE, VIRTIO_F_RING_EVENT_IDX};
+use crate::process::set_running;
 use crate::kmem::kmalloc;
 use crate::page::{PAGE_SIZE, zalloc};
 use core::mem::size_of;
+use alloc::collections::VecDeque;
+
+pub static mut ABS_EVENTS: Option<VecDeque<Event>> = None;
+pub static mut ABS_OBSERVERS: Option<VecDeque<u16>> = None;
+pub static mut KEY_EVENTS: Option<VecDeque<Event>> = None;
+pub static mut KEY_OBSERVERS: Option<VecDeque<u16>> = None;
 
 const EVENT_BUFFER_ELEMENTS: usize = 64;
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct Event {
     pub event_type: u16,
     pub code: u16,
@@ -220,6 +228,10 @@ pub fn setup_input_device(ptr: *mut u32) -> bool {
 			repopulate_event(&mut dev, i);
 		}
 		INPUT_DEVICES[idx] = Some(dev);
+		ABS_EVENTS = Some(VecDeque::with_capacity(10000));
+		ABS_OBSERVERS = Some(VecDeque::new());
+		KEY_EVENTS = Some(VecDeque::with_capacity(1000));
+		KEY_OBSERVERS = Some(VecDeque::new());
 
 		true
 	}
@@ -250,10 +262,31 @@ fn pending(dev: &mut Device) {
 			let ref elem = queue.used.ring[dev.event_ack_used_idx as usize % VIRTIO_RING_SIZE];
 			let ref desc = queue.desc[elem.id as usize];
 			let event = (desc.addr as *const Event).as_ref().unwrap();
-			print!("EAck {}, elem {}, len {}, addr 0x{:08x}: ", dev.event_ack_used_idx, elem.id, elem.len, desc.addr as usize);
-			println!("Type = {:x}, Code = {:x}, Value = {:x}", event.event_type, event.code, event.value);
+			// print!("EAck {}, elem {}, len {}, addr 0x{:08x}: ", dev.event_ack_used_idx, elem.id, elem.len, desc.addr as usize);
+			// println!("Type = {:x}, Code = {:x}, Value = {:x}", event.event_type, event.code, event.value);
 			repopulate_event(dev, elem.id as usize);
 			dev.event_ack_used_idx = dev.event_ack_used_idx.wrapping_add(1);
+			if event.event_type == 1 && event.code != 0 {
+				// keyboard event
+				let mut ev = KEY_EVENTS.take().unwrap();
+				ev.push_back(*event);
+				KEY_EVENTS.replace(ev);
+				// let mut obs = KEY_OBSERVERS.take().unwrap();
+				// for i in obs.drain(..) {
+					// set_running(i);
+				// }
+				// KEY_OBSERVERS.replace(obs);
+			}
+			else if event.event_type == 3 && event.code != 0 {
+				let mut ev = ABS_EVENTS.take().unwrap();
+				ev.push_back(*event);
+				ABS_EVENTS.replace(ev);
+				// let mut obs = ABS_OBSERVERS.take().unwrap();
+				// for i in obs.drain(..) {
+					// set_running(i);
+				// }
+				// ABS_OBSERVERS.replace(obs);
+			}
 		}
 		// Next, the status queue
 		let ref queue = *dev.status_queue;

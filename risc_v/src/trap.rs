@@ -76,7 +76,7 @@ extern "C" fn m_trap(epc: usize,
 		match cause_num {
 			2 => unsafe {
 				// Illegal instruction
-				// panic!("Illegal instruction CPU#{} -> 0x{:08x}: 0x{:08x}\n", hart, epc, tval);
+				println!("Illegal instruction CPU#{} -> 0x{:08x}: 0x{:08x}\n", hart, epc, tval);
 				// We need while trues here until we have a functioning "delete from scheduler"
 				// I use while true because Rust will warn us that it looks stupid.
 				// This is what I want so that I remember to remove this and replace
@@ -87,7 +87,7 @@ extern "C" fn m_trap(epc: usize,
 				rust_switch_to_user(frame);
 			},
 			7 => unsafe {
-				// println!("Error with pid {}, at PC 0x{:08x}, mepc 0x{:08x}", (*frame).pid, (*frame).pc, epc);
+				println!("Error with pid {}, at PC 0x{:08x}, mepc 0x{:08x}", (*frame).pid, (*frame).pc, epc);
 				delete_process((*frame).pid as u16);
 				let frame = schedule();
 				schedule_next_context_switch(1);
