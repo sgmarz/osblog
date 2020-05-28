@@ -58,17 +58,47 @@ int main()
 {
 	bool pressed = false;
 	Pixel *fb = (Pixel *)syscall_get_fb(6);
-	Pixel orange_color = {255, 150, 0, 255};
+	Pixel white_color = {255, 255, 255, 255};
+	Pixel black_color = {0, 0, 0, 255};
+	Pixel current_color = {255, 150, 0, 255};
 	u32 x = 0;
 	u32 y = 0;
 	u32 num_events;
 
+	fill_rect(fb, 0, 0, 640, 480, white_color);
+	syscall_inv_rect(6, 0, 0, 640, 480);
 	do {
 		if ((num_events = syscall_get_key(events, MAX_EVENTS)) > 0) {
 			for (u32 z = 0;z < num_events;z++) {
 				Event &ev = events[z];
-				if (ev.code == BTN_MOUSE) {
-					pressed = (ev.value & 1) == 1;
+				switch (ev.code) {
+					case BTN_MOUSE:
+						pressed = (ev.value & 1) == 1;
+					break;
+					case KEY_O:
+						current_color = Pixel {255, 150, 0, 255};
+					break;
+					case KEY_B:
+						current_color = Pixel {0, 0, 255, 255};
+					break;
+					case KEY_G:
+						current_color = Pixel {0, 255, 0, 255};
+					break;
+					case KEY_R:
+						current_color = Pixel {255, 0, 0, 255};
+					break;
+					case KEY_W:
+						if (ev.value == 0) { //released
+							fill_rect(fb, 0, 0, 640, 480, white_color);
+							syscall_inv_rect(6, 0, 0, 640, 480);
+						}
+					break;
+					case KEY_Q:
+						if (ev.value == 0) { // released
+							fill_rect(fb, 0, 0, 640, 480, black_color);
+							syscall_inv_rect(6, 0, 0, 640, 480);
+						}
+					break;
 				}
 			}
 		}
@@ -85,7 +115,7 @@ int main()
 				y = lerp(ev.value & 0x7fff, 32767, 480);
 			}
 			if (pressed) {
-				fill_rect(fb, x, y, 5, 5, orange_color);
+				fill_rect(fb, x, y, 5, 5, current_color);
 			}
 		}
 		if (pressed) {
