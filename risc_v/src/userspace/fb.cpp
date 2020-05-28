@@ -3,7 +3,7 @@
 #include <input-event-codes.h>
 
 
-#define MAX_EVENTS 100000
+#define MAX_EVENTS 100
 #define cos(x)	  table_cos(x)
 // #define cos(x)	  taylor_cos(x)
 #define min(x, y) ((x < y) ? x : y)

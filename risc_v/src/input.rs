@@ -236,7 +236,7 @@ pub fn setup_input_device(ptr: *mut u32) -> bool {
 			repopulate_event(&mut dev, i);
 		}
 		INPUT_DEVICES[idx] = Some(dev);
-		ABS_EVENTS = Some(VecDeque::with_capacity(100000));
+		ABS_EVENTS = Some(VecDeque::with_capacity(1000));
 		// ABS_OBSERVERS = Some(VecDeque::new());
 		KEY_EVENTS = Some(VecDeque::with_capacity(1000));
 		// KEY_OBSERVERS = Some(VecDeque::new());
