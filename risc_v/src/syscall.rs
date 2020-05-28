@@ -203,7 +203,7 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 				let process = get_by_pid((*frame).pid as u16);
 				let table = ((*process).get_table_address() as *mut Table).as_mut().unwrap();
 				(*frame).regs[Registers::A0 as usize] = 0;
-				for i in 0..ev.len() {
+				for i in 0..if max_events <= ev.len() { max_events } else { ev.len() } {
 					let paddr = virt_to_phys(table, vaddr.add(i) as usize);
 					if paddr.is_none() {
 						break;
@@ -225,7 +225,7 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 				let process = get_by_pid((*frame).pid as u16);
 				let table = ((*process).get_table_address() as *mut Table).as_mut().unwrap();
 				(*frame).regs[Registers::A0 as usize] = 0;
-				for i in 0..ev.len() {
+				for i in 0..if max_events <= ev.len() { max_events } else { ev.len() } {
 					let paddr = virt_to_phys(table, vaddr.add(i) as usize);
 					if paddr.is_none() {
 						break;
