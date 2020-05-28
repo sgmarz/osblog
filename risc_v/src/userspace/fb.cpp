@@ -64,7 +64,7 @@ int main()
 	u32 num_events;
 
 	do {
-		if ((num_events = syscall_get_key(0, MAX_EVENTS)) > 0) {
+		if ((num_events = syscall_get_key(events, MAX_EVENTS)) > 0) {
 			for (u32 z = 0;z < num_events;z++) {
 				Event &ev = events[z];
 				if (ev.code == BTN_MOUSE) {
