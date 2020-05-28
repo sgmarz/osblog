@@ -49,53 +49,48 @@ struct Rect {
 	u32 height;
 };
 
-u32 lerp(u32 val, u32 mx1, u32 mx2) {
+constexpr u32 lerp(u32 val, u32 mx1, u32 mx2) {
 	f64 r = val / static_cast<f64>(mx1);
 	return r * mx2;
 }
 
 int main()
 {
-	bool mouse_down = true;
-	int VERSION = -1;
-	printf("(%d): TESTING FRAMEBUFFER FROM USERSPACE\n", VERSION);
+	bool pressed = false;
 	Pixel *fb = (Pixel *)syscall_get_fb(6);
-	Pixel blue_color = {0, 0, 255, 255};
-	Pixel red_color = {255, 0, 0, 255};
-	Pixel green_color = {0, 255, 0, 255};
-	Pixel white_color = {255, 255, 255, 255};
 	Pixel orange_color = {255, 150, 0, 255};
 	u32 x = 0;
 	u32 y = 0;
-	u32 width = 40;
-	u32 height = 50;
-	unsigned long i = 0;
+	u32 num_events;
 
-	fill_rect(fb, 0, 0, 640, 480, white_color);
-	stroke_rect(fb, 10, 10, 20, 20, blue_color, 5);
-	stroke_rect(fb, 50, 50, 40, 40, green_color, 10);
-	stroke_rect(fb, 150, 150, 140, 140, red_color, 15);
-	draw_cosine(fb, 0, 400, 500, 50, red_color);
-	syscall_inv_rect(6, x, y, 640, 480);
-	i64 abs;
 	do {
-		
-		if ((abs = syscall_get_abs(events, MAX_EVENTS)) < 1) {
+		if ((num_events = syscall_get_key(0, MAX_EVENTS)) > 0) {
+			for (u32 z = 0;z < num_events;z++) {
+				Event &ev = events[z];
+				if (ev.code == BTN_MOUSE) {
+					pressed = (ev.value & 1) == 1;
+				}
+			}
+		}
+		if ((num_events = syscall_get_abs(events, MAX_EVENTS)) < 1) {
 			syscall_sleep(noevt_slptm);
 			continue;
 		}
-		for (i64 z = 0;z < abs;z++) {
+		for (u32 z = 0;z < num_events;z++) {
 			Event &ev = events[z];
 			if (ev.code == ABS_X) {
 				x = lerp(ev.value & 0x7fff, 32767, 640);
-				fill_rect(fb, x, y, 5, 5, orange_color);
 			}
 			else if (ev.code == ABS_Y) {
 				y = lerp(ev.value & 0x7fff, 32767, 480);
+			}
+			if (pressed) {
 				fill_rect(fb, x, y, 5, 5, orange_color);
 			}
 		}
-		syscall_inv_rect(6, 0, 0, 640, 480);
+		if (pressed) {
+			syscall_inv_rect(6, 0, 0, 640, 480);
+		}
 	} while (true);
 	return 0;
 }
