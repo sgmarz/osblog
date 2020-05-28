@@ -82,23 +82,20 @@ int main()
 		
 		if ((abs = syscall_get_abs(events, MAX_EVENTS)) < 1) {
 			syscall_sleep(noevt_slptm);
+			continue;
 		}
 		for (i64 z = 0;z < abs;z++) {
 			Event &ev = events[z];
 			if (ev.code == ABS_X) {
-				x = lerp(ev.value & 0xffff, 32767, 640);
+				x = lerp(ev.value & 0x7fff, 32767, 640);
 				fill_rect(fb, x, y, 5, 5, orange_color);
 			}
 			else if (ev.code == ABS_Y) {
-				y = lerp(ev.value & 0xffff, 32767, 480);
+				y = lerp(ev.value & 0x7fff, 32767, 480);
 				fill_rect(fb, x, y, 5, 5, orange_color);
 			}
 		}
 		syscall_inv_rect(6, 0, 0, 640, 480);
-		// if (i++ >= 100) {
-		// 	i = 0;
-		// 	syscall_inv_rect(6, 0, 0, 640, 480);
-		// }
 	} while (true);
 	return 0;
 }
