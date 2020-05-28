@@ -3,7 +3,6 @@
 // Stephen Marz
 
 use crate::virtio::{Queue, MmioOffsets, MMIO_VIRTIO_START, StatusField, VIRTIO_RING_SIZE, Descriptor, VIRTIO_DESC_F_WRITE, VIRTIO_F_RING_EVENT_IDX};
-use crate::process::set_running;
 use crate::kmem::kmalloc;
 use crate::page::{PAGE_SIZE, zalloc};
 use core::mem::size_of;
@@ -16,14 +15,21 @@ pub static mut KEY_OBSERVERS: Option<VecDeque<u16>> = None;
 
 const EVENT_BUFFER_ELEMENTS: usize = 64;
 
+pub enum InputType {
+	None,
+	Abs(u32, u32, u32, u32, u32),
+	Key(u32, u32)
+}
+
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct Event {
-    pub event_type: u16,
+    pub event_type: EventType,
     pub code: u16,
     pub value: u32,
 }
 #[repr(u8)]
+#[derive(Copy, Clone)]
 pub enum ConfigSelect {
     UNSET = 0x00,
     IdName = 0x01,
@@ -63,7 +69,7 @@ pub union ConfigUnion {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct Config {
-    pub select: u8,
+    pub select: ConfigSelect,
     pub subsel: u8,
     pub size: u8,
     reserved: [u8; 5],
@@ -71,6 +77,7 @@ pub struct Config {
 }
 
 #[repr(u8)]
+#[derive(Copy, Clone)]
 pub enum EventType {
     Syn = 0x00,
     Key = 0x01,
@@ -205,13 +212,14 @@ pub fn setup_input_device(ptr: *mut u32) -> bool {
 
         let config_ptr = ptr.add(MmioOffsets::Config.scale32()) as *mut Config;
 
-        let mut config = config_ptr.read_volatile();
+        // let mut config = config_ptr.read_volatile();
 
-        config.select = ConfigSelect::IdDevids as u8;
-        config.subsel = 0;
+        // config.select = ConfigSelect::AbsInfo;
+        // config.subsel = 0;
 
-        config_ptr.write_volatile(config);
-		let id = config_ptr.read_volatile().config.ids;
+        // config_ptr.write_volatile(config);
+		// let id = config_ptr.read_volatile().config.abs;
+		// println!("Min: {}, Max: {}, fuzz: {}, flat: {}, res: {}", id.min, id.max, id.fuzz, id.flat, id.res);
 
 		let mut dev = Device {
 			event_queue: event_queue_ptr,
@@ -266,26 +274,20 @@ fn pending(dev: &mut Device) {
 			// println!("Type = {:x}, Code = {:x}, Value = {:x}", event.event_type, event.code, event.value);
 			repopulate_event(dev, elem.id as usize);
 			dev.event_ack_used_idx = dev.event_ack_used_idx.wrapping_add(1);
-			if event.event_type == 1 && event.code != 0 {
-				// keyboard event
-				let mut ev = KEY_EVENTS.take().unwrap();
-				ev.push_back(*event);
-				KEY_EVENTS.replace(ev);
-				// let mut obs = KEY_OBSERVERS.take().unwrap();
-				// for i in obs.drain(..) {
-					// set_running(i);
-				// }
-				// KEY_OBSERVERS.replace(obs);
-			}
-			else if event.event_type == 3 && event.code != 0 {
-				let mut ev = ABS_EVENTS.take().unwrap();
-				ev.push_back(*event);
-				ABS_EVENTS.replace(ev);
-				// let mut obs = ABS_OBSERVERS.take().unwrap();
-				// for i in obs.drain(..) {
-					// set_running(i);
-				// }
-				// ABS_OBSERVERS.replace(obs);
+			match event.event_type {
+				EventType::Abs => {
+					let mut ev = ABS_EVENTS.take().unwrap();
+					ev.push_back(*event);
+					ABS_EVENTS.replace(ev);	
+				},
+				EventType::Key => {
+					let mut ev = KEY_EVENTS.take().unwrap();
+					ev.push_back(*event);
+					KEY_EVENTS.replace(ev);	
+				},
+				_ => {
+
+				}
 			}
 		}
 		// Next, the status queue
@@ -295,7 +297,7 @@ fn pending(dev: &mut Device) {
 			print!("SAck {}, elem {}, len {}: ", dev.status_ack_used_idx, elem.id, elem.len);
 			let ref desc = queue.desc[elem.id as usize];
 			let event = (desc.addr as *const Event).as_ref().unwrap();
-			println!("Type = {:x}, Code = {:x}, Value = {:x}", event.event_type, event.code, event.value);
+			println!("Type = {:x}, Code = {:x}, Value = {:x}", event.event_type as u8, event.code, event.value);
 			dev.status_ack_used_idx = dev.status_ack_used_idx.wrapping_add(1);
 		}
 	}

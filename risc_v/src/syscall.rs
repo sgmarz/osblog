@@ -9,7 +9,7 @@ use crate::{block::block_op,
 			elf,
 			gpu,
 			buffer::Buffer,
-            page::{virt_to_phys, Table, map, EntryBits},
+            page::{virt_to_phys, Table, map, EntryBits, PAGE_SIZE},
 			process::{PROCESS_LIST, PROCESS_LIST_MUTEX, delete_process, get_by_pid, set_sleeping, set_waiting, add_kernel_process_args}};
 use crate::input::{KEY_EVENTS, ABS_EVENTS, KEY_OBSERVERS, ABS_OBSERVERS, Event};
 use alloc::{boxed::Box, string::String};
@@ -35,7 +35,7 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 		2 => {
 			// Easy putchar
 			print!("{}", (*frame).regs[Registers::A0 as usize] as u8 as char);
-			mepc + 4
+			0
 		},
 		8 => {
 			dump_registers(frame);
@@ -126,7 +126,7 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 					virt_to_phys(table, (*frame).regs[12]);
 				if paddr.is_none() {
 					(*frame).regs[Registers::A0 as usize] = -1isize as usize;
-					return mepc + 4;
+					return 0;
 				}
 				physical_buffer = paddr.unwrap();
 			}
@@ -152,7 +152,7 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 		172 => {
 			// A0 = pid
 			(*frame).regs[Registers::A0 as usize] = (*frame).pid;
-			mepc + 4
+			0
 		},
 		180 => {
 			set_waiting((*frame).pid as u16);
@@ -177,23 +177,24 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			if dev > 0 && dev <= 8 {
 				if let Some(p) = gpu::GPU_DEVICES[dev - 1].take() {
 					let ptr = p.get_framebuffer() as usize;
-					gpu::GPU_DEVICES[dev-1].replace(p);
 					if (*frame).satp >> 60 != 0 {
-						let p = get_by_pid((*frame).pid as u16);
-						let table = ((*p).get_table_address()
+						let process = get_by_pid((*frame).pid as u16);
+						let table = ((*process).get_table_address()
 									 as *mut Table)
 									.as_mut()
 									.unwrap();
-						for i in 0..302 {
+						let num_pages = (p.get_width() * p.get_height() * 4) as usize / PAGE_SIZE;
+						for i in 0..num_pages {
 							let vaddr = 0x3000_0000 + (i << 12);
 							let paddr = ptr + (i << 12);
 							map(table, vaddr, paddr, EntryBits::UserReadWrite as i64, 0);
 						}
+						gpu::GPU_DEVICES[dev-1].replace(p);
 					}
 					(*frame).regs[Registers::A0 as usize] = 0x3000_0000;
 				}
 			}
-			mepc + 4
+			0
 		},
 		1001 => {
 			// transfer rectangle and invalidate
@@ -203,37 +204,42 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			let width = (*frame).regs[Registers::A3 as usize] as u32;
 			let height = (*frame).regs[Registers::A4 as usize] as u32;
 			gpu::transfer(dev, x, y, width, height);
-			mepc + 4
+			0
 		},
 		1002 => {
 			// wait for keyboard events
-			let ret_pc = mepc + 4;
+			let ret_pc;
 			let mut ev = KEY_EVENTS.take().unwrap();
 			if ev.is_empty() {
 				(*frame).regs[Registers::A0 as usize] = -1isize as usize;
+				ret_pc = 0;
 			}
 			else {
 				let event = ev.pop_front().unwrap();
 				let ret = ((event.code as usize) << 16) | event.value as usize;
 				// println!("Code: {}, Value: {}, ret: 0x{:016x}", event.code, event.value, ret);
 				(*frame).regs[Registers::A0 as usize] = ret;
+				ret_pc = 0;
 			}
 			KEY_EVENTS.replace(ev);
 			ret_pc
 		},
 		1004 => {
 			// wait for abs events
-			let ret_pc = mepc + 4;
+			let ret_pc;
 			let mut ev = ABS_EVENTS.take().unwrap();
 			if ev.is_empty() {
 				(*frame).regs[Registers::A0 as usize] = -1isize as usize;
+				ret_pc = 0;
 			}
 			else {
 				let event = ev.pop_front().unwrap();
-				let mut ret = event.code as usize;
-				ret <<= 16;
-				ret |= event.value as usize;
-				(*frame).regs[Registers::A0 as usize] = ret;
+				let mut ret = event.code as u64;
+				ret <<= 32;
+				ret |= event.value as u64;
+				// println!("ABS: Code: {}, Value: {}", event.code, event.value);
+				(*frame).regs[Registers::A0 as usize] = ret as usize;
+				ret_pc = 0;
 			}
 			ABS_EVENTS.replace(ev);
 			ret_pc
@@ -241,11 +247,11 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 		1062 => {
 			// gettime
 			(*frame).regs[Registers::A0 as usize] = crate::cpu::get_mtime();
-			mepc + 4
+			0
 		},
 		_ => {
 			println!("Unknown syscall number {}", syscall_number);
-			mepc + 4
+			0
 		},
 	}
 }

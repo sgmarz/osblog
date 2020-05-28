@@ -31,8 +31,8 @@ void set_pixel(Pixel *fb, u32 x, u32 y, Pixel &color);
 void draw_cosine(Pixel *fb, u32 x, u32 y, u32 width, u32 height, Pixel &color);
 void draw_circle(Pixel *fb, u32 x, u32 y, f64 r, Pixel &color);
 
-const u64 noevt_slptm = 1000000;
-const u64 evt_slptm   = 100000;
+const u64 noevt_slptm = 10000;
+const u64 evt_slptm   = 10000;
 
 struct Rect {
 	u32 x;
@@ -40,6 +40,11 @@ struct Rect {
 	u32 width;
 	u32 height;
 };
+
+u32 lerp(u32 val, u32 mx1, u32 mx2) {
+	f64 r = val / static_cast<f64>(mx1);
+	return r * mx2;
+}
 
 int main()
 {
@@ -73,25 +78,23 @@ int main()
 		if (key != -1) {
 			short code = key >> 16;
 			bool pressed = (key & 1) ? true : false;
-			printf("%s key %d\n", pressed ? "pressed" : "released", code);
+			// printf("%s key %d\n", pressed ? "pressed" : "released", code);
 			if (code == BTN_LEFT) { // left mouse button
 				mouse_down = pressed;
 			}
 		}
-		if (abs != -1 && mouse_down) {
-			u16 code = abs >> 16;
+		if (abs != -1) {
+			u16 code = abs >> 32;
 			if (code == ABS_X) {
-				x = abs & 0xffff;
+				x = lerp(abs & 0xffff, 32767, 640);
 			}
 			else if (code == ABS_Y) {
-				y = abs & 0xffff;
+				y = lerp(abs & 0xffff, 32767, 480);
 			}
-			x %= 400;
-			y %= 400;
-			syscall_sleep(noevt_slptm);
-			printf("Draw %d, %d\n", x, y);
-			fill_rect(fb, x, y, 10, 10, orange_color);
-			syscall_inv_rect(6, x, y, 10, 10);
+			if (mouse_down) {
+				fill_rect(fb, x, y, 5, 5, orange_color);
+				syscall_inv_rect(6, 0, 0, 640, 480);
+			}
 		}
 	} while (true);
 	return 0;
