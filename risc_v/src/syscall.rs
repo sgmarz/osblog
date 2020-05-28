@@ -4,15 +4,14 @@
 // 3 Jan 2020
 
 use crate::{block::block_op,
-			cpu::{dump_registers, TrapFrame, Registers},
-			fs,
-			elf,
-			gpu,
-			input,
-			buffer::Buffer,
-            page::{virt_to_phys, Table, map, EntryBits, PAGE_SIZE},
-			process::{PROCESS_LIST, PROCESS_LIST_MUTEX, delete_process, get_by_pid, set_sleeping, set_waiting, add_kernel_process_args}};
-use crate::input::{KEY_EVENTS, ABS_EVENTS, KEY_OBSERVERS, ABS_OBSERVERS, Event};
+            buffer::Buffer,
+            cpu::{dump_registers, Registers, TrapFrame},
+            elf,
+            fs,
+            gpu,
+            input::{Event, ABS_EVENTS, ABS_OBSERVERS, KEY_EVENTS, KEY_OBSERVERS},
+            page::{map, virt_to_phys, EntryBits, Table, PAGE_SIZE},
+            process::{add_kernel_process_args, delete_process, get_by_pid, set_sleeping, set_waiting, PROCESS_LIST, PROCESS_LIST_MUTEX}};
 use alloc::{boxed::Box, string::String};
 
 /// do_syscall is called from trap.rs to invoke a system call. No discernment is
@@ -32,33 +31,30 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			// Exit
 			delete_process((*frame).pid as u16);
 			0
-		},
+		}
 		2 => {
 			// Easy putchar
 			print!("{}", (*frame).regs[Registers::A0 as usize] as u8 as char);
 			0
-		},
+		}
 		8 => {
 			dump_registers(frame);
 			mepc + 4
-		},
+		}
 		10 => {
 			// Sleep
 			set_sleeping((*frame).pid as u16, (*frame).regs[Registers::A0 as usize]);
 			0
-		},
+		}
 		11 => {
 			// execv
-			//A0 = path
-			//A1 = argv
+			// A0 = path
+			// A1 = argv
 			let mut path_addr = (*frame).regs[Registers::A0 as usize];
 			// If the MMU is turned on, translate.
 			if (*frame).satp >> 60 != 0 {
 				let p = get_by_pid((*frame).pid as u16);
-				let table = ((*p).get_table_address()
-							 as *mut Table)
-							.as_ref()
-							.unwrap();
+				let table = ((*p).get_table_address() as *mut Table).as_ref().unwrap();
 				path_addr = virt_to_phys(table, path_addr).unwrap();
 			}
 			// Our path address here is now a physical address. If it came in virtual,
@@ -99,7 +95,7 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 				(*frame).regs[Registers::A0 as usize] = -1isize as usize;
 				return mepc + 4;
 			}
-		},
+		}
 		63 => {
 			// Read system call
 			// This is an asynchronous call. This will get the
@@ -119,12 +115,8 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			// translation will be done.
 			if (*frame).satp != 0 {
 				let p = get_by_pid((*frame).pid as u16);
-				let table = ((*p).get_table_address()
-				             as *mut Table)
-				            .as_ref()
-				            .unwrap();
-				let paddr =
-					virt_to_phys(table, (*frame).regs[12]);
+				let table = ((*p).get_table_address() as *mut Table).as_ref().unwrap();
+				let paddr = virt_to_phys(table, (*frame).regs[12]);
 				if paddr.is_none() {
 					(*frame).regs[Registers::A0 as usize] = -1isize as usize;
 					return 0;
@@ -137,24 +129,22 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			// can't just do paddr and paddr + size, since there
 			// could be a missing page somewhere in between.
 			let _ = fs::process_read(
-			                              (*frame).pid as u16,
-			                              (*frame).regs[Registers::A0 as usize]
-			                              as usize,
-			                              (*frame).regs[Registers::A1 as usize] as u32,
-			                              physical_buffer
-			                              as *mut u8,
-			                              (*frame).regs[Registers::A3 as usize] as u32,
-			                              (*frame).regs[Registers::A4 as usize] as u32,
+			                         (*frame).pid as u16,
+			                         (*frame).regs[Registers::A0 as usize] as usize,
+			                         (*frame).regs[Registers::A1 as usize] as u32,
+			                         physical_buffer as *mut u8,
+			                         (*frame).regs[Registers::A3 as usize] as u32,
+			                         (*frame).regs[Registers::A4 as usize] as u32
 			);
 			// If we return 0, the trap handler will schedule
 			// another process.
 			0
-		},
+		}
 		172 => {
 			// A0 = pid
 			(*frame).regs[Registers::A0 as usize] = (*frame).pid;
 			0
-		},
+		}
 		180 => {
 			set_waiting((*frame).pid as u16);
 			let _ = block_op(
@@ -163,10 +153,10 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			                 (*frame).regs[Registers::A2 as usize] as u32,
 			                 (*frame).regs[Registers::A3 as usize] as u64,
 			                 false,
-			                 (*frame).pid as u16,
+			                 (*frame).pid as u16
 			);
 			0
-		},
+		}
 		// System calls 1000 and above are "special" system calls for our OS. I'll
 		// try to mimic the normal system calls below 1000 so that this OS is compatible
 		// with libraries.
@@ -180,23 +170,20 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 					let ptr = p.get_framebuffer() as usize;
 					if (*frame).satp >> 60 != 0 {
 						let process = get_by_pid((*frame).pid as u16);
-						let table = ((*process).get_table_address()
-									 as *mut Table)
-									.as_mut()
-									.unwrap();
+						let table = ((*process).get_table_address() as *mut Table).as_mut().unwrap();
 						let num_pages = (p.get_width() * p.get_height() * 4) as usize / PAGE_SIZE;
 						for i in 0..num_pages {
 							let vaddr = 0x3000_0000 + (i << 12);
 							let paddr = ptr + (i << 12);
 							map(table, vaddr, paddr, EntryBits::UserReadWrite as i64, 0);
 						}
-						gpu::GPU_DEVICES[dev-1].replace(p);
+						gpu::GPU_DEVICES[dev - 1].replace(p);
 					}
 					(*frame).regs[Registers::A0 as usize] = 0x3000_0000;
 				}
 			}
 			0
-		},
+		}
 		1001 => {
 			// transfer rectangle and invalidate
 			let dev = (*frame).regs[Registers::A0 as usize];
@@ -206,7 +193,7 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			let height = (*frame).regs[Registers::A4 as usize] as u32;
 			gpu::transfer(dev, x, y, width, height);
 			0
-		},
+		}
 		1002 => {
 			// wait for keyboard events
 			let mut ev = KEY_EVENTS.take().unwrap();
@@ -214,10 +201,7 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			let vaddr = (*frame).regs[Registers::A0 as usize] as *const Event;
 			if (*frame).satp >> 60 != 0 {
 				let process = get_by_pid((*frame).pid as u16);
-				let table = ((*process).get_table_address()
-							 as *mut Table)
-							.as_mut()
-							.unwrap();
+				let table = ((*process).get_table_address() as *mut Table).as_mut().unwrap();
 				(*frame).regs[Registers::A0 as usize] = 0;
 				for i in 0..ev.len() {
 					let paddr = virt_to_phys(table, vaddr.add(i) as usize);
@@ -231,7 +215,7 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			}
 			KEY_EVENTS.replace(ev);
 			0
-		},
+		}
 		1004 => {
 			// wait for abs events
 			let mut ev = ABS_EVENTS.take().unwrap();
@@ -239,10 +223,7 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			let vaddr = (*frame).regs[Registers::A0 as usize] as *const Event;
 			if (*frame).satp >> 60 != 0 {
 				let process = get_by_pid((*frame).pid as u16);
-				let table = ((*process).get_table_address()
-							 as *mut Table)
-							.as_mut()
-							.unwrap();
+				let table = ((*process).get_table_address() as *mut Table).as_mut().unwrap();
 				(*frame).regs[Registers::A0 as usize] = 0;
 				for i in 0..ev.len() {
 					let paddr = virt_to_phys(table, vaddr.add(i) as usize);
@@ -256,39 +237,24 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			}
 			ABS_EVENTS.replace(ev);
 			0
-		},
+		}
 		1062 => {
 			// gettime
 			(*frame).regs[Registers::A0 as usize] = crate::cpu::get_mtime();
 			0
-		},
+		}
 		_ => {
 			println!("Unknown syscall number {}", syscall_number);
 			0
-		},
+		}
 	}
 }
 
 extern "C" {
-	fn make_syscall(sysno: usize,
-	                arg0: usize,
-	                arg1: usize,
-	                arg2: usize,
-	                arg3: usize,
-	                arg4: usize,
-	                arg5: usize)
-	                -> usize;
+	fn make_syscall(sysno: usize, arg0: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize, arg5: usize) -> usize;
 }
 
-fn do_make_syscall(sysno: usize,
-                   arg0: usize,
-                   arg1: usize,
-                   arg2: usize,
-                   arg3: usize,
-                   arg4: usize,
-                   arg5: usize)
-                   -> usize
-{
+fn do_make_syscall(sysno: usize, arg0: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize, arg5: usize) -> usize {
 	unsafe { make_syscall(sysno, arg0, arg1, arg2, arg3, arg4, arg5) }
 }
 
@@ -300,43 +266,15 @@ pub fn syscall_execv(path: *const u8, argv: usize) -> usize {
 	do_make_syscall(11, path as usize, argv, 0, 0, 0, 0)
 }
 
-pub fn syscall_fs_read(dev: usize,
-                       inode: u32,
-                       buffer: *mut u8,
-                       size: u32,
-                       offset: u32)
-                       -> usize
-{
-	do_make_syscall(
-	                63,
-	                dev,
-	                inode as usize,
-	                buffer as usize,
-	                size as usize,
-	                offset as usize,
-	                0,
-	)
+pub fn syscall_fs_read(dev: usize, inode: u32, buffer: *mut u8, size: u32, offset: u32) -> usize {
+	do_make_syscall(63, dev, inode as usize, buffer as usize, size as usize, offset as usize, 0)
 }
 
-pub fn syscall_block_read(dev: usize,
-                          buffer: *mut u8,
-                          size: u32,
-                          offset: u32)
-                          -> u8
-{
-	do_make_syscall(
-	                180,
-	                dev,
-	                buffer as usize,
-	                size as usize,
-	                offset as usize,
-	                0,
-	                0,
-	) as u8
+pub fn syscall_block_read(dev: usize, buffer: *mut u8, size: u32, offset: u32) -> u8 {
+	do_make_syscall(180, dev, buffer as usize, size as usize, offset as usize, 0, 0) as u8
 }
 
-pub fn syscall_sleep(duration: usize)
-{
+pub fn syscall_sleep(duration: usize) {
 	let _ = do_make_syscall(10, duration, 0, 0, 0, 0, 0);
 }
 
@@ -365,7 +303,7 @@ fn exec_func(args: usize) {
 			// If we hold this lock, we can still be preempted, but the scheduler will
 			// return control to us. This required us to use try_lock in the scheduler.
 			PROCESS_LIST_MUTEX.sleep_lock();
-			if let Some(mut proc_list) = PROCESS_LIST.take()  {
+			if let Some(mut proc_list) = PROCESS_LIST.take() {
 				proc_list.push_back(proc.ok().unwrap());
 				PROCESS_LIST.replace(proc_list);
 			}
