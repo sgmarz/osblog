@@ -76,7 +76,7 @@ pub struct Config {
     pub config: ConfigUnion,
 }
 
-#[repr(u8)]
+#[repr(u16)]
 #[derive(Copy, Clone)]
 pub enum EventType {
     Syn = 0x00,
@@ -236,10 +236,10 @@ pub fn setup_input_device(ptr: *mut u32) -> bool {
 			repopulate_event(&mut dev, i);
 		}
 		INPUT_DEVICES[idx] = Some(dev);
-		ABS_EVENTS = Some(VecDeque::with_capacity(10000));
-		ABS_OBSERVERS = Some(VecDeque::new());
+		ABS_EVENTS = Some(VecDeque::with_capacity(100000));
+		// ABS_OBSERVERS = Some(VecDeque::new());
 		KEY_EVENTS = Some(VecDeque::with_capacity(1000));
-		KEY_OBSERVERS = Some(VecDeque::new());
+		// KEY_OBSERVERS = Some(VecDeque::new());
 
 		true
 	}

@@ -2,13 +2,8 @@
 #include <syscall.h>
 #include <input-event-codes.h>
 
-struct Pixel {
-	unsigned char r;
-	unsigned char g;
-	unsigned char b;
-	unsigned char a;
-};
 
+#define MAX_EVENTS 100000
 #define cos(x)	  table_cos(x)
 // #define cos(x)	  taylor_cos(x)
 #define min(x, y) ((x < y) ? x : y)
@@ -24,6 +19,19 @@ using u64 = unsigned long;
 using i64 = signed long;
 using f64 = double;
 using f32 = float;
+
+struct Pixel {
+	u8 r;
+	u8 g;
+	u8 b;
+	u8 a;
+};
+
+struct Event {
+	u16 event_type;
+	u16 code;
+	u32 value;
+} events[MAX_EVENTS];
 
 void fill_rect(Pixel *fb, u32 x, u32 y, u32 width, u32 height, Pixel &color);
 void stroke_rect(Pixel *fb, u32 x, u32 y, u32 width, u32 height, Pixel &color, u32 size);
@@ -48,7 +56,7 @@ u32 lerp(u32 val, u32 mx1, u32 mx2) {
 
 int main()
 {
-	bool mouse_down = false;
+	bool mouse_down = true;
 	int VERSION = -1;
 	printf("(%d): TESTING FRAMEBUFFER FROM USERSPACE\n", VERSION);
 	Pixel *fb = (Pixel *)syscall_get_fb(6);
@@ -61,6 +69,7 @@ int main()
 	u32 y = 0;
 	u32 width = 40;
 	u32 height = 50;
+	unsigned long i = 0;
 
 	fill_rect(fb, 0, 0, 640, 480, white_color);
 	stroke_rect(fb, 10, 10, 20, 20, blue_color, 5);
@@ -68,34 +77,28 @@ int main()
 	stroke_rect(fb, 150, 150, 140, 140, red_color, 15);
 	draw_cosine(fb, 0, 400, 500, 50, red_color);
 	syscall_inv_rect(6, x, y, 640, 480);
+	i64 abs;
 	do {
-		i64 key = syscall_get_key();
-		i64 abs = syscall_get_abs();
-		if (key == -1 && abs == -1) {
+		
+		if ((abs = syscall_get_abs(events, MAX_EVENTS)) < 1) {
 			syscall_sleep(noevt_slptm);
-			continue;
 		}
-		if (key != -1) {
-			short code = key >> 16;
-			bool pressed = (key & 1) ? true : false;
-			// printf("%s key %d\n", pressed ? "pressed" : "released", code);
-			if (code == BTN_LEFT) { // left mouse button
-				mouse_down = pressed;
-			}
-		}
-		if (abs != -1) {
-			u16 code = abs >> 32;
-			if (code == ABS_X) {
-				x = lerp(abs & 0xffff, 32767, 640);
-			}
-			else if (code == ABS_Y) {
-				y = lerp(abs & 0xffff, 32767, 480);
-			}
-			if (mouse_down) {
+		for (i64 z = 0;z < abs;z++) {
+			Event &ev = events[z];
+			if (ev.code == ABS_X) {
+				x = lerp(ev.value & 0xffff, 32767, 640);
 				fill_rect(fb, x, y, 5, 5, orange_color);
-				syscall_inv_rect(6, 0, 0, 640, 480);
+			}
+			else if (ev.code == ABS_Y) {
+				y = lerp(ev.value & 0xffff, 32767, 480);
+				fill_rect(fb, x, y, 5, 5, orange_color);
 			}
 		}
+		syscall_inv_rect(6, 0, 0, 640, 480);
+		// if (i++ >= 100) {
+		// 	i = 0;
+		// 	syscall_inv_rect(6, 0, 0, 640, 480);
+		// }
 	} while (true);
 	return 0;
 }

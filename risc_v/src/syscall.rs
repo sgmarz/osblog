@@ -8,6 +8,7 @@ use crate::{block::block_op,
 			fs,
 			elf,
 			gpu,
+			input,
 			buffer::Buffer,
             page::{virt_to_phys, Table, map, EntryBits, PAGE_SIZE},
 			process::{PROCESS_LIST, PROCESS_LIST_MUTEX, delete_process, get_by_pid, set_sleeping, set_waiting, add_kernel_process_args}};
@@ -226,23 +227,28 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 		},
 		1004 => {
 			// wait for abs events
-			let ret_pc;
 			let mut ev = ABS_EVENTS.take().unwrap();
-			if ev.is_empty() {
-				(*frame).regs[Registers::A0 as usize] = -1isize as usize;
-				ret_pc = 0;
-			}
-			else {
-				let event = ev.pop_front().unwrap();
-				let mut ret = event.code as u64;
-				ret <<= 32;
-				ret |= event.value as u64;
-				// println!("ABS: Code: {}, Value: {}", event.code, event.value);
-				(*frame).regs[Registers::A0 as usize] = ret as usize;
-				ret_pc = 0;
+			let max_events = (*frame).regs[Registers::A1 as usize];
+			let vaddr = (*frame).regs[Registers::A0 as usize] as *const Event;
+			if (*frame).satp >> 60 != 0 {
+				let process = get_by_pid((*frame).pid as u16);
+				let table = ((*process).get_table_address()
+							 as *mut Table)
+							.as_mut()
+							.unwrap();
+				(*frame).regs[Registers::A0 as usize] = 0;
+				for i in 0..ev.len() {
+					let paddr = virt_to_phys(table, vaddr.add(i) as usize);
+					if paddr.is_none() {
+						return 0;
+					}
+					let paddr = paddr.unwrap() as *mut Event;
+					*paddr = ev.pop_front().unwrap();
+					(*frame).regs[Registers::A0 as usize] += 1;
+				}
 			}
 			ABS_EVENTS.replace(ev);
-			ret_pc
+			0
 		},
 		1062 => {
 			// gettime

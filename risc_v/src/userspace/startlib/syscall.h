@@ -18,6 +18,6 @@ extern "C"
 #define syscall_get_fb(x)	make_syscall(1000, (unsigned long)x)
 #define syscall_inv_rect(d, x, y, w, h) make_syscall(1001, (unsigned long) d, (unsigned long)x, (unsigned long)y, (unsigned long)w, (unsigned long)h)
 #define syscall_get_key(x)	make_syscall(1002)
-#define syscall_get_abs(x)	make_syscall(1004)
+#define syscall_get_abs(x, y)	make_syscall(1004, (unsigned long)x, (unsigned long)y)
 #define syscall_get_time()  make_syscall(1062)
 
