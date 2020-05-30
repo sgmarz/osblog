@@ -9,7 +9,7 @@ use crate::{block::block_op,
             elf,
             fs,
             gpu,
-            input::{Event, ABS_EVENTS, ABS_OBSERVERS, KEY_EVENTS, KEY_OBSERVERS},
+            input::{Event, ABS_EVENTS, KEY_EVENTS},
             page::{map, virt_to_phys, EntryBits, Table, PAGE_SIZE},
             process::{add_kernel_process_args, delete_process, get_by_pid, set_sleeping, set_waiting, PROCESS_LIST, PROCESS_LIST_MUTEX}};
 use alloc::{boxed::Box, string::String};

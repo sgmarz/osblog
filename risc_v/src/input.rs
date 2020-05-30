@@ -9,9 +9,9 @@ use core::mem::size_of;
 use alloc::collections::VecDeque;
 
 pub static mut ABS_EVENTS: Option<VecDeque<Event>> = None;
-pub static mut ABS_OBSERVERS: Option<VecDeque<u16>> = None;
+// pub static mut ABS_OBSERVERS: Option<VecDeque<u16>> = None;
 pub static mut KEY_EVENTS: Option<VecDeque<Event>> = None;
-pub static mut KEY_OBSERVERS: Option<VecDeque<u16>> = None;
+// pub static mut KEY_OBSERVERS: Option<VecDeque<u16>> = None;
 
 const EVENT_BUFFER_ELEMENTS: usize = 64;
 
@@ -99,13 +99,10 @@ const EVENT_SIZE: usize = size_of::<Event>();
 pub struct Device {
 	event_queue:  *mut Queue,
 	status_queue: *mut Queue,  
-	dev:          *mut u32,
 	event_idx:          u16,
 	event_ack_used_idx: u16,
 	event_buffer: *mut Event,
-	status_idx:          u16,
 	status_ack_used_idx: u16,
-	status_buffer: *mut Event,
 }
 
 pub static mut INPUT_DEVICES: [Option<Device>; 8] = [
@@ -210,7 +207,7 @@ pub fn setup_input_device(ptr: *mut u32) -> bool {
 		status_bits |= StatusField::DriverOk.val32();
 		ptr.add(MmioOffsets::Status.scale32()).write_volatile(status_bits);
 
-        let config_ptr = ptr.add(MmioOffsets::Config.scale32()) as *mut Config;
+        // let config_ptr = ptr.add(MmioOffsets::Config.scale32()) as *mut Config;
 
         // let mut config = config_ptr.read_volatile();
 
@@ -224,10 +221,7 @@ pub fn setup_input_device(ptr: *mut u32) -> bool {
 		let mut dev = Device {
 			event_queue: event_queue_ptr,
 			status_queue: status_queue_ptr,
-			dev: ptr,
-			status_idx: 0,
 			status_ack_used_idx: 0,
-			status_buffer: kmalloc(EVENT_SIZE * EVENT_BUFFER_ELEMENTS) as *mut Event,
 			event_idx: 0,
 			event_ack_used_idx: 0,
 			event_buffer: kmalloc(EVENT_SIZE * EVENT_BUFFER_ELEMENTS) as *mut Event,
