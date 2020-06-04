@@ -203,8 +203,7 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 							print!("{}", output);
 						}
 						else {
-							(*frame).regs[gp(Registers::A0)] = -1isize as usize;
-							return 0;
+							break;
 						}
 					}
 				}
