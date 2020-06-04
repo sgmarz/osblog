@@ -12,7 +12,7 @@ use crate::{cpu::{get_mtime,
                    unmap,
 				   zalloc,
 				   Table},
-            syscall::syscall_exit};
+            syscall::{syscall_exit, syscall_yield}};
 use alloc::{string::String, collections::{vec_deque::VecDeque, BTreeMap}};
 use core::ptr::null_mut;
 use crate::lock::Mutex;
@@ -169,7 +169,7 @@ fn init_process() {
 		// scheduler will loop until it finds a process to run. Since
 		// the scheduler is called in an interrupt context, nothing else
 		// can happen until a process becomes available.
-		unsafe { llvm_asm!("wfi") };
+		syscall_yield();
 	}
 }
 
@@ -416,6 +416,9 @@ impl Drop for Process {
 pub enum FileDescriptor {
 	File(Inode),
 	Device(usize),
+	Framebuffer(usize),
+	ButtonEvents,
+	AbsoluteEvents,
 	Network,
 	Unknown,
 }
