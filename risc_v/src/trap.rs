@@ -101,15 +101,10 @@ extern "C" fn m_trap(epc: usize,
 			8 | 9 | 11 => unsafe {
 				// Environment (system) call from User, Supervisor, and Machine modes
 				// println!("E-call from User mode! CPU#{} -> 0x{:08x}", hart, epc);
-				return_pc = do_syscall(return_pc, frame);
-				if return_pc == 0 {
-					// We are about to schedule something else here, so we need to store PAST
-					// the system call so that when we resume this process, we're after the ecall.
-					(*frame).pc += 4;
-					let frame = schedule();
-					schedule_next_context_switch(1);
-					rust_switch_to_user(frame);
-				}
+				do_syscall(return_pc, frame);
+				let frame = schedule();
+				schedule_next_context_switch(1);
+				rust_switch_to_user(frame);
 			}
 			// Page faults
 			12 => unsafe {
