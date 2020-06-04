@@ -1,10 +1,12 @@
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <cmath>
 #include <cstdio>
 #include <input-event-codes.h>
 
 
 #define MAX_EVENTS 100
-#define cos(x)	  table_cos(x)
-// #define cos(x)	  taylor_cos(x)
 #define min(x, y) ((x < y) ? x : y)
 #define max(x, y) ((x > y) ? x : y)
 
@@ -30,7 +32,7 @@ struct Event {
 	u16 event_type;
 	u16 code;
 	u32 value;
-} events[MAX_EVENTS];
+};
 
 void fill_rect(Pixel *fb, u32 x, u32 y, u32 width, u32 height, Pixel &color);
 void stroke_rect(Pixel *fb, u32 x, u32 y, u32 width, u32 height, Pixel &color, u32 size);
@@ -40,6 +42,10 @@ void draw_circle(Pixel *fb, u32 x, u32 y, f64 r, Pixel &color);
 
 const u64 noevt_slptm = 10000;
 const u64 evt_slptm   = 10000;
+
+#define FB_DEV "/dev/fb"
+#define BUT_DEV "/dev/butev"
+#define ABS_DEV "/dev/absev"
 
 struct Rect {
 	u32 x;
@@ -55,72 +61,28 @@ constexpr u32 lerp(u32 val, u32 mx1, u32 mx2) {
 
 int main()
 {
+	Event *events = new Event[100];
 	bool pressed = false;
-	Pixel *fb = (Pixel *)syscall_get_fb(6);
-	Pixel white_color = {255, 255, 255, 255};
-	Pixel black_color = {0, 0, 0, 255};
-	Pixel current_color = {255, 150, 0, 255};
-	u32 x = 0;
-	u32 y = 0;
-	u32 num_events;
+	int fb = open(FB_DEV, O_RDWR);
+	int but = open(BUT_DEV, O_RDONLY);
+	int abs = open(ABS_DEV, O_RDONLY);
+	if (fb < 0) {
+		printf("Unable to open framebuffer %s.\n", FB_DEV);
+		return -1;
+	}
+	if (but < 0) {
+		printf("Unable to open button events %s.\n", BUT_DEV);
+		return -1;
+	}
+	if (abs < 0) {
+		printf("Unable to open absolute events %s.\n", ABS_DEV);
+		return -1;
 
-	fill_rect(fb, 0, 0, 640, 480, white_color);
-	syscall_inv_rect(6, 0, 0, 640, 480);
-	do {
-		if ((num_events = syscall_get_key(events, MAX_EVENTS)) > 0) {
-			for (u32 z = 0;z < num_events;z++) {
-				Event &ev = events[z];
-				switch (ev.code) {
-					case BTN_MOUSE:
-						pressed = (ev.value & 1) == 1;
-					break;
-					case KEY_O:
-						current_color = Pixel {255, 150, 0, 255};
-					break;
-					case KEY_B:
-						current_color = Pixel {0, 0, 255, 255};
-					break;
-					case KEY_G:
-						current_color = Pixel {0, 255, 0, 255};
-					break;
-					case KEY_R:
-						current_color = Pixel {255, 0, 0, 255};
-					break;
-					case KEY_W:
-						if (ev.value == 0) { //released
-							fill_rect(fb, 0, 0, 640, 480, white_color);
-							syscall_inv_rect(6, 0, 0, 640, 480);
-						}
-					break;
-					case KEY_Q:
-						if (ev.value == 0) { // released
-							fill_rect(fb, 0, 0, 640, 480, black_color);
-							syscall_inv_rect(6, 0, 0, 640, 480);
-						}
-					break;
-				}
-			}
-		}
-		if ((num_events = syscall_get_abs(events, MAX_EVENTS)) < 1) {
-			syscall_sleep(noevt_slptm);
-			continue;
-		}
-		for (u32 z = 0;z < num_events;z++) {
-			Event &ev = events[z];
-			if (ev.code == ABS_X) {
-				x = lerp(ev.value & 0x7fff, 32767, 640);
-			}
-			else if (ev.code == ABS_Y) {
-				y = lerp(ev.value & 0x7fff, 32767, 480);
-			}
-			if (pressed) {
-				fill_rect(fb, x, y, 5, 5, current_color);
-			}
-		}
-		if (pressed) {
-			syscall_inv_rect(6, 0, 0, 640, 480);
-		}
-	} while (true);
+	}
+	close(fb);
+	close(but);
+	close(abs);
+	delete [] events;
 	return 0;
 }
 
@@ -150,109 +112,6 @@ void stroke_rect(Pixel *fb, u32 x, u32 y, u32 width, u32 height, Pixel &color, u
    fill_rect(fb, x + width, y, size, height + size, color);
 }
 
-f64 table_cos(f64 angle_degrees) {
-	const f64 COS_TABLE[] = {
-		1.0,
-		0.9962,
-		0.9848,
-		0.9659,
-		0.9397,
-		0.9063,
-		0.8660,
-		0.8191,
-		0.7660,
-		0.7071,
-		0.6428,
-		0.5736,
-		0.5000,
-		0.4226,
-		0.3420,
-		0.2558,
-		0.1736,
-		0.0872,
-		0.0,
-		-0.0872,
-		-0.1736,
-		-0.2558,
-		-0.3420,
-		-0.4226,
-		-0.5000,
-		-0.5736,
-		-0.6428,
-		-0.7071,
-		-0.7660,
-		-0.8191,
-		-0.8660,
-		-0.9063,
-		-0.9397,
-		-0.9659,
-		-0.9848,
-		-0.9962,
-		-1.0,
-		-0.9962,
-		-0.9848,
-		-0.9659,
-		-0.9397,
-		-0.9063,
-		-0.8660,
-		-0.8191,
-		-0.7660,
-		-0.7071,
-		-0.6428,
-		-0.5736,
-		-0.5000,
-		-0.4226,
-		-0.3420,
-		-0.2558,
-		-0.1736,
-		-0.0872,
-		0.0,
-		0.0872,
-		0.1736,
-		0.2558,
-		0.3420,
-		0.4226,
-		0.5000,
-		0.5736,
-		0.6428,
-		0.7071,
-		0.7660,
-		0.8191,
-		0.8660,
-		0.9063,
-		0.9397,
-		0.9659,
-		0.9848,
-		0.9962,
-		1.0,
-	};
-	u32 lookup_ang = angle_degrees / 5;
-	return COS_TABLE[lookup_ang];
-}
-
-f64 taylor_cos(f64 angle_degrees) {
-	f64 x = 3.14159265359 * angle_degrees / 180.0;
-	f64 result = 1.0;
-	f64 inter = 1.0;
-	f64 num = x * x;
-	for (int i = 1;i <= 6;i++) {
-		u64 comp = 2 * i;
-		u64 den = comp * (comp - 1);
-		inter *= num / den;
-		if ((i & 1) == 0) {
-			result += inter;
-		}
-		else {
-			result -= inter;
-		}
-	}
-	return result;
-}
-
-f64 sin(f64 angle_degrees) {
-	return cos(90.0 - angle_degrees);
-}
-
 void draw_cosine(Pixel *fb, u32 x, u32 y, u32 width, u32 height, Pixel &color) {
 	for (u32 i = 1; i <= width;i++) {
 		f64 fy = -cos(i % 360);
@@ -263,9 +122,6 @@ void draw_cosine(Pixel *fb, u32 x, u32 y, u32 width, u32 height, Pixel &color) {
 		fill_rect(fb, nx, ny, 2, 2, color);
 	}
 }
-
-
-
 
 void draw_circle(Pixel *fb, u32 x, u32 y, f64 r, Pixel &color)
 {
