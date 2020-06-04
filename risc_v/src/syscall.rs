@@ -10,7 +10,7 @@ use crate::{block::block_op,
             fs,
             gpu,
             input::{Event, ABS_EVENTS, KEY_EVENTS},
-            page::{map, virt_to_phys, EntryBits, Table, PAGE_SIZE},
+            page::{map, virt_to_phys, EntryBits, Table, PAGE_SIZE, zalloc},
             process::{add_kernel_process_args, delete_process, get_by_pid, set_sleeping, set_waiting, PROCESS_LIST, PROCESS_LIST_MUTEX}};
 use alloc::{boxed::Box, string::String};
 
@@ -125,6 +125,10 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			(*frame).regs[gp(Registers::A0)] = -1isize as usize;
 			0
 		}
+		57 => {
+		// #define SYS_close 57
+			0
+		}
 		63 => {
 			// Read system call
 			// This is an asynchronous call. This will get the
@@ -174,19 +178,20 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			let mut buf = (*frame).regs[gp(Registers::A1)] as *const u8;
 			let size = (*frame).regs[gp(Registers::A2)];
 			let process = get_by_pid((*frame).pid as u16);
-			if (*frame).satp >> 60 != 0 {
-				let table = ((*process).mmu_table).as_mut().unwrap();
-				let paddr = virt_to_phys(table, buf as usize);
-				if let Some(bufaddr) = paddr {
-					buf = bufaddr as *const u8;
-				}
-				else {
-					(*frame).regs[gp(Registers::A0)] = -1isize as usize;
-					return 0;
-				}
-			}
+			// if (*frame).satp >> 60 != 0 {
+			// 	let table = ((*process).mmu_table).as_mut().unwrap();
+			// 	let paddr = virt_to_phys(table, buf as usize);
+			// 	if let Some(bufaddr) = paddr {
+			// 		buf = bufaddr as *const u8;
+			// 	}
+			// 	else {
+			// 		(*frame).regs[gp(Registers::A0)] = -1isize as usize;
+			// 		return 0;
+			// 	}
+			// }
 			if fd == 1 || fd == 2 {
 				// stdout / stderr
+				// println!("WRITE {}, 0x{:08x}, {}", fd, bu/f as usize, size);
 				let mut iter = 0;
 				for _ in 0..size {
 					iter += 1;
@@ -194,7 +199,8 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 						let table = ((*process).mmu_table).as_mut().unwrap();
 						let paddr = virt_to_phys(table, buf as usize);
 						if let Some(bufaddr) = paddr {
-							buf = bufaddr as *const u8;
+							let output = *(bufaddr as *const u8) as char;
+							print!("{}", output);
 						}
 						else {
 							(*frame).regs[gp(Registers::A0)] = -1isize as usize;
@@ -213,6 +219,12 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 		}
 		66 => {
 			(*frame).regs[gp(Registers::A0)] = -1isize as usize;
+			0
+		}
+		// #define SYS_fstat 80
+		80 => {
+			// int fstat(int filedes, struct stat *buf)
+			(*frame).regs[gp(Registers::A0)] = 0;
 			0
 		}
 		172 => {
@@ -236,8 +248,21 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 			// #define SYS_brk 214
 			// int brk(void *addr);
 			let addr = (*frame).regs[gp(Registers::A0)];
-			println!("BRK Addr = 0x{:08x}", addr);
-			(*frame).regs[gp(Registers::A0)] = -1isize as usize;
+			let process = get_by_pid((*frame).pid as u16).as_mut().unwrap();
+			// println!("Break move from 0x{:08x} to 0x{:08x}", process.brk, addr);
+			if addr > process.brk {
+				if (*frame).satp >> 60 != 0 {
+					let table = ((*process).mmu_table).as_mut().unwrap();
+					let diff = (addr + PAGE_SIZE - process.brk) / PAGE_SIZE;
+					for i in 0..diff {
+						let new_addr = zalloc(1) as usize;
+						process.data.pages.push_back(new_addr);
+						map(table, process.brk + (i << 12), new_addr, EntryBits::UserReadWrite.val(), 0);
+					}
+				}
+				process.brk = addr;
+			}
+			(*frame).regs[gp(Registers::A0)] = process.brk;
 			0
 		}
 		// System calls 1000 and above are "special" system calls for our OS. I'll
@@ -393,11 +418,12 @@ fn exec_func(args: usize) {
 			println!("Failed to launch process.");
 		}
 		else {
+			let process = proc.ok().unwrap();
 			// If we hold this lock, we can still be preempted, but the scheduler will
 			// return control to us. This required us to use try_lock in the scheduler.
 			PROCESS_LIST_MUTEX.sleep_lock();
 			if let Some(mut proc_list) = PROCESS_LIST.take() {
-				proc_list.push_back(proc.ok().unwrap());
+				proc_list.push_back(process);
 				PROCESS_LIST.replace(proc_list);
 			}
 			PROCESS_LIST_MUTEX.unlock();
@@ -412,14 +438,13 @@ fn exec_func(args: usize) {
 // #define SYS_faccessat 48
 // #define SYS_chdir 49
 // #define SYS_openat 56
-// #define SYS_close 57
 // #define SYS_getdents 61
 // #define SYS_lseek 62
 // #define SYS_read 63
 // #define SYS_pread 67
 // #define SYS_pwrite 68
 // #define SYS_fstatat 79
-// #define SYS_fstat 80
+
 // #define SYS_kill 129
 // #define SYS_rt_sigaction 134
 // #define SYS_times 153

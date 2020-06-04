@@ -402,6 +402,11 @@ impl Drop for Process {
 		}
 		dealloc(self.mmu_table as *mut u8);
 		dealloc(self.frame as *mut u8);
+		for i in self.data.pages.drain(..) {
+			dealloc(i as *mut u8);
+		}
+		// Kernel processes don't have a program, instead the program is linked
+		// directly in the kernel.
 		if !self.program.is_null() {
 			dealloc(self.program);
 		}
@@ -425,6 +430,7 @@ pub struct ProcessData {
 	pub environ: BTreeMap<String, String>,
 	pub fdesc: BTreeMap<u16, FileDescriptor>,
 	pub cwd: String,
+	pub pages: VecDeque<usize>,
 }
 
 // This is private data that we can query with system calls.
@@ -436,6 +442,7 @@ impl ProcessData {
 			environ: BTreeMap::new(),
 			fdesc: BTreeMap::new(),
 			cwd: String::new(),
+			pages: VecDeque::new(),
 		 }
 	}
 }

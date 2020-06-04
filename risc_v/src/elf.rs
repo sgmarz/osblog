@@ -208,6 +208,7 @@ impl File {
 				}
 				// println!("DEBUG: Map 0x{:08x} to 0x{:08x} {:02x}", vaddr, paddr, bits);
 			}
+			my_proc.brk += 0x1000;
 		}
 		// This will map all of the program pages. Notice that in linker.lds in
 		// userspace we set the entry point address to 0x2000_0000. This is the

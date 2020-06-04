@@ -45,7 +45,7 @@ extern "C" fn m_trap(epc: usize,
 				// We will use this to awaken our other CPUs so they can process
 				// processes.
 				println!("Machine software interrupt CPU #{}", hart);
-			},
+			}
 			7 => {
 				// This is the context-switch timer.
 				// We would typically invoke the scheduler here to pick another
@@ -56,7 +56,7 @@ extern "C" fn m_trap(epc: usize,
 				if new_frame != 0 {
 					rust_switch_to_user(new_frame);
 				}
-			},
+			}
 			11 => {
 				// Machine external (interrupt from Platform Interrupt Controller (PLIC))
 				// println!("Machine external interrupt CPU#{}", hart);
@@ -65,10 +65,10 @@ extern "C" fn m_trap(epc: usize,
 				// get an interrupt from a non-PLIC source. This is the main reason that the PLIC
 				// hardwires the id 0 to 0, so that we can use it as an error case.
 				plic::handle_interrupt();
-			},
+			}
 			_ => {
 				panic!("Unhandled async trap CPU#{} -> {}\n", hart, cause_num);
-			},
+			}
 		}
 	}
 	else {
@@ -85,7 +85,7 @@ extern "C" fn m_trap(epc: usize,
 				let frame = schedule();
 				schedule_next_context_switch(1);
 				rust_switch_to_user(frame);
-			},
+			}
 			3 => {
 				// breakpoint
 				println!("BKPT\n\n");
@@ -97,7 +97,7 @@ extern "C" fn m_trap(epc: usize,
 				let frame = schedule();
 				schedule_next_context_switch(1);
 				rust_switch_to_user(frame);
-			},
+			}
 			8 | 9 | 11 => unsafe {
 				// Environment (system) call from User, Supervisor, and Machine modes
 				// println!("E-call from User mode! CPU#{} -> 0x{:08x}", hart, epc);
@@ -110,7 +110,7 @@ extern "C" fn m_trap(epc: usize,
 					schedule_next_context_switch(1);
 					rust_switch_to_user(frame);
 				}
-			},
+			}
 			// Page faults
 			12 => unsafe {
 				// Instruction page fault
@@ -119,7 +119,7 @@ extern "C" fn m_trap(epc: usize,
 				let frame = schedule();
 				schedule_next_context_switch(1);
 				rust_switch_to_user(frame);
-			},
+			}
 			13 => unsafe {
 				// Load page fault
 				println!("Load page fault CPU#{} -> 0x{:08x}: 0x{:08x}", hart, epc, tval);
@@ -127,7 +127,7 @@ extern "C" fn m_trap(epc: usize,
 				let frame = schedule();
 				schedule_next_context_switch(1);
 				rust_switch_to_user(frame);
-			},
+			}
 			15 => unsafe {
 				// Store page fault
 				println!("Store page fault CPU#{} -> 0x{:08x}: 0x{:08x}", hart, epc, tval);
@@ -135,13 +135,13 @@ extern "C" fn m_trap(epc: usize,
 				let frame = schedule();
 				schedule_next_context_switch(1);
 				rust_switch_to_user(frame);
-			},
+			}
 			_ => {
 				panic!(
 				       "Unhandled sync trap {}. CPU#{} -> 0x{:08x}: 0x{:08x}\n",
 				       cause_num, hart, epc, tval
 				);
-			},
+			}
 		}
 	};
 	// Finally, return the updated program counter
