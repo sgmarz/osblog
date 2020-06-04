@@ -175,7 +175,7 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 		}
 		64 => { // sys_write
 			let fd = (*frame).regs[gp(Registers::A0)];
-			let mut buf = (*frame).regs[gp(Registers::A1)] as *const u8;
+			let buf = (*frame).regs[gp(Registers::A1)] as *const u8;
 			let size = (*frame).regs[gp(Registers::A2)];
 			let process = get_by_pid((*frame).pid as u16);
 			// if (*frame).satp >> 60 != 0 {
@@ -193,11 +193,11 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 				// stdout / stderr
 				// println!("WRITE {}, 0x{:08x}, {}", fd, bu/f as usize, size);
 				let mut iter = 0;
-				for _ in 0..size {
+				for i in 0..size {
 					iter += 1;
 					if (*frame).satp >> 60 != 0 {
 						let table = ((*process).mmu_table).as_mut().unwrap();
-						let paddr = virt_to_phys(table, buf as usize);
+						let paddr = virt_to_phys(table, buf.add(i) as usize);
 						if let Some(bufaddr) = paddr {
 							let output = *(bufaddr as *const u8) as char;
 							print!("{}", output);
@@ -207,7 +207,6 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) -> usize {
 							return 0;
 						}
 					}
-					buf = buf.add(1);
 				}
 				(*frame).regs[gp(Registers::A0)] = iter as usize;
 			}
