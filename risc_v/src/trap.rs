@@ -86,6 +86,11 @@ extern "C" fn m_trap(epc: usize,
 				schedule_next_context_switch(1);
 				rust_switch_to_user(frame);
 			},
+			3 => {
+				// breakpoint
+				println!("BKPT\n\n");
+				return_pc += 2;
+			}
 			7 => unsafe {
 				println!("Error with pid {}, at PC 0x{:08x}, mepc 0x{:08x}", (*frame).pid, (*frame).pc, epc);
 				delete_process((*frame).pid as u16);

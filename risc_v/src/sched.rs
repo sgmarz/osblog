@@ -21,18 +21,17 @@ pub fn schedule() -> usize {
 			'procfindloop: loop {
 				pl.rotate_left(1);
 				if let Some(prc) = pl.front_mut() {
-					match prc.get_state() {
+					match prc.state {
 						ProcessState::Running => {
-							frame_addr =
-								prc.get_frame_address();
+							frame_addr = prc.frame as usize;
 							break 'procfindloop;
 						},
 						ProcessState::Sleeping => {
 							// Awaken sleeping processes whose sleep until is in
 							// the past.
-							if prc.get_sleep_until() <= get_mtime() {
-								prc.set_state(ProcessState::Running);
-								frame_addr = prc.get_frame_address();
+							if prc.sleep_until <= get_mtime() {
+								prc.state = ProcessState::Running;
+								frame_addr = prc.frame as usize;
 								break 'procfindloop;
 							}
 						},

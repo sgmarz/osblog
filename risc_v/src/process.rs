@@ -3,22 +3,15 @@
 // Stephen Marz
 // 27 Nov 2019
 
-use crate::{cpu::{build_satp,
-                  get_mtime,
-                  satp_fence_asid,
+use crate::{cpu::{get_mtime,
                   CpuMode,
-                  SatpMode,
 				  TrapFrame,
 				  Registers},
 			fs::Inode,
-            page::{alloc,
-                   dealloc,
-                   map,
+            page::{dealloc,
                    unmap,
-                   zalloc,
-                   EntryBits,
-                   Table,
-                   PAGE_SIZE},
+				   zalloc,
+				   Table},
             syscall::syscall_exit};
 use alloc::{string::String, collections::{vec_deque::VecDeque, BTreeMap}};
 use core::ptr::null_mut;
@@ -26,7 +19,7 @@ use crate::lock::Mutex;
 
 // How many pages are we going to give a process for their
 // stack?
-pub const STACK_PAGES: usize = 5;
+pub const STACK_PAGES: usize = 35;
 // We want to adjust the stack to be at the bottom of the memory allocation
 // regardless of where it is on the kernel heap.
 pub const STACK_ADDR: usize = 0x1_0000_0000;
@@ -64,7 +57,7 @@ pub fn set_running(pid: u16) -> bool {
 		if let Some(mut pl) = PROCESS_LIST.take() {
 			for proc in pl.iter_mut() {
 				if proc.pid == pid {
-					proc.set_state(ProcessState::Running);
+					proc.state = ProcessState::Running;
 					retval = true;
 					break;
 				}
@@ -89,7 +82,7 @@ pub fn set_waiting(pid: u16) -> bool {
 		if let Some(mut pl) = PROCESS_LIST.take() {
 			for proc in pl.iter_mut() {
 				if proc.pid == pid {
-					proc.set_state(ProcessState::Waiting);
+					proc.state = ProcessState::Waiting;
 					retval = true;
 					break;
 				}
@@ -112,11 +105,8 @@ pub fn set_sleeping(pid: u16, duration: usize) -> bool {
 		if let Some(mut pl) = PROCESS_LIST.take() {
 			for proc in pl.iter_mut() {
 				if proc.pid == pid {
-					proc.set_state(ProcessState::Sleeping);
-					proc.set_sleep_until(
-					                     get_mtime()
-					                     + duration,
-					);
+					proc.state = ProcessState::Sleeping;
+					proc.sleep_until = get_mtime() + duration;
 					retval = true;
 					break;
 				}
@@ -137,7 +127,7 @@ pub fn delete_process(pid: u16) {
 		if let Some(mut pl) = PROCESS_LIST.take() {
 			for i in 0..pl.len() {
 				let p = pl.get_mut(i).unwrap();
-				if p.get_pid() == pid {
+				if (*(*p).frame).pid as u16 == pid {
 					// When the structure gets dropped, all
 					// of the allocations get deallocated.
 					pl.remove(i);
@@ -158,7 +148,7 @@ pub unsafe fn get_by_pid(pid: u16) -> *mut Process {
 	let mut ret = null_mut();
 	if let Some(mut pl) = PROCESS_LIST.take() {
 		for i in pl.iter_mut() {
-			if i.get_pid() == pid {
+			if (*(i.frame)).pid as u16 == pid {
 				ret = i as *mut Process;
 				break;
 			}
@@ -179,49 +169,7 @@ fn init_process() {
 		// scheduler will loop until it finds a process to run. Since
 		// the scheduler is called in an interrupt context, nothing else
 		// can happen until a process becomes available.
-		// println!("Init is still here :), alright, back to sleep.");
-		// 500 wfi's should take 500 context switches before we print
-		// Init is still here. Depending on our context switch time,
-		// this might be around 3 seconds.
-		for _ in 0..500 {
-			// We can only write wfi here because init_process is
-			// being ran as a kernel process. If we ran this as a
-			// user process, it'd need a system call to execute a
-			// privileged instruction.
-			unsafe { llvm_asm!("wfi") };
-		}
-	}
-}
-
-/// Add a process given a function address and then
-/// push it onto the LinkedList. Uses Process::new_default
-/// to create a new stack, etc.
-pub fn add_process_default(pr: fn()) {
-	unsafe {
-		// This is the Rust-ism that really trips up C++ programmers.
-		// PROCESS_LIST is wrapped in an Option<> enumeration, which
-		// means that the Option owns the Deque. We can only borrow from
-		// it or move ownership to us. In this case, we choose the
-		// latter, where we move ownership to us, add a process, and
-		// then move ownership back to the PROCESS_LIST.
-		// This allows mutual exclusion as anyone else trying to grab
-		// the process list will get None rather than the Deque.
-		PROCESS_LIST_MUTEX.spin_lock();
-		if let Some(mut pl) = PROCESS_LIST.take() {
-			// .take() will replace PROCESS_LIST with None and give
-			// us the only copy of the Deque.
-			let p = Process::new_default(pr);
-			pl.push_back(p);
-			// Now, we no longer need the owned Deque, so we hand it
-			// back by replacing the PROCESS_LIST's None with the
-			// Some(pl).
-			PROCESS_LIST.replace(pl);
-		}
-		PROCESS_LIST_MUTEX.unlock();
-		// TODO: When we get to multi-hart processing, we need to keep
-		// trying to grab the process list. We can do this with an
-		// atomic instruction. but right now, we're a single-processor
-		// computer.
+		unsafe { llvm_asm!("wfi") };
 	}
 }
 
@@ -248,11 +196,12 @@ pub fn add_kernel_process(func: fn()) -> u16 {
 		Process { frame:       zalloc(1) as *mut TrapFrame,
 					stack:       zalloc(STACK_PAGES),
 					pid:         my_pid,
-					root:        zalloc(1) as *mut Table,
+					mmu_table:   zalloc(1) as *mut Table,
 					state:       ProcessState::Running,
 					data:        ProcessData::new(),
 					sleep_until: 0,
-					program:		null_mut()
+					program:     null_mut(),
+					brk:         0,
 					};
 	unsafe {
 		NEXT_PID += 1;
@@ -333,11 +282,12 @@ pub fn add_kernel_process_args(func: fn(args_ptr: usize), args: usize) -> u16 {
 			Process { frame:       zalloc(1) as *mut TrapFrame,
 			          stack:       zalloc(STACK_PAGES),
 			          pid:         my_pid,
-			          root:        zalloc(1) as *mut Table,
+			          mmu_table:        zalloc(1) as *mut Table,
 			          state:       ProcessState::Running,
 			          data:        ProcessData::new(),
 					  sleep_until: 0, 
 					  program:		null_mut(),
+					  brk:         0,
 					};
 		unsafe {
 			NEXT_PID += 1;
@@ -428,143 +378,12 @@ pub struct Process {
 	pub frame:       *mut TrapFrame,
 	pub stack:       *mut u8,
 	pub pid:         u16,
-	pub root:        *mut Table,
+	pub mmu_table:   *mut Table,
 	pub state:       ProcessState,
 	pub data:        ProcessData,
 	pub sleep_until: usize,
 	pub program:	 *mut u8,
-}
-
-// Most of this operating system runs more of a C-style, where
-// we have direct access to the structure members. By default, Rust
-// will make them private unless we add the keyword pub in front of
-// EVERY member. I wrote the process structure this way to show
-// both ways Rust allows us to access members. Just like Python,
-// the first parameter (the *this parameter in C++) is a reference
-// to ourself. We can write static functions as a member of this
-// structure by omitting a self.
-// 25-Apr-2020: (SM) Alright, I made everything public......
-impl Process {
-	pub fn get_frame_address(&self) -> usize {
-		self.frame as usize
-	}
-
-	pub fn get_frame_mut(&mut self) -> *mut TrapFrame {
-		self.frame
-	}
-
-	pub fn get_frame(&self) -> *const TrapFrame {
-		self.frame
-	}
-
-	pub fn get_program_counter(&self) -> usize {
-		unsafe { (*self.frame).pc }
-	}
-
-	pub fn get_program_address_mut(&mut self) -> *mut u8 {
-		self.program
-	}
-
-	pub fn get_table_address(&self) -> usize {
-		self.root as usize
-	}
-
-	pub fn get_state(&self) -> &ProcessState {
-		&self.state
-	}
-
-	pub fn set_state(&mut self, ps: ProcessState) {
-		self.state = ps;
-	}
-
-	pub fn get_pid(&self) -> u16 {
-		self.pid
-	}
-
-	pub fn get_sleep_until(&self) -> usize {
-		self.sleep_until
-	}
-
-	pub fn set_sleep_until(&mut self, until: usize) {
-		self.sleep_until = until;
-	}
-
-	pub fn new_default(func: fn()) -> Self {
-		let func_addr = func as usize;
-		let func_vaddr = func_addr;
-		// println!("func_addr = {:x} -> {:x}", func_addr, func_vaddr);
-		// We will convert NEXT_PID below into an atomic increment when
-		// we start getting into multi-hart processing. For now, we want
-		// a process. Get it to work, then improve it!
-		let mut ret_proc =
-			Process { frame:       zalloc(1) as *mut TrapFrame,
-			          stack:       alloc(STACK_PAGES),
-			          pid:         unsafe { NEXT_PID },
-			          root:        zalloc(1) as *mut Table,
-			          state:       ProcessState::Running,
-			          data:        ProcessData::new(),
-					  sleep_until: 0, 
-					  program:     null_mut()
-					};
-		unsafe {
-			satp_fence_asid(NEXT_PID as usize);
-			NEXT_PID += 1;
-		}
-		// Now we move the stack pointer to the bottom of the
-		// allocation. The spec shows that register x2 (2) is the stack
-		// pointer.
-		// We could use ret_proc.stack.add, but that's an unsafe
-		// function which would require an unsafe block. So, convert it
-		// to usize first and then add PAGE_SIZE is better.
-		// We also need to set the stack adjustment so that it is at the
-		// bottom of the memory and far away from heap allocations.
-		let saddr = ret_proc.stack as usize;
-		unsafe {
-			(*ret_proc.frame).pc = func_vaddr;
-			(*ret_proc.frame).regs[Registers::Sp as usize] =
-				STACK_ADDR + PAGE_SIZE * STACK_PAGES;
-			(*ret_proc.frame).mode = CpuMode::User as usize;
-			(*ret_proc.frame).pid = ret_proc.pid as usize;
-		}
-		// Map the stack on the MMU
-		let pt;
-		unsafe {
-			pt = &mut *ret_proc.root;
-			(*ret_proc.frame).satp =
-				build_satp(
-				           SatpMode::Sv39,
-				           ret_proc.pid as usize,
-				           ret_proc.root as usize,
-				);
-		}
-		// We need to map the stack onto the user process' virtual
-		// memory This gets a little hairy because we need to also map
-		// the function code too.
-		for i in 0..STACK_PAGES {
-			let addr = i * PAGE_SIZE;
-			map(
-			    pt,
-			    STACK_ADDR + addr,
-			    saddr + addr,
-			    EntryBits::UserReadWrite.val(),
-			    0,
-			);
-			// println!("Set stack from 0x{:016x} -> 0x{:016x}",
-			// STACK_ADDR + addr, saddr + addr);
-		}
-		// Map the program counter on the MMU and other bits
-		for i in 0..=100 {
-			let modifier = i * 0x1000;
-			map(
-			    pt,
-			    func_vaddr + modifier,
-			    func_addr + modifier,
-			    EntryBits::UserReadWriteExecute.val(),
-			    0,
-			);
-		}
-		ret_proc
-	}
+	pub brk:         usize,
 }
 
 impl Drop for Process {
@@ -579,9 +398,9 @@ impl Drop for Process {
 			// Remember that unmap unmaps all levels of page tables
 			// except for the root. It also deallocates the memory
 			// associated with the tables.
-			unmap(&mut *self.root);
+			unmap(&mut *self.mmu_table);
 		}
-		dealloc(self.root as *mut u8);
+		dealloc(self.mmu_table as *mut u8);
 		dealloc(self.frame as *mut u8);
 		if !self.program.is_null() {
 			dealloc(self.program);
@@ -603,8 +422,9 @@ pub enum FileDescriptor {
 // private process data. This is essentially our resource control block (RCB).
 #[allow(dead_code)]
 pub struct ProcessData {
-	environ: BTreeMap<String, String>,
-	fdesc: BTreeMap<u16, FileDescriptor>,
+	pub environ: BTreeMap<String, String>,
+	pub fdesc: BTreeMap<u16, FileDescriptor>,
+	pub cwd: String,
 }
 
 // This is private data that we can query with system calls.
@@ -615,6 +435,7 @@ impl ProcessData {
 		ProcessData { 
 			environ: BTreeMap::new(),
 			fdesc: BTreeMap::new(),
+			cwd: String::new(),
 		 }
 	}
 }

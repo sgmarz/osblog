@@ -63,6 +63,10 @@ pub enum Registers {
 	T6
 }
 
+pub const fn gp(r: Registers) -> usize {
+	r as usize
+}
+
 // Floating point registers
 #[repr(usize)]
 pub enum FRegisters {

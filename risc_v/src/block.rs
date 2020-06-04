@@ -423,8 +423,7 @@ pub fn pending(bd: &mut BlockDevice) {
 			if pid_of_watcher > 0 {
 				set_running(pid_of_watcher);
 				let proc = get_by_pid(pid_of_watcher);
-				(*(*proc).get_frame_mut()).regs[10] =
-					(*rq).status.status as usize;
+				(*(*proc).frame).regs[10] = (*rq).status.status as usize;
 				// TODO: Set GpA0 to the value of the return
 				// status.
 			}

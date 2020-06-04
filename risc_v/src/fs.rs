@@ -456,7 +456,7 @@ fn read_proc(args_addr: usize) {
 	unsafe {
 		let ptr = get_by_pid(args.pid);
 		if !ptr.is_null() {
-			(*(*ptr).get_frame_mut()).regs[Registers::A0 as usize] = bytes as usize;
+			(*(*ptr).frame).regs[Registers::A0 as usize] = bytes as usize;
 		}
 	}
 	// This is the process making the system call. The system itself spawns another process
