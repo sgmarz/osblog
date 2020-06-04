@@ -1,5 +1,4 @@
-#include <printf.h>
-#include <syscall.h>
+#include <cstdio>
 #include <input-event-codes.h>
 
 

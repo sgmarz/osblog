@@ -1,23 +1,15 @@
-CROSS=riscv64-unknown-linux-gnu-
+CROSS=riscv64-unknown-elf-
 CXX=g++
-OBJCOPY=objcopy
-CXXFLAGS=-Wall -O3 -ffreestanding -nostartfiles -nostdlib -static -march=rv64gc -mabi=lp64d
-LINKER_SCRIPT=-T./startlib/linker.lds
-INCLUDES=-I./startlib
-LIBS=-L./startlib
-LIB=-lstart
+CXXFLAGS=-Wall -O3 -static -I.
 SOURCES=$(wildcard *.cpp)
-OUT=$(patsubst %.cpp,%.elf,$(SOURCES))
-PROGS=$(patsubst %.cpp,%,$(SOURCES))
+OUT=$(patsubst %.cpp,%,$(SOURCES))
 
 all: $(OUT)
 
-%.elf:%.cpp Makefile startlib/linker.lds startlib/*.h
-	$(CROSS)$(CXX) $(CXXFLAGS) $(INCLUDES) $(LIBS) -o $@ $< $(LIB)
-	$(CROSS)$(OBJCOPY) -O binary $@ $@.bin
-	mv $@.bin $(basename $@)
+
+%: %.cpp Makefile
+	$(CROSS)$(CXX) $(CXXFLAGS) -o $@ $<
+
 
 clean:
 	rm -f $(OUT)
-	rm -f *.bin *.elf
-	rm -f $(PROGS)

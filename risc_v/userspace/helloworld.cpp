@@ -1,4 +1,4 @@
-#include <printf.h>
+#include <cstdio>
 
 const int SIZE = 100000;
 double myarray[SIZE];
