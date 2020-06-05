@@ -109,8 +109,11 @@ extern "C" fn kinit() {
 	}
 	// Set up virtio. This requires a working heap and page-grained allocator.
 	virtio::probe();
-	// Test the block driver!
+
+	console::init();
 	process::add_kernel_process(test::test);
+	process::add_kernel_process(console::console_read_proc);
+	process::add_kernel_process(console::console_write_proc);
 	// Get the GPU going
 	gpu::init(6);
 	// We schedule the next context switch using a multiplier of 1
@@ -132,6 +135,7 @@ extern "C" fn kinit_hart(_hartid: usize) {
 pub mod assembly;
 pub mod block;
 pub mod buffer;
+pub mod console;
 pub mod cpu;
 pub mod elf;
 pub mod fs;
@@ -147,6 +151,7 @@ pub mod sched;
 pub mod syscall;
 pub mod trap;
 pub mod uart;
+pub mod vfs;
 pub mod virtio;
 pub mod test;
 
