@@ -413,12 +413,13 @@ impl Drop for Process {
 	}
 }
 
-pub enum FileDescriptor {
+pub enum Descriptor {
 	File(Inode),
 	Device(usize),
-	Framebuffer(usize),
+	Framebuffer,
 	ButtonEvents,
 	AbsoluteEvents,
+	Console,
 	Network,
 	Unknown,
 }
@@ -431,7 +432,7 @@ pub enum FileDescriptor {
 #[allow(dead_code)]
 pub struct ProcessData {
 	pub environ: BTreeMap<String, String>,
-	pub fdesc: BTreeMap<u16, FileDescriptor>,
+	pub fdesc: BTreeMap<u16, Descriptor>,
 	pub cwd: String,
 	pub pages: VecDeque<usize>,
 }
@@ -444,7 +445,7 @@ impl ProcessData {
 		ProcessData { 
 			environ: BTreeMap::new(),
 			fdesc: BTreeMap::new(),
-			cwd: String::new(),
+			cwd: String::from("/"),
 			pages: VecDeque::new(),
 		 }
 	}

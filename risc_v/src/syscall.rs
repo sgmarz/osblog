@@ -11,7 +11,7 @@ use crate::{block::block_op,
             gpu,
             input::{Event, ABS_EVENTS, KEY_EVENTS},
             page::{map, virt_to_phys, EntryBits, Table, PAGE_SIZE, zalloc},
-            process::{add_kernel_process_args, delete_process, get_by_pid, set_sleeping, set_waiting, PROCESS_LIST, PROCESS_LIST_MUTEX, FileDescriptor}};
+            process::{add_kernel_process_args, delete_process, get_by_pid, set_sleeping, set_waiting, PROCESS_LIST, PROCESS_LIST_MUTEX, Descriptor}};
 use alloc::{boxed::Box, string::String};
 
 /// do_syscall is called from trap.rs to invoke a system call. No discernment is
@@ -137,65 +137,22 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) {
 			}
 			// Flush?
 		}
-		63 => {
-			// Read system call
-			// This is an asynchronous call. This will get the
-			// process going. We won't hear the answer until
-			// we an interrupt back.
-			// TODO: The buffer is a virtual memory address that
-			// needs to be translated to a physical memory location.
-			// This needs to be put into a process and ran.
-			// The buffer (regs[12]) needs to be translated when ran
-			// from a user process using virt_to_phys. If this turns
-			// out to be a page fault, we need to NOT proceed with
-			// the read!
-			let mut physical_buffer = (*frame).regs[Registers::A2 as usize];
-			// If the MMU is turned on, we have to translate the
-			// address. Eventually, I will put this code into a
-			// convenient function, but for now, it will show how
-			// translation will be done.
-			if (*frame).satp >> 60 != 0 {
-				let p = get_by_pid((*frame).pid as u16);
-				let table = ((*p).mmu_table).as_ref().unwrap();
-				let paddr = virt_to_phys(table, (*frame).regs[12]);
-				if paddr.is_none() {
-					(*frame).regs[Registers::A0 as usize] = -1isize as usize;
-					return;
-				}
-				physical_buffer = paddr.unwrap();
-			}
-			// TODO: Not only do we need to check the buffer, but it
-			// is possible that the buffer spans multiple pages. We
-			// need to check all pages that this might span. We
-			// can't just do paddr and paddr + size, since there
-			// could be a missing page somewhere in between.
-			let _ = fs::process_read(
-			                         (*frame).pid as u16,
-			                         (*frame).regs[Registers::A0 as usize] as usize,
-			                         (*frame).regs[Registers::A1 as usize] as u32,
-			                         physical_buffer as *mut u8,
-			                         (*frame).regs[Registers::A3 as usize] as u32,
-			                         (*frame).regs[Registers::A4 as usize] as u32
-			);
+		63 => { // sys_read
+			let fd = (*frame).regs[gp(Registers::A0)] as u16;
+			let buf = (*frame).regs[gp(Registers::A1)] as *const u8;
+			let size = (*frame).regs[gp(Registers::A2)];
+			let process = get_by_pid((*frame).pid as u16).as_ref().unwrap();
 			// If we return 0, the trap handler will schedule
 			// another process.
+			if fd == 0 { // stdin
+				
+			}
 		}
 		64 => { // sys_write
 			let fd = (*frame).regs[gp(Registers::A0)] as u16;
 			let buf = (*frame).regs[gp(Registers::A1)] as *const u8;
 			let size = (*frame).regs[gp(Registers::A2)];
 			let process = get_by_pid((*frame).pid as u16).as_ref().unwrap();
-			// if (*frame).satp >> 60 != 0 {
-			// 	let table = ((*process).mmu_table).as_mut().unwrap();
-			// 	let paddr = virt_to_phys(table, buf as usize);
-			// 	if let Some(bufaddr) = paddr {
-			// 		buf = bufaddr as *const u8;
-			// 	}
-			// 	else {
-			// 		(*frame).regs[gp(Registers::A0)] = -1isize as usize;
-			// 		return 0;
-			// 	}
-			// }
 			if fd == 1 || fd == 2 {
 				// stdout / stderr
 				// println!("WRITE {}, 0x{:08x}, {}", fd, bu/f as usize, size);
@@ -226,10 +183,10 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) {
 				else {
 					let descriptor = descriptor.unwrap();
 					match descriptor {
-						FileDescriptor::Framebuffer(x) => {
+						Descriptor::Framebuffer => {
 
 						}
-						FileDescriptor::File(inode) => {
+						Descriptor::File(inode) => {
 
 						
 						}
@@ -406,13 +363,13 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) {
 			match str_path.as_str() {
 				"/dev/fb" => {
 					// framebuffer
-					process.data.fdesc.insert(max_fd, FileDescriptor::Framebuffer(6));
+					process.data.fdesc.insert(max_fd, Descriptor::Framebuffer);
 				}
 				"/dev/butev" => {
-					process.data.fdesc.insert(max_fd, FileDescriptor::ButtonEvents);
+					process.data.fdesc.insert(max_fd, Descriptor::ButtonEvents);
 				}
 				"/dev/absev" => {
-					process.data.fdesc.insert(max_fd, FileDescriptor::AbsoluteEvents);
+					process.data.fdesc.insert(max_fd, Descriptor::AbsoluteEvents);
 				}
 				_ => {
 					let res = fs::MinixFileSystem::open(8, &str_path);
@@ -422,7 +379,7 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) {
 					}
 					else {
 						let inode = res.ok().unwrap();
-						process.data.fdesc.insert(max_fd, FileDescriptor::File(inode));
+						process.data.fdesc.insert(max_fd, Descriptor::File(inode));
 					}
 				}
 			}
