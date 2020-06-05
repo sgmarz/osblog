@@ -3,7 +3,7 @@
 // Stephen Marz
 // 1 Nov 2019
 
-use crate::uart::Uart;
+use crate::uart;
 use crate::virtio;
 
 const PLIC_PRIORITY: usize = 0x0c00_0000;
@@ -121,36 +121,10 @@ pub fn handle_interrupt() {
         match interrupt {
             1..=8 => {
                 virtio::handle_interrupt(interrupt);
-            },
+            }
             10 => { // Interrupt 10 is the UART interrupt.
-                // We would typically set this to be handled out of the interrupt context,
-                // but we're testing here! C'mon!
-                // We haven't yet used the singleton pattern for my_uart, but remember, this
-                // just simply wraps 0x1000_0000 (UART).
-                let mut my_uart = Uart::new(0x1000_0000);
-                // If we get here, the UART better have something! If not, what happened??
-                if let Some(c) = my_uart.get() {
-                    // If you recognize this code, it used to be in the lib.rs under kmain(). That
-                    // was because we needed to poll for UART data. Now that we have interrupts,
-                    // here it goes!
-                    match c {
-                        8 => {
-                            // This is a backspace, so we
-                            // essentially have to write a space and
-                            // backup again:
-                            print!("{} {}", 8 as char, 8 as char);
-                        },
-                        10 | 13 => {
-                            // Newline or carriage-return
-                            println!();
-                        },
-                        _ => {
-                            print!("{}", c as char);
-                        },
-                    }
-                }
-        
-            },
+                uart::handle_interrupt();
+            }
             _ => {
                 println!("Unknown external interrupt: {}", interrupt);
             }

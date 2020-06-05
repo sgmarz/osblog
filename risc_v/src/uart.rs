@@ -2,7 +2,8 @@
 // UART routines and driver
 
 use core::{convert::TryInto,
-           fmt::{Error, Write}};
+		   fmt::{Error, Write}};
+use crate::console::push_stdin;
 
 pub struct Uart {
 	base_address: usize,
@@ -118,5 +119,35 @@ impl Uart {
 				Some(ptr.add(0).read_volatile())
 			}
 		}
+	}
+}
+
+pub fn handle_interrupt() {
+	// We would typically set this to be handled out of the interrupt context,
+	// but we're testing here! C'mon!
+	// We haven't yet used the singleton pattern for my_uart, but remember, this
+	// just simply wraps 0x1000_0000 (UART).
+	let mut my_uart = Uart::new(0x1000_0000);
+	// If we get here, the UART better have something! If not, what happened??
+	if let Some(c) = my_uart.get() {
+		// If you recognize this code, it used to be in the lib.rs under kmain(). That
+		// was because we needed to poll for UART data. Now that we have interrupts,
+		// here it goes!
+		push_stdin(c);
+		match c {
+			8 => {
+				// This is a backspace, so we
+				// essentially have to write a space and
+				// backup again:
+				print!("{} {}", 8 as char, 8 as char);
+			},
+			10 | 13 => {
+				// Newline or carriage-return
+				println!();
+			},
+			_ => {
+				print!("{}", c as char);
+			},
+		}	
 	}
 }

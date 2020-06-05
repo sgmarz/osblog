@@ -11,7 +11,8 @@ use crate::{block::block_op,
             gpu,
             input::{Event, ABS_EVENTS, KEY_EVENTS},
             page::{map, virt_to_phys, EntryBits, Table, PAGE_SIZE, zalloc},
-            process::{add_kernel_process_args, delete_process, get_by_pid, set_sleeping, set_waiting, PROCESS_LIST, PROCESS_LIST_MUTEX, Descriptor}};
+			process::{add_kernel_process_args, delete_process, get_by_pid, set_sleeping, set_waiting, PROCESS_LIST, PROCESS_LIST_MUTEX, Descriptor}};
+use crate::console::{IN_LOCK, IN_BUFFER};
 use alloc::{boxed::Box, string::String};
 
 /// do_syscall is called from trap.rs to invoke a system call. No discernment is
@@ -145,7 +146,6 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) {
 			// If we return 0, the trap handler will schedule
 			// another process.
 			if fd == 0 { // stdin
-				
 			}
 		}
 		64 => { // sys_write

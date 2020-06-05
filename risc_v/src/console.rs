@@ -6,69 +6,73 @@
 use alloc::collections::VecDeque;
 use crate::uart::Uart;
 use crate::lock::Mutex;
-use crate::syscall::syscall_yield;
 
-pub static mut READ_BUFFER: Option<VecDeque<u8>> = None;
-pub static mut WRITE_BUFFER: Option<VecDeque<u8>> = None;
+pub static mut IN_BUFFER: Option<VecDeque<u8>> = None;
+pub static mut OUT_BUFFER: Option<VecDeque<u8>> = None;
 
-pub static mut READ_HANDLER: fn() -> u8 = uart_read;
-pub static mut WRITE_HANDLER: fn(u8) = uart_write;
+pub static mut IN_LOCK: Mutex = Mutex::new();
+pub static mut OUT_LOCK: Mutex = Mutex::new();
 
-pub static mut READ_LOCK: Mutex = Mutex::new();
-pub static mut WRITE_LOCK: Mutex = Mutex::new();
-
-
-fn uart_read() -> u8 {
-    let mut u = Uart::new(0x1000_0000);
-    if let Some(c) = u.get() {
-        c
-    }
-    else {
-        0
-    }
-}
-
-fn uart_write(c: u8) {
-    let mut u = Uart::new(0x1000_0000);
-    u.put(c);
-}
+pub const DEFAULT_OUT_BUFFER_SIZE: usize = 10_000;
+pub const DEFAULT_IN_BUFFER_SIZE: usize = 1_000;
 
 pub fn init() {
     unsafe {
-        WRITE_BUFFER.replace(VecDeque::new());
-        READ_BUFFER.replace(VecDeque::new());
+        IN_BUFFER.replace(VecDeque::with_capacity(DEFAULT_IN_BUFFER_SIZE));
+        OUT_BUFFER.replace(VecDeque::with_capacity(DEFAULT_OUT_BUFFER_SIZE));
     }
 }
 
-pub fn console_read_proc() {
-    loop {
-        unsafe {
-            READ_LOCK.sleep_lock();
-            if let Some(mut cb) = READ_BUFFER.take() {
-                let ur = READ_HANDLER();
-                if ur != 0 {
-                    cb.push_back(ur);
-                }
-                READ_BUFFER.replace(cb);
+/// Push a u8 (character) onto the output buffer
+/// If the buffer is full, silently drop.
+pub fn push_stdout(c: u8) {
+    unsafe {
+        OUT_LOCK.spin_lock();
+        if let Some(mut buf) = OUT_BUFFER.take() {
+            if buf.len() < DEFAULT_OUT_BUFFER_SIZE {
+                buf.push_back(c);
             }
-            READ_LOCK.unlock();
+            OUT_BUFFER.replace(buf);
         }
-        syscall_yield();
+        OUT_LOCK.unlock();
     }
 }
 
-pub fn console_write_proc() {
-    loop {
-        unsafe {
-            WRITE_LOCK.sleep_lock();
-            if let Some(mut cb) = WRITE_BUFFER.take() {
-                while let Some(c) = cb.pop_front() {
-                    WRITE_HANDLER(c);
-                }
-                WRITE_BUFFER.replace(cb);
-            }
-            WRITE_LOCK.unlock();
+pub fn pop_stdout() -> u8 {
+    let mut ret = None;
+    unsafe {
+        OUT_LOCK.spin_lock();
+        if let Some(mut buf) = OUT_BUFFER.take() {
+            ret = buf.pop_front();
+            OUT_BUFFER.replace(buf);
         }
-        syscall_yield();
+        OUT_LOCK.unlock();
     }
+    ret.unwrap_or(0)
+}
+
+pub fn push_stdin(c: u8) {
+    unsafe {
+        IN_LOCK.spin_lock();
+        if let Some(mut buf) = IN_BUFFER.take() {
+            if buf.len() < DEFAULT_IN_BUFFER_SIZE {
+                buf.push_back(c);
+            }
+            IN_BUFFER.replace(buf);
+        }
+        IN_LOCK.unlock();
+    }
+}
+
+pub fn pop_stdin() -> u8 {
+    let mut ret = None;
+    unsafe {
+        IN_LOCK.spin_lock();
+        if let Some(mut buf) = IN_BUFFER.take() {
+            ret = buf.pop_front();
+            IN_BUFFER.replace(buf);
+        }
+        IN_LOCK.unlock();
+    }
+    ret.unwrap_or(0)
 }

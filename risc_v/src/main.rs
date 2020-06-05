@@ -112,8 +112,6 @@ extern "C" fn kinit() {
 
 	console::init();
 	process::add_kernel_process(test::test);
-	process::add_kernel_process(console::console_read_proc);
-	process::add_kernel_process(console::console_write_proc);
 	// Get the GPU going
 	gpu::init(6);
 	// We schedule the next context switch using a multiplier of 1
