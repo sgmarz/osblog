@@ -12,7 +12,7 @@ use crate::{block::block_op,
             input::{Event, ABS_EVENTS, KEY_EVENTS},
             page::{map, virt_to_phys, EntryBits, Table, PAGE_SIZE, zalloc},
 			process::{add_kernel_process_args, delete_process, get_by_pid, set_sleeping, set_waiting, PROCESS_LIST, PROCESS_LIST_MUTEX, Descriptor}};
-use crate::console::{IN_LOCK, IN_BUFFER};
+use crate::console::{IN_LOCK, IN_BUFFER, push_queue};
 use alloc::{boxed::Box, string::String};
 
 /// do_syscall is called from trap.rs to invoke a system call. No discernment is
@@ -140,13 +140,43 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) {
 		}
 		63 => { // sys_read
 			let fd = (*frame).regs[gp(Registers::A0)] as u16;
-			let buf = (*frame).regs[gp(Registers::A1)] as *const u8;
+			let mut buf = (*frame).regs[gp(Registers::A1)] as *mut u8;
 			let size = (*frame).regs[gp(Registers::A2)];
-			let process = get_by_pid((*frame).pid as u16).as_ref().unwrap();
+			let process = get_by_pid((*frame).pid as u16).as_mut().unwrap();
+			let mut ret = 0usize;
 			// If we return 0, the trap handler will schedule
 			// another process.
 			if fd == 0 { // stdin
+				IN_LOCK.spin_lock();
+				if let Some(mut inb) = IN_BUFFER.take() {
+					let num_elements = if inb.len() >= size { size } else { inb.len() };
+					let mut buf_ptr = buf as *mut u8;
+					if num_elements == 0 {
+						push_queue((*frame).pid as u16);
+						set_waiting((*frame).pid as u16);
+					}
+					else {
+						for i in inb.drain(0..num_elements) {
+							if (*frame).satp >> 60 != 0 {
+								let table = ((*process).mmu_table).as_mut().unwrap();
+								let buf_addr = virt_to_phys(table, buf as usize);
+								if buf_addr.is_none() {
+									break;
+								}
+								buf_ptr = buf_addr.unwrap() as *mut u8;
+								buf_ptr.write(i);
+								ret += 1;
+								println!("R: {}", ret);
+							}
+							buf = buf.add(1);
+							buf_ptr = buf_ptr.add(1);
+						}
+					}
+					IN_BUFFER.replace(inb);
+				}
+				IN_LOCK.unlock();
 			}
+			(*frame).regs[gp(Registers::A0)] = ret;
 		}
 		64 => { // sys_write
 			let fd = (*frame).regs[gp(Registers::A0)] as u16;
