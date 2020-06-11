@@ -103,14 +103,31 @@ pub unsafe fn do_syscall(mepc: usize, frame_ptr: *mut cpu::TrapFrame) {
 			let dirp = frame.regs[cpu::gpr(Registers::A1)] as *const u8;
 			let count = frame.regs[cpu::gpr(Registers::A2)];
 		}
+		62 => {
+			// int lseek(int fd, int offset, int whence)
+			let fd = frame.regs[cpu::gpr(Registers::A0)];
+			let offset = frame.regs[cpu::gpr(Registers::A1)];
+			let whence = frame.regs[cpu::gpr(Registers::A2)];
+		}
+		63 => {
+			// int read(int fd, char *buffer, int size)
+
+		}
 		93 | 94 => {
 			// exit and exit_group
 			// The exit system call takes a return number. We don't handle that, yet.
 			process::delete_process(frame.pid as u16);
 		}
+		172 => {
+			// int getpid()
+			frame.regs[cpu::gpr(Registers::A0)] = frame.pid as usize;
+		}
 		214 => {
 			// void *brk(void *addr)
 			frame.regs[cpu::gpr(Registers::A0)] = process.brk(frame.regs[cpu::gpr(Registers::A0)]);
+		}
+		1024 => {
+			// int open(const char *path, int mode)
 		}
 		1033 => {
 			// int access(const char *path, int amode)
