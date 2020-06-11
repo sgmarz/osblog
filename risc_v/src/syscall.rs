@@ -124,7 +124,7 @@ pub unsafe fn do_syscall(mepc: usize, frame_ptr: *mut cpu::TrapFrame) {
 		}
 		214 => {
 			// void *brk(void *addr)
-			frame.regs[cpu::gpr(Registers::A0)] = process.brk(frame.regs[cpu::gpr(Registers::A0)]);
+			frame.regs[cpu::gpr(Registers::A0)] = process.set_brk(frame.regs[cpu::gpr(Registers::A0)]);
 		}
 		1024 => {
 			// int open(const char *path, int mode)

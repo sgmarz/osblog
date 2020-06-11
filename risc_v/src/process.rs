@@ -11,7 +11,7 @@ use crate::{cpu::{get_mtime,
             page::{dealloc,
                    unmap,
 				   zalloc,
-				   Table},
+				   Table, PAGE_SIZE, map, EntryBits},
             syscall::{syscall_exit, syscall_yield}};
 use alloc::{string::String, collections::{vec_deque::VecDeque, BTreeMap}};
 use core::ptr::null_mut;
@@ -387,8 +387,22 @@ pub struct Process {
 }
 
 impl Process {
-	pub fn brk(&mut self, addr: usize) -> usize {
-		0
+	/// Set the break to the given address. If the address is smaller than
+	/// the break already, do nothing. This function returns the address
+	/// where the break is.
+	pub fn set_brk(&mut self, addr: usize) -> usize {
+		if addr > self.brk && unsafe { (*self.frame).satp } >> 60 != 0 {
+			// MMU is turned on
+			let table = unsafe { self.mmu_table.as_mut().unwrap() };
+			let diff = (addr + PAGE_SIZE - self.brk) / PAGE_SIZE;
+			for i in 0..diff {
+				let new_addr = zalloc(1) as usize;
+				self.data.pages.push_back(new_addr);
+				map(table, self.brk + (i << 12), new_addr, EntryBits::UserReadWrite.val(), 0);
+			}
+			self.brk = addr;
+		}
+		self.brk
 	}
 }
 
