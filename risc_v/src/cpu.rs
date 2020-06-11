@@ -63,7 +63,7 @@ pub enum Registers {
 	T6
 }
 
-pub const fn gp(r: Registers) -> usize {
+pub const fn gpr(r: Registers) -> usize {
 	r as usize
 }
 
@@ -139,7 +139,8 @@ impl TrapFrame {
 		            hartid: 0,
 		            qm:     1,
 		            pid:    0,
-		            mode:   0, }
+					mode:   0, 
+				}
 	}
 }
 

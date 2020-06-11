@@ -4,6 +4,8 @@
 // 6 October 2019
 
 use core::{mem::size_of, ptr::null_mut};
+use crate::process::Process;
+use crate::cpu::memcpy;
 
 // ////////////////////////////////
 // // Allocation routines
@@ -547,4 +549,64 @@ pub fn virt_to_phys(root: &Table, vaddr: usize) -> Option<usize> {
 	// If we get here, we've exhausted all valid tables and haven't
 	// found a leaf.
 	None
+}
+
+/// Translate a given pointer (as usize) from virtual to physical address space
+/// If the MMU is turned off (satp value in the process frame), this will return
+/// the virtual address as the physical address typed as a *mut T, where T is
+/// a generic type.
+pub fn translate<T>(process: &Process, ptr: usize) -> Option<*mut T> {
+	// Make sure that the MMU is set up for this process. We check the SATP's mode to
+	// see if it is turned on. If it is turned on, we must make sure that the table is 
+	if unsafe { (*process.frame).satp } >> 60 != 0 {
+		// Our process creation creates an MMU table. I'm using expect() assuming that
+		// the table is not null. We should never panic on this unless something is really
+		// wrong.
+		let table = unsafe { process.mmu_table.as_ref().expect("translate had invalid mmu table.") };
+		// virt_to_phys will return an Option<usize>. I am using if let Some to convert
+		// this to Option<*mut T>, otherwise we'd just return virt_to_phys directly.
+		if let Some(translated_addr) = virt_to_phys(table, ptr) {
+			// The address translated successfully, so return the physical address.
+			Some(translated_addr as *mut T)
+		}
+		else {
+			// This means we got a page fault, so this is not translatable memory address.
+			None
+		}
+	}
+	else {
+		// If we get here, then the MMU was not turned on
+		Some(ptr as *mut T)
+	}
+}
+
+/// Copy a group of bytes, from, into, to. This function will perform translation and
+/// ensure proper access before copying. This function returns the number of bytes
+/// it was successfully able to copy. Pages are translated at page boundaries to
+/// accommodate non-consecutive physical pages.
+/// This expects the to address to be a virtual address and from to be a physical address.
+pub fn copy_to_user(process: &Process, user_to: usize, phys_from: usize, size: usize) -> usize {
+	let mut bytes_copied = 0usize;
+	while bytes_copied < size {
+		let to_addr = user_to + bytes_copied;
+		if let Some(to_phys) = translate::<u8>(process, to_addr) {
+			let bytes_before_next_page = to_addr - (to_addr & !0xfff);
+			let bytes_left = size - bytes_copied;
+			let bytes_to_copy = if bytes_before_next_page >= bytes_left { bytes_left } else { bytes_before_next_page };
+			// Everything should be set up, now just copy everything, or up to, but not including, the next page.
+			unsafe {
+				memcpy(to_phys, (phys_from + bytes_copied) as *const u8, bytes_to_copy);
+			}
+			bytes_copied += bytes_to_copy;
+		}
+		else {
+			// When we hit a page that isn't translatable, we stop copying
+			// and return what we were able to copy. It is up to the
+			// caller to check the sizes to ensure everything was properly
+			// copied.
+			break;
+		}
+	}
+
+	bytes_copied
 }

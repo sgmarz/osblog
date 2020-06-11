@@ -386,6 +386,12 @@ pub struct Process {
 	pub brk:         usize,
 }
 
+impl Process {
+	pub fn brk(&mut self, addr: usize) -> usize {
+		0
+	}
+}
+
 impl Drop for Process {
 	/// Since we're storing ownership of a Process in the linked list,
 	/// we can cause it to deallocate automatically when it is removed.
@@ -412,16 +418,23 @@ impl Drop for Process {
 		}
 	}
 }
-
-pub enum Descriptor {
+#[derive(Copy, Clone)]
+pub enum DescriptorType {
 	File(Inode),
 	Device(usize),
 	Framebuffer,
 	ButtonEvents,
 	AbsoluteEvents,
-	Console,
+	ConsoleIn,
+	ConsoleOut,
 	Network,
 	Unknown,
+}
+#[derive(Copy, Clone)]
+pub struct Descriptor {
+	pub dtype: DescriptorType,
+	pub blocking: bool,
+	pub buffered: bool,
 }
 
 // The private data in a process contains information
@@ -448,5 +461,17 @@ impl ProcessData {
 			cwd: String::from("/"),
 			pages: VecDeque::new(),
 		 }
+	}
+	/// Look for a new file descriptor. This can only return
+	/// file descriptors > 0.
+	pub fn find_next_fd(&self) -> u16 {
+		let mut ret = 0u16;
+		for i in self.fdesc.keys() {
+			let d = *i;
+			if d > ret {
+				ret = d;
+			}
+		}
+		ret + 1
 	}
 }
