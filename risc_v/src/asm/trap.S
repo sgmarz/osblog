@@ -84,10 +84,12 @@ m_trap_vector:
 	call	m_trap
 
 	# When we get here, we've returned from m_trap, restore registers
-	# and return.
-	# m_trap will return the return address via a0.
+	# and return. This only happens from an asynchronous trap. Synchronous
+	# traps will switch to user by itself.
 
-	csrw	mepc, a0
+	# I removed mepc here, we want to go back to the same place we
+	# left off since we're here only with asynchronous traps.
+	
 	# Now load the trap frame back into t6
 	csrr	t6, mscratch
 
