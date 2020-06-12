@@ -4,14 +4,16 @@
 // 3 Jan 2020
 
 use crate::{fs, process, page, cpu, cpu::Registers};
-/// do_syscall is called from trap.rs to invoke a system call. No discernment is
-/// made here whether this is a U-mode, S-mode, or M-mode system call.
+use alloc::boxed::Box;
+
+/// user_syscall is called from trap.rs to invoke a system call. This
+/// is now separate from M and S modes.
 /// Since we can't do anything unless we dereference the passed pointer,
 /// I went ahead and made the entire function unsafe.
 /// If we return 0 from this function, the m_trap function will schedule
 /// the next process--consider this a yield. A non-0 is the program counter
 /// we want to go back to.
-pub unsafe fn do_syscall(mepc: usize, frame_ptr: *mut cpu::TrapFrame) {
+pub unsafe fn user_syscall(mepc: usize, frame_ptr: *mut cpu::TrapFrame) {
 	// Libgloss expects the system call number in A7, so let's follow
 	// their lead.
 	// A7 is X17, so it's register number 17.
@@ -52,8 +54,8 @@ pub unsafe fn do_syscall(mepc: usize, frame_ptr: *mut cpu::TrapFrame) {
 			let desc = process.data.fdesc.get(&filedes);
 			if desc.is_some() {
 				let new_desc_key = process.data.find_next_fd();
-				let new_desc_val = *desc.unwrap();
-				process.data.fdesc.insert(new_desc_key, new_desc_val);
+				// let new_desc_val = desc.unwrap().clone();
+				// process.data.fdesc.insert(new_desc_key, new_desc_val);
 				frame.regs[cpu::gpr(Registers::A0)] = new_desc_key as usize;
 			}
 			else {
@@ -135,7 +137,39 @@ pub unsafe fn do_syscall(mepc: usize, frame_ptr: *mut cpu::TrapFrame) {
 			let amode = frame.regs[cpu::gpr(Registers::A1)];
 		}
 		_ => {
-			println!("Unknown system call {}", syscall_number);
+			println!("Unknown user system call {}", syscall_number);
+		}
+	}
+}
+
+pub unsafe fn machine_syscall(mepc: usize, frame_ptr: *mut cpu::TrapFrame) {
+	if frame_ptr.is_null() {
+		return;
+	}
+
+	// Get a Rust mutable reference to frame. This is better than using raw pointers
+	// even though we're in an unsafe context.
+	let frame = frame_ptr.as_mut().unwrap();
+	let syscall_number = frame.regs[cpu::gpr(Registers::A0)];
+	let process_ptr = process::get_by_pid(frame.pid as u16);
+
+	if process_ptr.is_null() {
+		return;
+	}
+	let process = process_ptr.as_mut().unwrap();
+	// skip the ecall
+	frame.pc = mepc + 4;
+
+	match syscall_number {
+		1 => {
+			// yield, do nothing
+		}
+		94 => {
+			// exit(int)
+			process::delete_process(frame.pid as u16);
+		}
+		_ => {
+			println!("Unknown machine syscall {}", syscall_number);
 		}
 	}
 }
