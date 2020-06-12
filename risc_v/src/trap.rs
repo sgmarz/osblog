@@ -8,7 +8,7 @@ use crate::{cpu::{TrapFrame, CONTEXT_SWITCH_TIME},
             process::delete_process,
             rust_switch_to_user,
             sched::schedule,
-            syscall::do_syscall};
+            syscall::{user_syscall, machine_syscall}};
 
 #[no_mangle]
 /// The m_trap stands for "machine trap". Right now, we are handling
@@ -98,10 +98,14 @@ extern "C" fn m_trap(epc: usize,
 				schedule_next_context_switch(1);
 				rust_switch_to_user(frame);
 			}
-			8 | 9 | 11 => unsafe {
-				// Environment (system) call from User, Supervisor, and Machine modes
-				// println!("E-call from User mode! CPU#{} -> 0x{:08x}", hart, epc);
-				do_syscall(return_pc, frame);
+			8 => unsafe {
+				user_syscall(return_pc, frame);
+				let frame = schedule();
+				schedule_next_context_switch(1);
+				rust_switch_to_user(frame);
+			}
+			9 | 11 => unsafe {
+				machine_syscall(return_pc, frame);
 				let frame = schedule();
 				schedule_next_context_switch(1);
 				rust_switch_to_user(frame);

@@ -314,6 +314,7 @@ pub fn probe() {
 							VIRTIO_DEVICES[idx] =
 								Some(VirtioDevice::new_with(DeviceTypes::Gpu));
 						}
+						gpu::init(idx);
 						println!("setup succeeded!");
 					}
 				},
