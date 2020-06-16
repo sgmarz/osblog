@@ -16,7 +16,7 @@ use crate::{cpu::{get_mtime,
 use alloc::{string::String, collections::{vec_deque::VecDeque, BTreeMap}};
 use alloc::boxed::Box;
 use core::ptr::null_mut;
-use crate::fd::Descriptor;
+use crate::fd::DescriptorType;
 use crate::lock::Mutex;
 
 // How many pages are we going to give a process for their
@@ -443,7 +443,7 @@ impl Drop for Process {
 #[allow(dead_code)]
 pub struct ProcessData {
 	pub environ: BTreeMap<String, String>,
-	pub fdesc: BTreeMap<u16, Box<dyn Descriptor>>,
+	pub fdesc: BTreeMap<u16, DescriptorType>,
 	pub cwd: String,
 	pub pages: VecDeque<usize>,
 }

@@ -3,8 +3,7 @@
 // Stephen Marz
 // 3 Jan 2020
 
-use crate::{fs, process, page, cpu, cpu::Registers};
-use alloc::boxed::Box;
+use crate::{block, fs, process, page, cpu, cpu::Registers};
 
 /// user_syscall is called from trap.rs to invoke a system call. This
 /// is now separate from M and S modes.
@@ -54,8 +53,8 @@ pub unsafe fn user_syscall(mepc: usize, frame_ptr: *mut cpu::TrapFrame) {
 			let desc = process.data.fdesc.get(&filedes);
 			if desc.is_some() {
 				let new_desc_key = process.data.find_next_fd();
-				// let new_desc_val = desc.unwrap().clone();
-				// process.data.fdesc.insert(new_desc_key, new_desc_val);
+				let new_desc_val = *desc.unwrap();
+				process.data.fdesc.insert(new_desc_key, new_desc_val);
 				frame.regs[cpu::gpr(Registers::A0)] = new_desc_key as usize;
 			}
 			else {
@@ -168,6 +167,61 @@ pub unsafe fn machine_syscall(mepc: usize, frame_ptr: *mut cpu::TrapFrame) {
 			// exit(int)
 			process::delete_process(frame.pid as u16);
 		}
+		63 => {
+			// read
+			// bdev: usize, buffer: *mut u8, size: u32, offset: u32
+			// Read system call
+			// This is an asynchronous call. This will get the
+			// process going. We won't hear the answer until
+			// we an interrupt back.
+			// TODO: The buffer is a virtual memory address that
+			// needs to be translated to a physical memory location.
+			// This needs to be put into a process and ran.
+			// The buffer (regs[12]) needs to be translated when ran
+			// from a user process using virt_to_phys. If this turns
+			// out to be a page fault, we need to NOT proceed with
+			// the read!
+			let mut physical_buffer = frame.regs[Registers::A2 as usize];
+			// If the MMU is turned on, we have to translate the
+			// address. Eventually, I will put this code into a
+			// convenient function, but for now, it will show how
+			// translation will be done.
+			if (*frame).satp >> 60 != 0 {
+				let p = process::get_by_pid(frame.pid as u16);
+				let table = ((*p).mmu_table).as_ref().unwrap();
+				let paddr = page::virt_to_phys(table, (*frame).regs[12]);
+				if paddr.is_none() {
+					frame.regs[Registers::A0 as usize] = -1isize as usize;
+					return;
+				}
+				physical_buffer = paddr.unwrap();
+			}
+			// TODO: Not only do we need to check the buffer, but it
+			// is possible that the buffer spans multiple pages. We
+			// need to check all pages that this might span. We
+			// can't just do paddr and paddr + size, since there
+			// could be a missing page somewhere in between.
+			let _ = fs::process_read(
+			                         frame.pid as u16,
+			                         frame.regs[Registers::A1 as usize] as usize,
+			                         frame.regs[Registers::A2 as usize] as u32,
+			                         physical_buffer as *mut u8,
+			                         frame.regs[Registers::A4 as usize] as u32,
+			                         frame.regs[Registers::A5 as usize] as u32
+			);
+
+		}
+		99000 => {
+			process::set_waiting(frame.pid as u16);
+			let _ = block::block_op(
+			                 frame.regs[Registers::A1 as usize],
+			                 frame.regs[Registers::A2 as usize] as *mut u8,
+			                 frame.regs[Registers::A3 as usize] as u32,
+			                 frame.regs[Registers::A4 as usize] as u64,
+			                 false,
+			                 frame.pid as u16
+			);
+		}
 		_ => {
 			println!("Unknown machine syscall {}", syscall_number);
 		}
@@ -195,7 +249,18 @@ pub fn syscall_sleep(tm: usize) {
 }
 
 pub fn syscall_block_read(bdev: usize, buffer: *mut u8, size: u32, offset: u32) -> u8 {
-	0
+	let ret;
+	unsafe {
+		asm!("ecall", 
+			in("a0") 99000, 
+			in("a1") bdev, 
+			in("a2") buffer as usize,
+			in("a3") size as usize,
+			in("a4") offset as usize,
+			lateout("a0") ret,
+		);
+	}
+	ret
 }
 
 /*

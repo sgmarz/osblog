@@ -7,6 +7,8 @@ use crate::{block, block::setup_block_device, page::PAGE_SIZE};
 use crate::rng::setup_entropy_device;
 use crate::{gpu, gpu::setup_gpu_device};
 use crate::{input, input::setup_input_device};
+use crate::process;
+use crate::fs;
 use core::mem::size_of;
 
 // Flags
@@ -289,6 +291,7 @@ pub fn probe() {
 							VIRTIO_DEVICES[idx] =
 								Some(VirtioDevice::new_with(DeviceTypes::Block));
 						}
+						process::add_kernel_process_args(fs::init_proc, idx+1);
 						println!("setup succeeded!");
 					}
 				},
@@ -314,7 +317,7 @@ pub fn probe() {
 							VIRTIO_DEVICES[idx] =
 								Some(VirtioDevice::new_with(DeviceTypes::Gpu));
 						}
-						gpu::init(idx);
+						gpu::init(idx + 1);
 						println!("setup succeeded!");
 					}
 				},

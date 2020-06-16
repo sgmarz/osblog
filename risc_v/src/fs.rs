@@ -127,7 +127,12 @@ impl MinixFileSystem {
 	/// Init is where we would cache the superblock and inode to avoid having to read
 	/// it over and over again, like we do for read right now.
 	fn cache_at(btm: &mut BTreeMap<String, Inode>, cwd: &String, inode_num: u32, bdev: usize) {
-		let ino = Self::get_inode(bdev, inode_num).unwrap();
+		let ino_opt = Self::get_inode(bdev, inode_num);
+		if ino_opt.is_none() {
+			println!("Error getting inode {}: '{}'", inode_num, cwd);
+			return;
+		}
+		let ino = ino_opt.unwrap();
 		let mut buf = Buffer::new(((ino.size + BLOCK_SIZE - 1) & !BLOCK_SIZE) as usize);
 		let dirents = buf.get() as *const DirEntry;
 		let sz = Self::read(bdev, &ino, buf.get_mut(), BLOCK_SIZE, 0);
@@ -153,15 +158,13 @@ impl MinixFileSystem {
 					}
 					new_cwd.push(d.name[i] as char);
 				}
-				new_cwd.shrink_to_fit();
+				// new_cwd.shrink_to_fit();
 				if d_ino.mode & S_IFDIR != 0 {
 					// This is a directory, cache these. This is a recursive call,
 					// which I don't really like.
 					Self::cache_at(btm, &new_cwd, d.inode, bdev);
 				}
-				else {
-					btm.insert(new_cwd, d_ino);
-				}
+				btm.insert(new_cwd, d_ino);
 			}
 		}
 	}
@@ -479,6 +482,10 @@ pub fn process_read(pid: u16, dev: usize, node: u32, buffer: *mut u8, size: u32,
 	let boxed_args = Box::new(args);
 	set_waiting(pid);
 	let _ = add_kernel_process_args(read_proc, Box::into_raw(boxed_args) as usize);
+}
+
+pub fn init_proc(dev: usize) {
+	MinixFileSystem::init(dev);
 }
 
 /// Stats on a file. This generally mimics an inode
