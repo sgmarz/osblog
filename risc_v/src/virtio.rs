@@ -8,7 +8,7 @@ use crate::rng::setup_entropy_device;
 use crate::{gpu, gpu::setup_gpu_device};
 use crate::{input, input::setup_input_device};
 use crate::process;
-use crate::fs;
+use crate::vfs;
 use core::mem::size_of;
 
 // Flags
@@ -291,7 +291,7 @@ pub fn probe() {
 							VIRTIO_DEVICES[idx] =
 								Some(VirtioDevice::new_with(DeviceTypes::Block));
 						}
-						process::add_kernel_process_args(fs::init_proc, idx+1);
+						process::add_kernel_process_args(vfs::init_proc, idx+1);
 						println!("setup succeeded!");
 					}
 				},

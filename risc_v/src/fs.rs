@@ -70,7 +70,6 @@ pub struct MinixFileSystem;
 // The plan for this in the future is to have a single inode cache. What we
 // will do is have a cache of Node structures which will combine the Inode
 // with the block drive.
-static mut MFS_INODE_CACHE: [Option<BTreeMap<String, Inode>>; 8] = [None, None, None, None, None, None, None, None];
 
 impl MinixFileSystem {
 	/// Inodes are the meta-data of a file, including the mode (permissions and type) and
@@ -124,90 +123,6 @@ impl MinixFileSystem {
 }
 
 impl MinixFileSystem {
-	/// Init is where we would cache the superblock and inode to avoid having to read
-	/// it over and over again, like we do for read right now.
-	fn cache_at(btm: &mut BTreeMap<String, Inode>, cwd: &String, inode_num: u32, bdev: usize) {
-		let ino_opt = Self::get_inode(bdev, inode_num);
-		if ino_opt.is_none() {
-			println!("Error getting inode {}: '{}'", inode_num, cwd);
-			return;
-		}
-		let ino = ino_opt.unwrap();
-		let mut buf = Buffer::new(((ino.size + BLOCK_SIZE - 1) & !BLOCK_SIZE) as usize);
-		let dirents = buf.get() as *const DirEntry;
-		let sz = Self::read(bdev, &ino, buf.get_mut(), BLOCK_SIZE, 0);
-		let num_dirents = sz as usize / size_of::<DirEntry>();
-		// We start at 2 because the first two entries are . and ..
-		for i in 2..num_dirents {
-			unsafe {
-				let ref d = *dirents.add(i);
-				let d_ino = Self::get_inode(bdev, d.inode).unwrap();
-				let mut new_cwd = String::with_capacity(120);
-				for i in cwd.bytes() {
-					new_cwd.push(i as char);
-				}
-				// Add a directory separator between this inode and the next.
-				// If we're the root (inode 1), we don't want to double up the
-				// frontslash, so only do it for non-roots.
-				if inode_num != 1 {
-					new_cwd.push('/');
-				}
-				for i in 0..60 {
-					if d.name[i] == 0 {
-						break;
-					}
-					new_cwd.push(d.name[i] as char);
-				}
-				// new_cwd.shrink_to_fit();
-				if d_ino.mode & S_IFDIR != 0 {
-					// This is a directory, cache these. This is a recursive call,
-					// which I don't really like.
-					Self::cache_at(btm, &new_cwd, d.inode, bdev);
-				}
-				btm.insert(new_cwd, d_ino);
-			}
-		}
-	}
-
-	// Run this ONLY in a process!
-	pub fn init(bdev: usize) {
-		if unsafe { MFS_INODE_CACHE[bdev - 1].is_none() } {
-			let mut btm = BTreeMap::new();
-			let cwd = String::from("/");
-
-			// Let's look at the root (inode #1)
-			Self::cache_at(&mut btm, &cwd, 1, bdev);
-			unsafe {
-				MFS_INODE_CACHE[bdev - 1] = Some(btm);
-			}
-		}
-		else {
-			println!("KERNEL: Initialized an already initialized filesystem {}", bdev);
-		}
-	}
-
-	/// The goal of open is to traverse the path given by path. If we cache the inodes
-	/// in RAM, it might make this much quicker. For now, this doesn't do anything since
-	/// we're just testing read based on if we know the Inode we're looking for.
-	pub fn open(bdev: usize, path: &str) -> Result<Inode, FsError> {
-		if let Some(cache) = unsafe { MFS_INODE_CACHE[bdev - 1].take() } {
-			let ret;
-			if let Some(inode) = cache.get(path) {
-				ret = Ok(*inode);
-			}
-			else {
-				ret = Err(FsError::FileNotFound);
-			}
-			unsafe {
-				MFS_INODE_CACHE[bdev - 1].replace(cache);
-			}
-			ret
-		}
-		else {
-			Err(FsError::FileNotFound)
-		}
-	}
-
 	pub fn read(bdev: usize, inode: &Inode, buffer: *mut u8, size: u32, offset: u32) -> u32 {
 		// Our strategy here is to use blocks to see when we need to start reading
 		// based on the offset. That's offset_block. Then, the actual byte within
@@ -482,10 +397,6 @@ pub fn process_read(pid: u16, dev: usize, node: u32, buffer: *mut u8, size: u32,
 	let boxed_args = Box::new(args);
 	set_waiting(pid);
 	let _ = add_kernel_process_args(read_proc, Box::into_raw(boxed_args) as usize);
-}
-
-pub fn init_proc(dev: usize) {
-	MinixFileSystem::init(dev);
 }
 
 /// Stats on a file. This generally mimics an inode
