@@ -8,7 +8,7 @@ use crate::{cpu::Registers,
             syscall::syscall_block_read};
 
 use crate::{buffer::Buffer, cpu::memcpy};
-use alloc::{boxed::Box, collections::BTreeMap, string::String};
+use alloc::boxed::Box;
 use core::mem::size_of;
 
 pub const MAGIC: u16 = 0x4d5a;
@@ -415,5 +415,7 @@ pub enum FsError {
 	FileNotFound,
 	Permission,
 	IsFile,
-	IsDirectory
+	IsDirectory,
+	Busy,
+	Unavailable
 }

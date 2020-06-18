@@ -6,7 +6,8 @@
 #![allow(dead_code)]
 use crate::{page::{zalloc, PAGE_SIZE},
 			kmem::{kmalloc, kfree},
-            virtio,
+			virtio,
+			vfs,
             virtio::{MmioOffsets, Queue, StatusField, VIRTIO_RING_SIZE, Descriptor, VIRTIO_DESC_F_WRITE, VIRTIO_DESC_F_NEXT}};
 use core::{mem::size_of, ptr::null_mut};
 // use alloc::boxed::Box;
@@ -537,6 +538,7 @@ pub fn init(gdev: usize)  {
 			.add(MmioOffsets::QueueNotify.scale32())
 			.write_volatile(0);
 			GPU_DEVICES[gdev-1].replace(dev);
+			vfs::add_gpu(gdev);
 		}
 	}
 }

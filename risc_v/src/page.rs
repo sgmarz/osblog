@@ -610,3 +610,15 @@ pub fn copy_to_user(process: &Process, user_to: usize, phys_from: usize, size: u
 
 	bytes_copied
 }
+
+
+/// Copy a group of bytes, from, into, to. This function will perform translation and
+/// ensure proper access before copying. This function returns the number of bytes
+/// it was successfully able to copy. Pages are translated at page boundaries to
+/// accommodate non-consecutive physical pages.
+/// This expects the to address to be a virtual address and from to be a physical address.
+pub fn copy_from_user(process: &Process, phys_to: usize, user_from: usize, size: usize) -> usize {
+	let mut bytes_copied = 0usize;
+
+	bytes_copied
+}

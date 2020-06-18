@@ -11,9 +11,19 @@ use alloc::string::String;
 use core::mem::size_of;
 
 #[derive(Clone, Copy)]
+pub enum EntryType {
+    File(Inode),
+    Block,
+    Char,
+    Fifo,
+    Socket,
+    Gpu,
+}
+
+#[derive(Clone, Copy)]
 pub struct Entry {
-    pub bdev: usize,
-    pub node: Inode,
+    pub dev: usize,
+    pub node: EntryType,
 }
 
 static mut LOCK: Mutex = Mutex::new();
@@ -60,8 +70,8 @@ fn cache_at(btm: &mut BTreeMap<String, Entry>, cwd: &String, inode_num: u32, bde
                 cache_at(btm, &new_cwd, d.inode, bdev);
             }
             let ent = Entry {
-                bdev,
-                node: d_ino,
+                dev: bdev,
+                node: EntryType::File(d_ino),
             };
             btm.insert(new_cwd, ent);
         }
@@ -95,25 +105,34 @@ pub fn init(bdev: usize) {
     }
 }
 
-pub fn open(path: &str) -> Result<Inode, FsError> {
+pub fn open(path: &str) -> Result<Entry, FsError> {
     let ret;
+    // We use an atomic lock here. Try lock will attempt the lock
+    // but will not wait if it can't get it. It returns true
+    // if we acquire the lock or false otherwise.
     if unsafe { LOCK.try_lock() } == false {
-        return Err(FsError::FileNotFound);
+        return Err(FsError::Busy);
     }
     else if let Some(cache) = unsafe { CACHE.take() } {
+        // If we get here, we've locked the mutex and were able to take the
+        // global cache.
         if let Some(entry) = cache.get(path) {
-            ret = Ok(entry.node);
+            // If we get here, we have the lock, cache, and we found
+            // the requested key (directory path)
+            ret = Ok(*entry);
         }
         else {
+            // If we get here, we didn't find the path in the cache.
             ret = Err(FsError::FileNotFound);
         }
         unsafe {
             CACHE.replace(cache);
         }
-        return ret;
     }
     else {
-        ret = Err(FsError::FileNotFound);
+        // If we get here, we got the lock, but couldn't take
+        // the cache.
+        ret = Err(FsError::Unavailable);
     }
     unsafe {
         LOCK.unlock();
@@ -123,4 +142,24 @@ pub fn open(path: &str) -> Result<Inode, FsError> {
 
 pub fn init_proc(dev: usize) {
 	init(dev);
+}
+
+pub fn add_gpu(dev: usize) {
+    if unsafe { LOCK.try_lock() } == false {
+        println!("add_gpu: Could not acquire lock.");
+        return;
+    }
+    if let Some(mut cache) = unsafe { CACHE.take() } {
+        let entry = Entry {
+            dev,
+            node: EntryType::Gpu,
+        };
+        cache.insert(String::from("/dev/gpu"), entry);
+        unsafe {
+            CACHE.replace(cache);
+        }
+    }
+    unsafe {
+        LOCK.unlock();
+    }
 }

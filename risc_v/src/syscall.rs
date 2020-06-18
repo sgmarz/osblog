@@ -3,7 +3,8 @@
 // Stephen Marz
 // 3 Jan 2020
 
-use crate::{block, fs, process, page, cpu, cpu::Registers};
+use crate::{block, vfs, fd, process, page, cpu, cpu::Registers};
+use alloc::string::String;
 
 /// user_syscall is called from trap.rs to invoke a system call. This
 /// is now separate from M and S modes.
@@ -50,10 +51,9 @@ pub unsafe fn user_syscall(mepc: usize, frame_ptr: *mut cpu::TrapFrame) {
 		23 => {
 			// int dup(int filedes)
 			let filedes = frame.regs[cpu::gpr(Registers::A0)] as u16;
-			let desc = process.data.fdesc.get(&filedes);
-			if desc.is_some() {
+			if let Some(val) = process.data.fdesc.get(&filedes) {
 				let new_desc_key = process.data.find_next_fd();
-				let new_desc_val = *desc.unwrap();
+				let new_desc_val = *val;
 				process.data.fdesc.insert(new_desc_key, new_desc_val);
 				frame.regs[cpu::gpr(Registers::A0)] = new_desc_key as usize;
 			}
@@ -129,6 +129,22 @@ pub unsafe fn user_syscall(mepc: usize, frame_ptr: *mut cpu::TrapFrame) {
 		}
 		1024 => {
 			// int open(const char *path, int mode)
+			let path = frame.regs[cpu::gpr(Registers::A0)] as *mut u8;
+			let mode = frame.regs[cpu::gpr(Registers::A1)];
+			let path_str = String::with_capacity(30);
+			
+			let op = vfs::open(path_str.as_str());
+			let fd;
+			if let Ok(entry) = op {
+				fd = process.data.find_next_fd();
+				let entry = op.ok().unwrap();
+				process.data.fdesc.insert(fd, fd::DescriptorType::File(entry));
+			}
+			else {
+				fd = -1isize as u16;
+			}
+			frame.regs[cpu::gpr(Registers::A0)] = fd as usize;
+
 		}
 		1033 => {
 			// int access(const char *path, int amode)

@@ -3,9 +3,11 @@
 // Stephen Marz
 // 11 Jun 2020
 
+use crate::vfs::Entry;
+
 #[derive(Copy, Clone)]
 pub enum DescriptorType {
-	File,
+	File(Entry),
 	Device,
 	Framebuffer,
 	ButtonEvents,
