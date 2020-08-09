@@ -300,7 +300,7 @@ pub fn print_page_allocations() {
 
 // Represent (repr) our entry bits as
 // unsigned 64-bit integers.
-#[repr(i64)]
+#[repr(usize)]
 #[derive(Copy, Clone)]
 pub enum EntryBits {
 	None = 0,
@@ -328,17 +328,14 @@ pub enum EntryBits {
 // into an i64, which is what our page table
 // entries will be.
 impl EntryBits {
-	pub fn val(self) -> i64 {
-		self as i64
+	pub fn val(self) -> usize {
+		self as usize
 	}
 }
 
-// A single entry. We're using an i64 so that
-// this will sign-extend rather than zero-extend
-// since RISC-V requires that the reserved sections
-// take on the most significant bit.
+// A single entry.
 pub struct Entry {
-	pub entry: i64,
+	pub entry: usize,
 }
 
 // The Entry structure describes one of the 512 entries per table, which is
@@ -363,11 +360,11 @@ impl Entry {
 		!self.is_leaf()
 	}
 
-	pub fn set_entry(&mut self, entry: i64) {
+	pub fn set_entry(&mut self, entry: usize) {
 		self.entry = entry;
 	}
 
-	pub fn get_entry(&self) -> i64 {
+	pub fn get_entry(&self) -> usize {
 		self.entry
 	}
 }
@@ -397,7 +394,7 @@ impl Table {
 pub fn map(root: &mut Table,
            vaddr: usize,
            paddr: usize,
-           bits: i64,
+           bits: usize,
            level: usize)
 {
 	// Make sure that Read, Write, or Execute have been provided
@@ -445,7 +442,7 @@ pub fn map(root: &mut Table,
 			// directly The page is stored in the entry shifted
 			// right by 2 places.
 			v.set_entry(
-			            (page as i64 >> 2)
+			            (page as usize >> 2)
 			            | EntryBits::Valid.val(),
 			);
 		}
@@ -456,9 +453,9 @@ pub fn map(root: &mut Table,
 	// our entry.
 	// The entry structure is Figure 4.18 in the RISC-V Privileged
 	// Specification
-	let entry = (ppn[2] << 28) as i64 |   // PPN[2] = [53:28]
-	            (ppn[1] << 19) as i64 |   // PPN[1] = [27:19]
-				(ppn[0] << 10) as i64 |   // PPN[0] = [18:10]
+	let entry = (ppn[2] << 28) |   // PPN[2] = [53:28]
+	            (ppn[1] << 19) |   // PPN[1] = [27:19]
+				(ppn[0] << 10) |   // PPN[0] = [18:10]
 				bits |                    // Specified bits, such as User, Read, Write, etc
 				EntryBits::Valid.val() |  // Valid bit
 				EntryBits::Dirty.val() |  // Some machines require this to =1
