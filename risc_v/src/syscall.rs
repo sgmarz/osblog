@@ -289,7 +289,7 @@ pub unsafe fn do_syscall(mepc: usize, frame: *mut TrapFrame) {
 						for i in 0..num_pages {
 							let vaddr = 0x3000_0000 + (i << 12);
 							let paddr = ptr + (i << 12);
-							map(table, vaddr, paddr, EntryBits::UserReadWrite as i64, 0);
+							map(table, vaddr, paddr, EntryBits::UserReadWrite as usize, 0);
 						}
 						gpu::GPU_DEVICES[dev - 1].replace(p);
 					}
