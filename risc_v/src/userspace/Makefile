@@ -1,4 +1,4 @@
-CROSS=riscv64-unknown-linux-gnu-
+CROSS=/opt/riscv/bin/riscv64-unknown-linux-gnu-
 CXX=g++
 OBJCOPY=objcopy
 CXXFLAGS=-Wall -O3 -ffreestanding -nostartfiles -nostdlib -static -march=rv64g -mabi=lp64d
