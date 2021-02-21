@@ -12,7 +12,7 @@ use crate::{buffer::Buffer,
                   SatpMode,
                   TrapFrame,
                   Registers},
-            page::{map, zalloc, EntryBits, Table, PAGE_SIZE},
+            page::{map, zalloc, EntryBits, Table, PAGE_SIZE, align_val},
             process::{Process,
                       ProcessData,
                       ProcessState,
@@ -215,7 +215,7 @@ impl File {
 			}
 			// Now we map the program counter. The virtual address
 			// is provided in the ELF program header.
-			let pages = (p.header.memsz + PAGE_SIZE) / PAGE_SIZE;
+			let pages = (PAGE_SIZE + align_val(p.header.memsz, 12)) / PAGE_SIZE;
 			for i in 0..pages {
 				let vaddr = p.header.vaddr + i * PAGE_SIZE;
 				// The ELF specifies a paddr, but not when we
