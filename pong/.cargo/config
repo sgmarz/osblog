@@ -1,4 +1,4 @@
 [build]
 target = "riscv64gc-unknown-none-elf"
-rustflags = ['-Clink-arg=-Tlinker.lds']
+#rustflags = ['-Clink-arg=-Tlinker.lds']
 

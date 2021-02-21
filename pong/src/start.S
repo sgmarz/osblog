@@ -5,7 +5,9 @@ _start:
 .option norelax
 	la	gp, __global_pointer$
 .option pop
-	call	rustmain
+	li		a0, 0
+	li		a1, 0
+	call	main
 	# Exit system call after main
 	li	a7, 93
 	ecall
