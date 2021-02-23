@@ -11,6 +11,7 @@ impl Obj {
         }
     }
 }
+
 pub struct Pong {
 	player: Obj,
 	npc: Obj,
@@ -39,14 +40,40 @@ impl Pong {
 	pub fn advance_frame(&mut self) {
 		if !self.paused {
             self.move_ball(self.ball_direction.x, self.ball_direction.y);
-            if self.ball.location.x < 50 || self.ball.location.x > 580 {
-                self.ball_direction.x = -self.ball_direction.x;
-            }
-            if self.ball.location.y < 20 || self.ball.location.y > 430 {
-                self.ball_direction.y = -self.ball_direction.y;
-            }
-            let new_loc = self.ball.location.y - self.npc.location.height / 2;
-            self.npc.location.y = if new_loc > 0 { new_loc } else { 0 };
+			let miss = 
+			if self.ball.location.x < 40 {
+				// This means we're in the player's paddle location. Let's
+				// see if this is a hit or a miss!
+				let paddle = (self.player.location.y, self.player.location.y + self.player.location.height);
+				let ball = (self.ball.location.y, self.ball.location.y + self.ball.location.height);
+
+				if paddle.0 <= ball.0 && paddle.1 >= ball.0 {
+					false
+				}
+				else if paddle.0 <= ball.1 && paddle.1 >= ball.1 {
+					false
+				}
+				else {
+					true
+				}
+			}
+			else {
+				false
+			};
+			if miss {
+				self.reset();
+				self.paused = true;
+			}
+			else {
+				if self.ball.location.x < 50 || self.ball.location.x > 580 {
+					self.ball_direction.x = -self.ball_direction.x;
+				}
+				if self.ball.location.y < 20 || self.ball.location.y > 430 {
+					self.ball_direction.y = -self.ball_direction.y;
+				}
+				let new_loc = self.ball.location.y - self.npc.location.height / 2;
+				self.npc.location.y = if new_loc > 0 { new_loc } else { 0 };
+			}
 		}
 	}
 	pub fn draw(&self, fb: &mut Framebuffer) {
