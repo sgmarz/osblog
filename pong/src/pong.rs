@@ -65,7 +65,7 @@ impl Pong {
 				self.paused = true;
 			}
 			else {
-				if self.ball.location.x < 50 || self.ball.location.x > 580 {
+				if self.ball.location.x < 40 || self.ball.location.x > 580 {
 					self.ball_direction.x = -self.ball_direction.x;
 				}
 				if self.ball.location.y < 20 || self.ball.location.y > 430 {
