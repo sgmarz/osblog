@@ -1,82 +1,76 @@
+use crate::drawing::{Framebuffer, Pixel, Rectangle, Vector};
 
-use crate::drawing::Rectangle;
-use crate::drawing::Framebuffer;
-use crate::drawing::Pixel;
-use crate::drawing::Vector;
-
+struct Obj {
+    pub location: Rectangle,
+    pub color: Pixel
+}
+impl Obj {
+    pub fn new(location: Rectangle, color: Pixel) -> Self {
+        Self {
+            location, color
+        }
+    }
+}
 pub struct Pong {
-    player: (Rectangle, Pixel),
-    npc: (Rectangle, Pixel),
-    ball: (Rectangle, Vector, Pixel),
-    bgcolor: (Rectangle, Pixel),
-    paused: bool
+	player: Obj,
+	npc: Obj,
+	ball: Obj,
+    ball_direction: Vector,
+	bgcolor: Pixel,
+	paused: bool
 }
 
 impl Pong {
-    pub fn new(playc: Pixel, npcc: Pixel, ballc: Pixel, bgcolor: Pixel) -> Self {
-        Self {
-            player: (Rectangle::new(15, 150, 25, 100), playc),
-            npc: (Rectangle::new(600, 150, 25, 100), npcc),
-            ball: (Rectangle::new(320, 240, 25, 25), Vector::new(15, -2), ballc),
-            bgcolor: (Rectangle::new(0, 0, 640, 480), bgcolor),
-            paused: true
-        }
-    }
-    pub fn advance(&mut self) {
-        if !self.paused {
-            let nx = self.ball.0.x as isize + self.ball.1.x;
-            let ny = self.ball.0.y as isize + self.ball.1.y;
-
-            if nx >= 580 || nx <= 35 {
-                self.ball.1.x = -self.ball.1.x;
+	pub fn new(playc: Pixel, npcc: Pixel, ballc: Pixel, bgcolor: Pixel) -> Self {
+		Self {
+			player: Obj::new(Rectangle::new(15, 150, 25, 100), playc),
+			npc: Obj::new(Rectangle::new(600, 150, 25, 100), npcc),
+			ball: Obj::new(Rectangle::new(320, 240, 25, 25), ballc),
+            ball_direction: Vector::new(15, -2),
+			bgcolor,
+			paused: true,
+		}
+	}
+	pub fn reset(&mut self) {
+		self.ball.location = Rectangle::new(320, 240, 25, 25);
+        self.ball_direction = Vector::new(15, -2);
+        self.paused = true;
+	}
+	pub fn advance_frame(&mut self) {
+		if !self.paused {
+            self.move_ball(self.ball_direction.x, self.ball_direction.y);
+            if self.ball.location.x < 50 || self.ball.location.x > 580 {
+                self.ball_direction.x = -self.ball_direction.x;
             }
-            if ny >= 400 || ny <= 50 {
-                self.ball.1.y = -self.ball.1.y;
+            if self.ball.location.y < 20 || self.ball.location.y > 430 {
+                self.ball_direction.y = -self.ball_direction.y;
             }
-            self.ball.0.x = nx as usize;
-            self.ball.0.y = ny as usize;
-        }
-    }
-    pub fn draw(&self, fb: &mut Framebuffer) {
-        fb.fill_rect(&self.bgcolor.0, &self.bgcolor.1);
-        fb.fill_rect(&self.player.0, &self.player.1);
-        fb.fill_rect(&self.npc.0, &self.npc.1);
-        fb.fill_rect(&self.ball.0, &self.ball.2);
-    }
-    pub fn move_player_up(&mut self, y: usize) {
+            let new_loc = self.ball.location.y - self.npc.location.height / 2;
+            self.npc.location.y = if new_loc > 0 { new_loc } else { 0 };
+		}
+	}
+	pub fn draw(&self, fb: &mut Framebuffer) {
+		fb.fill_rect(&Rectangle::new(0, 0, 640, 480), &self.bgcolor);
+		fb.fill_rect(&self.player.location, &self.player.color);
+		fb.fill_rect(&self.npc.location, &self.npc.color);
+		fb.fill_rect(&self.ball.location, &self.ball.color);
+	}
+    pub fn move_player(&mut self, y: i32) {
         if !self.paused {
-            self.player.0.y -= y;
+            let new_loc = self.player.location.y + y;
+            self.player.location.y = if new_loc < 0 { 0 } else if new_loc > 400 { 400 } else { new_loc };
         }
     }
-    pub fn move_player_down(&mut self, y: usize) {
+    pub fn move_ball(&mut self, x: i32, y: i32) {
         if !self.paused {
-            self.player.0.y += y;
+            self.ball.location.x += x;
+            self.ball.location.y += y;
         }
     }
-    pub fn move_ball_left(&mut self, x: usize) {
-        if !self.paused {
-            self.ball.0.x -= x;
-        }
-    }
-    pub fn move_ball_right(&mut self, x: usize) {
-        if !self.paused {
-            self.ball.0.x += x;
-        }
-    }
-    pub fn move_ball_up(&mut self, y: usize) {
-        if !self.paused {
-            self.ball.0.y -= y;
-        }
-    }
-    pub fn move_ball_down(&mut self, y: usize) {
-        if !self.paused {
-            self.ball.0.y += y;
-        }
-    }
-    pub fn toggle_pause(&mut self) {
-        self.paused = !self.paused;
-    }
-    pub fn is_paused(&self) -> bool {
-        self.paused
-    }
+	pub fn toggle_pause(&mut self) {
+		self.paused = !self.paused;
+	}
+	pub fn is_paused(&self) -> bool {
+		self.paused
+	}
 }

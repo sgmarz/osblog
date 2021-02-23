@@ -21,12 +21,12 @@ impl Pixel {
 }
 
 pub struct Vector {
-    pub x: isize,
-    pub y: isize
+    pub x: i32,
+    pub y: i32
 }
 
 impl Vector {
-    pub fn new(x: isize, y: isize) -> Self {
+    pub fn new(x: i32, y: i32) -> Self {
         Self {
             x,  y
         }
@@ -34,14 +34,14 @@ impl Vector {
 }
 
 pub struct Rectangle {
-    pub x: usize,
-    pub y: usize,
-    pub width: usize,
-    pub height: usize,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
 }
 
 impl Rectangle {
-    pub fn new(x: usize, y: usize, width: usize, height: usize) -> Self {
+    pub fn new(x: i32, y: i32, width: i32, height: i32) -> Self {
         Self {
             x, y, width, height
         }
@@ -55,10 +55,11 @@ impl Framebuffer {
     pub fn new(pixels: *mut Pixel) -> Self {
         Self { pixels }
     }
-    pub fn set(&mut self, x: usize, y: usize, pixel: &Pixel) {
+    pub fn set(&mut self, x: i32, y: i32, pixel: &Pixel) {
         unsafe {
             if x < 640 && y < 480 {
-                self.pixels.add(y * 640 + x).write(*pixel);
+                let v = (y * 640 + x) as isize;
+                self.pixels.offset(v).write(*pixel);
             }
         }
     }
@@ -75,8 +76,8 @@ impl Framebuffer {
     }
 }
 
-pub fn lerp(value: u32, mx1: u32, mx2: u32) -> u32 {
+pub fn lerp(value: i32, mx1: i32, mx2: i32) -> i32 {
     let r = (value as f64) / (mx1 as f64);
-	return r as u32 * mx2;
+	return r as i32 * mx2;
 }
 
