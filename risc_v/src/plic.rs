@@ -99,7 +99,7 @@ pub fn enable(id: u32) {
     }
 }
 
-/// Set a given interrupt priority to the given priority.
+/// Set a given interrupt priority to the given interrupt id.
 /// The priority must be [0..7]
 pub fn set_priority(id: u32, prio: u8) {
     let actual_prio = prio as u32 & 7;
